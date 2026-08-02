@@ -77,6 +77,9 @@ class DEPGModal(ModalScreen[None]):
         self.nodes = nodes
         self.edges = edges
         self._by_id = {node.id: node for node in nodes}
+        self._parent_of = {edge.child: edge.parent for edge in edges}
+
+    DECISION_COLUMNS = ("time", "chose", "over", "Δ", "cost")
 
     def compose(self) -> ComposeResult:
         with Vertical(id="depg-frame"):
@@ -85,6 +88,8 @@ class DEPGModal(ModalScreen[None]):
                 with Vertical(id="depg-left"):
                     yield DEPGTree()
                 with Vertical(id="depg-right"):
+                    yield Static("decision path", classes="modal-title")
+                    yield DataTable(id="depg-decisions", cursor_type="none")
                     yield Static("evidence", classes="modal-title")
                     yield DataTable(id="depg-evidence", cursor_type="row")
             yield Static("↑↓ select node · esc to close", classes="modal-hint")
@@ -99,10 +104,31 @@ class DEPGModal(ModalScreen[None]):
         )
 
     def on_mount(self) -> None:
-        table = self.query_one(DataTable)
+        evidence = self.query_one("#depg-evidence", DataTable)
         for column in self.EVIDENCE_COLUMNS:
-            table.add_column(column, key=column)
+            evidence.add_column(column, key=column)
+        decisions = self.query_one("#depg-decisions", DataTable)
+        for column in self.DECISION_COLUMNS:
+            decisions.add_column(column, key=column)
         self._build_tree()
+
+    # -- the path that produced a node -------------------------------------
+
+    def path_to(self, node_id: str) -> list[DEPGNode]:
+        """Every node from a root down to ``node_id``, in order.
+
+        Walks parent links rather than searching, and stops on a repeat so a
+        cyclic graph cannot hang the view.
+        """
+        chain: list[DEPGNode] = []
+        seen: set[str] = set()
+        current = node_id
+        while current in self._by_id and current not in seen:
+            seen.add(current)
+            chain.append(self._by_id[current])
+            current = self._parent_of.get(current, "")
+        chain.reverse()
+        return chain
 
     # -- tree construction -------------------------------------------------
 
@@ -123,7 +149,7 @@ class DEPGModal(ModalScreen[None]):
 
         if tree.root.children:
             tree.cursor_line = 0
-            self._show_evidence(roots[0] if roots else self.nodes[0])
+            self._show_node(roots[0] if roots else self.nodes[0])
         tree.focus()
 
     def _add_node(
@@ -152,10 +178,30 @@ class DEPGModal(ModalScreen[None]):
 
     def on_tree_node_highlighted(self, message: Tree.NodeHighlighted[DEPGNode]) -> None:
         if message.node.data is not None:
-            self._show_evidence(message.node.data)
+            self._show_node(message.node.data)
+
+    def _show_node(self, node: DEPGNode) -> None:
+        self._show_decisions(node)
+        self._show_evidence(node)
+
+    def _show_decisions(self, node: DEPGNode) -> None:
+        """The choices that led here, root first."""
+        table = self.query_one("#depg-decisions", DataTable)
+        table.clear()
+        for step in self.path_to(node.id):
+            decision = step.decision
+            if decision is None:
+                continue
+            table.add_row(
+                decision.timestamp,
+                decision.chose,
+                str(decision.alternatives),
+                f"{decision.score_gap:+.2f}",
+                f"{decision.tokens}t",
+            )
 
     def _show_evidence(self, node: DEPGNode) -> None:
-        table = self.query_one(DataTable)
+        table = self.query_one("#depg-evidence", DataTable)
         table.clear()
         for item in node.evidence:
             table.add_row(item.timestamp, item.tool, item.exit_signal, item.tier)

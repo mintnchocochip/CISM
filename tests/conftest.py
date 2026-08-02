@@ -79,7 +79,7 @@ def quiesce(app: CISMApp) -> None:
     re-scrolling to the bottom, even underneath a modal), and the composer's
     cursor blink.
     """
-    app.transcript._following = False
+    app.transcript.pause_follow()
     app.composer.input.cursor_blink = False
     indicator = app.indicator
     if indicator._timer is not None:

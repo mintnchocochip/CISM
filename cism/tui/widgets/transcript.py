@@ -311,6 +311,7 @@ class Transcript(VerticalScroll):
         self._tool_order: list[ToolEntry] = []
         self._following = True
         self._expected_y = 0.0
+        self._follow_timer = None
 
     @property
     def following(self) -> bool:
@@ -318,7 +319,22 @@ class Transcript(VerticalScroll):
         return self._following
 
     def on_mount(self) -> None:
-        self.set_interval(self.FOLLOW_INTERVAL, self._follow_bottom)
+        self._follow_timer = self.set_interval(
+            self.FOLLOW_INTERVAL, self._follow_bottom
+        )
+
+    def pause_follow(self) -> None:
+        """Stop tracking the bottom for good.
+
+        Clearing the flag alone is not enough: the next tick sees the viewport
+        sitting at the bottom and turns following back on. Callers that need
+        the scroll position to stay put — a scripted capture, say — have to
+        stop the timer as well.
+        """
+        self._following = False
+        if self._follow_timer is not None:
+            self._follow_timer.stop()
+            self._follow_timer = None
 
     def _follow_bottom(self) -> None:
         bottom = self.max_scroll_y

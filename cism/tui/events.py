@@ -23,8 +23,11 @@ __all__ = [
     "DEPGEdge",
     "DEPGNode",
     "DEPGUpdated",
+    "Decision",
     "EVENT_TYPES",
     "Evidence",
+    "ModelInfo",
+    "SessionState",
     "Interrupted",
     "MemoryRow",
     "MemoryUpdated",
@@ -75,6 +78,33 @@ class Evidence:
 
 
 @dataclass(frozen=True, slots=True)
+class Decision:
+    """A choice the agent made on the way to a node.
+
+    ``score_gap`` is the margin over the runner-up: a small gap means the
+    agent nearly went somewhere else, which is exactly what you want to see
+    when a branch turns out to be a dead end.
+    """
+
+    timestamp: str
+    chose: str
+    alternatives: int = 0
+    score_gap: float = 0.0
+    tokens: int = 0
+    rationale: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ModelInfo:
+    """One model the session can switch to."""
+
+    name: str
+    params: str = ""
+    context: int = 0
+    loaded: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class DEPGNode:
     """A node in the Dependency / Error Propagation Graph.
 
@@ -90,6 +120,9 @@ class DEPGNode:
     state: NodeState
     downstream: int = 0
     evidence: tuple[Evidence, ...] = ()
+    #: The choice that made this node current. The full trail to a node is
+    #: the decisions along its root-to-node path, so nothing is duplicated.
+    decision: Decision | None = None
 
     def label(self) -> str:
         return (
@@ -262,6 +295,25 @@ class Interrupted(_Event):
     reason: str = "user interrupt"
 
 
+@dataclass(frozen=True, slots=True)
+class SessionState(_Event):
+    """Model, endpoint, and target environment.
+
+    ``key_env_var`` is the *name* of the variable holding the API key and
+    ``key_present`` says whether it is set. The key itself never travels on
+    this event and is never displayed — the transcript gets exported and
+    pasted into reports.
+    """
+
+    model: str = ""
+    models_available: tuple[ModelInfo, ...] = ()
+    endpoint: str = "local"
+    key_env_var: str = ""
+    key_present: bool = False
+    target_os: str = ""
+    target_stack: tuple[str, ...] = ()
+
+
 AgentEvent: TypeAlias = (
     RunStarted
     | RunFinished
@@ -275,6 +327,7 @@ AgentEvent: TypeAlias = (
     | MemoryUpdated
     | TokenDelta
     | Interrupted
+    | SessionState
 )
 
 EVENT_TYPES: dict[str, type] = {
@@ -292,11 +345,14 @@ EVENT_TYPES: dict[str, type] = {
         MemoryUpdated,
         TokenDelta,
         Interrupted,
+        SessionState,
     )
 }
 
 _VALUE_TYPES: dict[str, type] = {
     "Evidence": Evidence,
+    "Decision": Decision,
+    "ModelInfo": ModelInfo,
     "DEPGNode": DEPGNode,
     "DEPGEdge": DEPGEdge,
     "MemoryRow": MemoryRow,
@@ -322,7 +378,14 @@ def _plain(value: Any) -> Any:
     return value
 
 
-_TUPLE_FIELDS = {"nodes", "edges", "rows", "evidence"}
+_TUPLE_FIELDS = {
+    "nodes",
+    "edges",
+    "rows",
+    "evidence",
+    "models_available",
+    "target_stack",
+}
 
 
 def _revive(value: Any) -> Any:

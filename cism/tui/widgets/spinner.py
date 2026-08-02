@@ -17,7 +17,14 @@ from textual.widgets import Static
 from ._fmt import elapsed as fmt_elapsed
 from ._fmt import tokens as fmt_tokens
 
-GLYPHS = ("·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢")
+#: A braille orbit: one dot-pair rotating around a fixed frame.
+#:
+#: Every glyph here is East Asian Width "Neutral" and one cell wide. The
+#: earlier asterisk set mixed Ambiguous-width glyphs (U+00B7, U+273D), which
+#: some terminals render double-width, so the whole line shifted as it
+#: cycled — and its glyphs were four unrelated shapes of very different
+#: visual mass, which reads as a flicker rather than as rotation.
+GLYPHS = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 
 VERBS: dict[str, tuple[str, ...]] = {
     "pre-engagement": ("Scoping", "Framing", "Bounding"),
@@ -43,7 +50,7 @@ VERBS: dict[str, tuple[str, ...]] = {
 
 FALLBACK_VERBS = ("Working", "Thinking", "Reasoning")
 
-FRAME_INTERVAL = 0.12
+FRAME_INTERVAL = 0.08
 VERB_ROTATION = 4.0
 
 

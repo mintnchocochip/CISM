@@ -62,6 +62,7 @@ def test_every_event_type_is_registered() -> None:
         "MemoryUpdated",
         "TokenDelta",
         "Interrupted",
+        "SessionState",
     }
 
 
