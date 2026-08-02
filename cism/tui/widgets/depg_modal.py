@@ -1,0 +1,164 @@
+"""The DEPG view: a modal overlay, not a persistent pane.
+
+Tree indentation *is* the layout. There is deliberately no force-directed or
+2D graph rendering — an ASCII tree is legible in a terminal recording, a
+spring layout is not.
+
+The left half is the graph; the right half is a table of evidence rows for
+whichever node the tree cursor is on. Moving the cursor drives the table.
+"""
+
+from __future__ import annotations
+
+from rich.text import Text
+from textual.app import ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import DataTable, Static, Tree
+from textual.widgets.tree import TreeNode
+
+from ..events import DEPGEdge, DEPGNode
+
+STATE_CLASS = {
+    "blocked": "node--blocked",
+    "resolved": "node--resolved",
+    "untested": "node--untested",
+}
+
+
+class DEPGTree(Tree[DEPGNode]):
+    """A Tree whose labels are coloured by node state and annotated by weight."""
+
+    COMPONENT_CLASSES = Tree.COMPONENT_CLASSES | {
+        "node--blocked",
+        "node--resolved",
+        "node--untested",
+        "node--weight",
+        "node--gamma",
+    }
+
+    def __init__(self) -> None:
+        super().__init__("depg", id="depg-tree")
+        self.show_root = False
+        self.guide_depth = 3
+
+    def node_label(self, node: DEPGNode, weight: float | None) -> Text:
+        """``[cause-class] target — generality γ=0.72 (3 downstream)``."""
+        style = self.get_component_rich_style(STATE_CLASS[node.state])
+        gamma = self.get_component_rich_style("node--gamma")
+        weight_style = self.get_component_rich_style("node--weight")
+
+        label = Text()
+        if weight is not None:
+            label.append(f"{weight:.2f} ", style=weight_style)
+        label.append(f"[{node.cause_class}] {node.target}", style=style)
+        label.append(
+            f" — generality γ={node.generality:.2f} ({node.downstream} downstream)",
+            style=gamma,
+        )
+        return label
+
+
+class DEPGModal(ModalScreen[None]):
+    """Escape closes. Arrow keys move the tree; the table follows."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "close", show=False),
+        Binding("ctrl+d", "dismiss_modal", "close", show=False, priority=True),
+    ]
+
+    EVIDENCE_COLUMNS = ("timestamp", "tool", "exit signal", "tier")
+
+    def __init__(
+        self, nodes: tuple[DEPGNode, ...], edges: tuple[DEPGEdge, ...]
+    ) -> None:
+        super().__init__()
+        self.nodes = nodes
+        self.edges = edges
+        self._by_id = {node.id: node for node in nodes}
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="depg-frame"):
+            yield Static(self._title(), classes="modal-title")
+            with Horizontal(id="depg-split"):
+                with Vertical(id="depg-left"):
+                    yield DEPGTree()
+                with Vertical(id="depg-right"):
+                    yield Static("evidence", classes="modal-title")
+                    yield DataTable(id="depg-evidence", cursor_type="row")
+            yield Static("↑↓ select node · esc to close", classes="modal-hint")
+
+    def _title(self) -> str:
+        blocked = sum(1 for n in self.nodes if n.state == "blocked")
+        resolved = sum(1 for n in self.nodes if n.state == "resolved")
+        untested = len(self.nodes) - blocked - resolved
+        return (
+            f"dependency / error propagation graph — {len(self.nodes)} nodes"
+            f"  ({blocked} blocked, {resolved} resolved, {untested} untested)"
+        )
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        for column in self.EVIDENCE_COLUMNS:
+            table.add_column(column, key=column)
+        self._build_tree()
+
+    # -- tree construction -------------------------------------------------
+
+    def _build_tree(self) -> None:
+        tree = self.query_one(DEPGTree)
+        tree.clear()
+        children: dict[str, list[tuple[str, float]]] = {}
+        has_parent: set[str] = set()
+        for edge in self.edges:
+            children.setdefault(edge.parent, []).append((edge.child, edge.weight))
+            has_parent.add(edge.child)
+
+        roots = [node for node in self.nodes if node.id not in has_parent]
+        seen: set[str] = set()
+        for node in roots:
+            self._add_node(tree, tree.root, node, None, children, seen)
+        tree.root.expand_all()
+
+        if tree.root.children:
+            tree.cursor_line = 0
+            self._show_evidence(roots[0] if roots else self.nodes[0])
+        tree.focus()
+
+    def _add_node(
+        self,
+        tree: DEPGTree,
+        parent: TreeNode[DEPGNode],
+        node: DEPGNode,
+        weight: float | None,
+        children: dict[str, list[tuple[str, float]]],
+        seen: set[str],
+    ) -> None:
+        if node.id in seen:
+            return
+        seen.add(node.id)
+        label = tree.node_label(node, weight)
+        kids = children.get(node.id, ())
+        branch = parent.add(label, data=node) if kids else parent.add_leaf(
+            label, data=node
+        )
+        for child_id, child_weight in kids:
+            child = self._by_id.get(child_id)
+            if child is not None:
+                self._add_node(tree, branch, child, child_weight, children, seen)
+
+    # -- selection drives the table ---------------------------------------
+
+    def on_tree_node_highlighted(self, message: Tree.NodeHighlighted[DEPGNode]) -> None:
+        if message.node.data is not None:
+            self._show_evidence(message.node.data)
+
+    def _show_evidence(self, node: DEPGNode) -> None:
+        table = self.query_one(DataTable)
+        table.clear()
+        for item in node.evidence:
+            table.add_row(item.timestamp, item.tool, item.exit_signal, item.tier)
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
