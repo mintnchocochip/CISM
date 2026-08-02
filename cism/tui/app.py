@@ -14,6 +14,7 @@ a subprocess, or the cross-encoder scorer.
 from __future__ import annotations
 
 import time
+from collections import deque
 from pathlib import Path
 
 from textual import work
@@ -30,17 +31,20 @@ from .events import (
     Interrupted,
     MemoryRow,
     MemoryUpdated,
+    ModelInfo,
     Narration,
     PhaseChanged,
     RunFinished,
     RunStarted,
     SalienceTerms,
+    SessionState,
     TokenDelta,
     ToolFailed,
     ToolFinished,
     ToolOutput,
     ToolStarted,
 )
+from .redact import looks_like_secret, redact_command
 from .widgets.composer import Composer, ComposerInput
 from .widgets.depg_modal import DEPGModal
 from .widgets.memory_modal import MemoryModal
@@ -51,10 +55,20 @@ from .widgets.transcript import ToolEntry, Transcript
 
 DOUBLE_TAP_SECONDS = 2.0
 
+#: Window over which tokens-per-second is averaged.
+RATE_WINDOW = 4.0
+
+#: Below this span a rate is noise, not a measurement.
+MIN_RATE_SPAN = 0.5
+
 #: Commands the TUI answers itself. Everything else is forwarded to the agent.
-LOCAL_COMMANDS = frozenset({"depg", "mem", "clear", "help", "export"})
+LOCAL_COMMANDS = frozenset({"depg", "mem", "clear", "help", "export", "models"})
 
 HELP_TEXT = """\
+/model <name>    switch the inference model
+/models          list loadable models
+/target <spec>   declare the target environment, e.g. linux nginx php
+/api [url]       show or switch the inference endpoint
 /phase <name>    force a PTES phase transition
 /depg            dependency / error propagation graph      (ctrl+d)
 /mem             memory view                               (ctrl+m)
@@ -66,6 +80,17 @@ HELP_TEXT = """\
 
 enter submit · shift+enter newline · esc interrupt · ctrl+c twice to quit
 ctrl+o expand or collapse the last tool output · up/down recall history"""
+
+API_KEY_REFUSAL = """\
+That looks like an API key, so it has not been sent or recorded.
+
+Keys are read from the environment, never typed into the composer — the
+transcript is exported and the composer history is recalled with the arrow
+keys, so anything entered here outlives the keystroke.
+
+Set the variable in your shell and point /api at the endpoint only:
+  export {var}=...
+  /api https://your-endpoint/v1"""
 
 
 class CISMApp(App[None]):
@@ -94,6 +119,14 @@ class CISMApp(App[None]):
         self.memory_terms: SalienceTerms | None = None
         self.token_total = 0
         self.unknown_events = 0
+        self.model = ""
+        self.models_available: tuple[ModelInfo, ...] = ()
+        self.endpoint = "local"
+        self.key_env_var = "CISM_API_KEY"
+        self.key_present = False
+        self.target_os = ""
+        self.target_stack: tuple[str, ...] = ()
+        self._token_samples: deque[tuple[float, int]] = deque()
         self._last_ctrl_c = 0.0
         self._notice_timer = None
 
@@ -160,6 +193,7 @@ class CISMApp(App[None]):
 
         elif isinstance(event, RunFinished):
             self.indicator.stop()
+            self._clear_rate()
 
         elif isinstance(event, Narration):
             entry = transcript.narration(event.entry_id)
@@ -206,27 +240,72 @@ class CISMApp(App[None]):
                 self.memory_terms = event.terms
             self.status.mem_t1 = sum(1 for r in event.rows if r.tier == "T1")
             self.status.mem_t2 = sum(1 for r in event.rows if r.tier == "T2")
+            self.status.mem_t3 = sum(1 for r in event.rows if r.tier == "T3")
 
         elif isinstance(event, TokenDelta):
             self.token_total = event.total
             self.status.ctx_used = event.ctx_used
             self.status.ctx_max = event.ctx_max
             self.indicator.set_tokens(event.total)
+            self._record_rate(event.total)
+
+        elif isinstance(event, SessionState):
+            self._apply_session(event)
 
         elif isinstance(event, Interrupted):
             self.indicator.stop()
+            self._clear_rate()
             transcript.add_note(f"⏹ {event.reason}")
 
         else:
             self.unknown_events += 1
             self.log.warning("dropped unknown event", event=event)
 
+    def _apply_session(self, event: SessionState) -> None:
+        if event.model:
+            self.model = event.model
+            self.status.model = event.model
+        if event.models_available:
+            self.models_available = event.models_available
+        self.endpoint = event.endpoint
+        if event.key_env_var:
+            self.key_env_var = event.key_env_var
+        self.key_present = event.key_present
+        self.target_os = event.target_os
+        self.target_stack = event.target_stack
+        self.status.target_os = event.target_os
+        self.status.target_stack = event.target_stack
+
+    # -- token rate --------------------------------------------------------
+
+    def _record_rate(self, total: int) -> None:
+        """Average tokens/second over a sliding window.
+
+        The rate is a display concern, so it is derived here from TokenDelta
+        rather than being another field the agent has to report.
+        """
+        now = time.monotonic()
+        samples = self._token_samples
+        samples.append((now, total))
+        while samples and now - samples[0][0] > RATE_WINDOW:
+            samples.popleft()
+        span = samples[-1][0] - samples[0][0]
+        if len(samples) >= 2 and span >= MIN_RATE_SPAN:
+            produced = samples[-1][1] - samples[0][1]
+            self.status.tokens_per_second = max(produced / span, 0.0)
+
+    def _clear_rate(self) -> None:
+        self._token_samples.clear()
+        self.status.tokens_per_second = 0.0
+
     # -- user input --------------------------------------------------------
 
     def on_composer_submitted(self, message: Composer.Submitted) -> None:
         message.stop()
         text = message.text
-        self.transcript.add_user_turn(text)
+        # Redact before echoing: the transcript is exported and the composer
+        # history is recalled, so a key echoed here would outlive the keystroke.
+        self.transcript.add_user_turn(redact_command(text))
         if text.startswith("/"):
             self._run_command(text)
         else:
@@ -303,7 +382,16 @@ class CISMApp(App[None]):
         name = name.strip()
         argument = argument.strip()
 
+        if name == "api":
+            self._api_command(argument)
+            return
+
         if name not in LOCAL_COMMANDS:
+            if looks_like_secret(argument):
+                self.transcript.add_note(
+                    API_KEY_REFUSAL.format(var=self.key_env_var)
+                )
+                return
             self.send(line)
             return
 
@@ -311,12 +399,45 @@ class CISMApp(App[None]):
             self.action_show_depg()
         elif name == "mem":
             self.action_show_memory()
+        elif name == "models":
+            self.transcript.add_note(self._models_text())
         elif name == "clear":
             self.transcript.clear_entries()
         elif name == "help":
             self.transcript.add_note(HELP_TEXT)
         elif name == "export":
             self._export(argument)
+
+    def _api_command(self, argument: str) -> None:
+        """Show the endpoint, or switch it. Never touches the key itself."""
+        if looks_like_secret(argument):
+            self.transcript.add_note(API_KEY_REFUSAL.format(var=self.key_env_var))
+            return
+        if not argument:
+            state = "set" if self.key_present else "not set"
+            self.transcript.add_note(
+                f"endpoint  {self.endpoint}\n"
+                f"key       ${self.key_env_var} ({state})\n"
+                f"model     {self.model or 'unknown'}\n\n"
+                f"/api <url> switches the endpoint. The key is read from the "
+                f"environment and is never entered here."
+            )
+            return
+        self.send(f"/api {argument}")
+
+    def _models_text(self) -> str:
+        if not self.models_available:
+            return "no model list received from the agent yet"
+        lines = ["models:"]
+        for info in self.models_available:
+            marker = "●" if info.name == self.model else " "
+            context = f"{info.context // 1024}k ctx" if info.context else ""
+            lines.append(
+                f" {marker} {info.name:<22}{info.params:<7}{context}"
+            )
+        lines.append("")
+        lines.append("/model <name> switches.")
+        return "\n".join(lines)
 
     def _export(self, argument: str) -> None:
         target = Path(argument) if argument else self.export_dir / "cism-transcript.txt"

@@ -14,15 +14,31 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Iterator
 
-from .events import AgentEvent, Interrupted, Narration, decode
+from .events import (
+    AgentEvent,
+    Interrupted,
+    ModelInfo,
+    Narration,
+    SessionState,
+    decode,
+)
 
 DEFAULT_DELAY = 0.0
 CHUNK_PATTERN = re.compile(r"\S+\s*")
+
+#: What the fake session claims it can load.
+DEMO_MODELS: tuple[ModelInfo, ...] = (
+    ModelInfo("qwen2.5-7b-instruct", "7B", 32768, True),
+    ModelInfo("qwen2.5-3b-instruct", "3B", 32768),
+    ModelInfo("phi-3.5-mini", "3.8B", 131072),
+    ModelInfo("llama-3.2-3b", "3B", 131072),
+)
 
 
 class ReplayLogError(ValueError):
@@ -116,6 +132,12 @@ class FakeAgent:
         self.autostart = autostart
         self.loop_forever = loop_forever
         self.submissions: list[str] = []
+        self.models = DEMO_MODELS
+        self.model = DEMO_MODELS[0].name
+        self.endpoint = "local (llama.cpp)"
+        self.key_env_var = "CISM_API_KEY"
+        self.target_os = ""
+        self.target_stack: tuple[str, ...] = ()
         self._task: asyncio.Task[None] | None = None
         self._finished = asyncio.Event()
 
@@ -126,13 +148,66 @@ class FakeAgent:
     # -- Agent protocol ----------------------------------------------------
 
     async def start(self) -> None:
+        # Announce the session before any playback, so the status bar is
+        # populated even when the log is never played.
+        await self.events.put(self._session())
         if self.autostart:
             self._spawn()
 
     async def submit(self, text: str) -> None:
         self.submissions.append(text)
+        if text.startswith("/"):
+            await self._configure(text)
+            return
         if self._task is None or self._task.done():
             self._spawn()
+
+    async def _configure(self, line: str) -> None:
+        """Answer the session-config commands so the demo is interactive.
+
+        The real agent would actually load the model or re-point the client;
+        the fake just reports the state the TUI should now display.
+        """
+        name, _, argument = line[1:].strip().partition(" ")
+        argument = argument.strip()
+
+        if name == "model" and argument:
+            match = next(
+                (m for m in self.models if m.name.startswith(argument)), None
+            )
+            if match is None:
+                await self.events.put(
+                    Narration(
+                        entry_id=f"cfg-{len(self.submissions)}",
+                        text=f"no such model: {argument}",
+                        done=True,
+                    )
+                )
+                return
+            self.model = match.name
+            self.models = tuple(
+                ModelInfo(m.name, m.params, m.context, m.name == match.name)
+                for m in self.models
+            )
+        elif name == "target" and argument:
+            parts = argument.split()
+            self.target_os = parts[0]
+            self.target_stack = tuple(parts[1:])
+        elif name == "api" and argument:
+            self.endpoint = argument
+
+        await self.events.put(self._session())
+
+    def _session(self) -> SessionState:
+        return SessionState(
+            model=self.model,
+            models_available=self.models,
+            endpoint=self.endpoint,
+            key_env_var=self.key_env_var,
+            key_present=bool(os.environ.get(self.key_env_var)),
+            target_os=self.target_os,
+            target_stack=self.target_stack,
+        )
 
     async def interrupt(self) -> None:
         if self._task is not None and not self._task.done():

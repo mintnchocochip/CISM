@@ -26,9 +26,13 @@ class SlashCommand:
 
 
 #: Descriptions start at this column so the list reads as two columns.
-NAME_COLUMN = 20
+NAME_COLUMN = 22
 
 COMMANDS: tuple[SlashCommand, ...] = (
+    SlashCommand("model", "<name>", "switch the inference model"),
+    SlashCommand("models", "", "list loadable models"),
+    SlashCommand("target", "<os|stack>", "declare the target environment"),
+    SlashCommand("api", "[url]", "show or switch the inference endpoint"),
     SlashCommand("phase", "<name>", "force a PTES phase transition"),
     SlashCommand("depg", "", "open the dependency / error propagation graph"),
     SlashCommand("mem", "", "open the memory view"),

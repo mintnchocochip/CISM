@@ -6,7 +6,14 @@ import asyncio
 
 import pytest
 
-from cism.tui.events import Agent, Interrupted, Narration, RunStarted, ToolStarted
+from cism.tui.events import (
+    Agent,
+    Interrupted,
+    Narration,
+    RunStarted,
+    SessionState,
+    ToolStarted,
+)
 from cism.tui.replay import FakeAgent, ReplayLogError, load_log
 
 from conftest import DEMO_LOG
@@ -79,7 +86,9 @@ async def test_playback_preserves_order() -> None:
     events = []
     while not agent.events.empty():
         events.append(agent.events.get_nowait())
-    assert isinstance(events[0], RunStarted)
+    # start() announces the session before any playback.
+    assert isinstance(events[0], SessionState)
+    assert isinstance(events[1], RunStarted)
     assert [e.seq for e in events] == sorted(e.seq for e in events)
     assert any(isinstance(e, ToolStarted) and e.tool == "nmap" for e in events)
 
@@ -88,11 +97,46 @@ async def test_submit_is_recorded_and_restarts_playback(tmp_path) -> None:
     steps = load_log(write_log(tmp_path, '{"type":"Interrupted","reason":"x"}'))
     agent = FakeAgent(steps, speed=0, autostart=False)
     await agent.start()
+    # start() announces the session and nothing else until a turn arrives.
+    assert isinstance(agent.events.get_nowait(), SessionState)
     assert agent.events.empty()
+
     await agent.submit("scan 10.0.0.5")
     await agent.wait()
     assert agent.submissions == ["scan 10.0.0.5"]
     assert not agent.events.empty()
+
+
+async def test_config_commands_answer_without_replaying(tmp_path) -> None:
+    steps = load_log(write_log(tmp_path, '{"type":"Interrupted","reason":"x"}'))
+    agent = FakeAgent(steps, speed=0, autostart=False)
+    await agent.start()
+    agent.events.get_nowait()  # the opening SessionState
+
+    await agent.submit("/model phi-3.5-mini")
+    state = agent.events.get_nowait()
+    assert isinstance(state, SessionState)
+    assert state.model == "phi-3.5-mini"
+    assert agent.events.empty()  # the log was not replayed
+
+    await agent.submit("/target windows iis")
+    state = agent.events.get_nowait()
+    assert state.target_os == "windows"
+    assert state.target_stack == ("iis",)
+
+
+async def test_unknown_model_is_reported_not_applied(tmp_path) -> None:
+    steps = load_log(write_log(tmp_path, '{"type":"Interrupted","reason":"x"}'))
+    agent = FakeAgent(steps, speed=0, autostart=False)
+    await agent.start()
+    original = agent.model
+    agent.events.get_nowait()
+
+    await agent.submit("/model not-a-model")
+    reply = agent.events.get_nowait()
+    assert isinstance(reply, Narration)
+    assert "no such model" in reply.text
+    assert agent.model == original
 
 
 async def test_interrupt_emits_an_interrupted_event() -> None:

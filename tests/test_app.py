@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from conftest import replay_all, settle
+from conftest import drain, replay_all, settle
 
 from cism.tui.events import Narration, ToolStarted
+from cism.tui.redact import MASK
 from cism.tui.widgets.depg_modal import DEPGModal, DEPGTree
 from cism.tui.widgets.memory_modal import MemoryModal, MemoryTable
 from cism.tui.widgets.slash import COMMANDS, SlashOverlay
@@ -254,6 +255,127 @@ async def test_export_writes_the_transcript(export_app, tmp_path) -> None:
         assert "PTES: exploitation" in body
 
 
+async def submit_command(pilot, line: str) -> None:
+    """Type a slash command and run it, dismissing the overlay first."""
+    await pilot.press(*line)
+    await pilot.press("escape")
+    await pilot.press("enter")
+    await settle(pilot, 10)
+
+
+async def test_models_renders_locally_without_touching_the_agent(
+    app_and_agent,
+) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(110, 32)) as pilot:
+        await replay_all(pilot, agent)
+        agent.submissions.clear()
+        await submit_command(pilot, "/models")
+        assert agent.submissions == []
+        notes = "\n".join(e.text for e in app.transcript.query(NarrationEntry))
+        assert "qwen2.5-7b-instruct" in notes
+        assert "phi-3.5-mini" in notes
+
+
+async def test_model_switch_is_forwarded_and_updates_the_status_bar(
+    app_and_agent,
+) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(110, 32)) as pilot:
+        await replay_all(pilot, agent)
+        assert app.status.model == "qwen2.5-7b-instruct"
+        await submit_command(pilot, "/model phi-3.5-mini")
+        await drain(pilot, agent)
+        assert agent.submissions[-1] == "/model phi-3.5-mini"
+        assert app.status.model == "phi-3.5-mini"
+
+
+async def test_target_is_forwarded_and_shown(app_and_agent) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(110, 32)) as pilot:
+        await replay_all(pilot, agent)
+        await submit_command(pilot, "/target windows iis")
+        await drain(pilot, agent)
+        assert agent.submissions[-1] == "/target windows iis"
+        assert app.status.target_os == "windows"
+        assert app.status.target_stack == ("iis",)
+
+
+async def test_bare_api_reports_endpoint_and_key_variable_only(
+    app_and_agent,
+) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(110, 32)) as pilot:
+        await replay_all(pilot, agent)
+        agent.submissions.clear()
+        await submit_command(pilot, "/api")
+        assert agent.submissions == []
+        notes = "\n".join(e.text for e in app.transcript.query(NarrationEntry))
+        assert "$CISM_API_KEY" in notes
+        assert "not set" in notes
+
+
+async def test_api_url_is_forwarded(app_and_agent) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(110, 32)) as pilot:
+        await replay_all(pilot, agent)
+        await submit_command(pilot, "/api https://infer.example/v1")
+        await drain(pilot, agent)
+        assert agent.submissions[-1] == "/api https://infer.example/v1"
+        assert app.endpoint == "https://infer.example/v1"
+
+
+async def test_a_key_pasted_into_api_is_refused_and_never_recorded(
+    export_app, tmp_path
+) -> None:
+    """The key must not reach the transcript, the history, or the export."""
+    secret = "sk-proj-AbCd1234EfGh5678IjKl9012MnOp"
+    app, agent = export_app
+    async with app.run_test(size=(110, 32)) as pilot:
+        await replay_all(pilot, agent)
+        agent.submissions.clear()
+        await submit_command(pilot, f"/api {secret}")
+
+        assert agent.submissions == []
+
+        turns = " ".join(t.turn_text for t in app.transcript.query(UserTurn))
+        assert secret not in turns
+        assert MASK in turns
+
+        assert all(secret not in item for item in app.composer.history)
+
+        notes = "\n".join(e.text for e in app.transcript.query(NarrationEntry))
+        assert "CISM_API_KEY" in notes
+        assert secret not in notes
+
+        await submit_command(pilot, "/export")
+        body = (tmp_path / "cism-transcript.txt").read_text(encoding="utf-8")
+        assert secret not in body
+
+
+async def test_a_key_pasted_into_any_command_is_refused(quiet_app) -> None:
+    secret = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    app, agent = quiet_app
+    async with app.run_test(size=(110, 32)) as pilot:
+        await settle(pilot, 8)
+        agent.submissions.clear()
+        await submit_command(pilot, f"/model {secret}")
+        assert agent.submissions == []
+        turns = " ".join(t.turn_text for t in app.transcript.query(UserTurn))
+        assert secret not in turns
+
+
+async def test_an_ordinary_command_argument_is_not_masked(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(110, 32)) as pilot:
+        await settle(pilot, 8)
+        await submit_command(pilot, "/phase exploitation")
+        assert agent.submissions[-1] == "/phase exploitation"
+        turns = " ".join(t.turn_text for t in app.transcript.query(UserTurn))
+        assert "exploitation" in turns
+        assert MASK not in turns
+
+
 async def test_a_plain_turn_is_echoed_and_forwarded(quiet_app) -> None:
     app, agent = quiet_app
     async with app.run_test(size=(100, 30)) as pilot:
@@ -291,11 +413,51 @@ async def test_depg_selection_drives_the_evidence_table(app_and_agent) -> None:
         await replay_all(pilot, agent)
         await pilot.press("ctrl+d")
         await settle(pilot, 12)
-        table = app.screen.query_one(DataTable)
+        table = app.screen.query_one("#depg-evidence", DataTable)
         assert table.row_count == 2  # n-http has two evidence rows
         await pilot.press("down")
         await settle(pilot, 8)
         assert table.row_count == 2  # n-admin also has two
+
+
+async def test_depg_decision_path_is_the_root_to_node_trail(app_and_agent) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(140, 40)) as pilot:
+        await replay_all(pilot, agent)
+        await pilot.press("ctrl+d")
+        await settle(pilot, 12)
+        modal = app.screen
+        # n-dbcred sits at the deepest point of the jetty branch.
+        trail = [node.id for node in modal.path_to("n-dbcred")]
+        assert trail == ["n-jetty", "n-webinf", "n-dbcred"]
+        chosen = [n.decision.chose for n in modal.path_to("n-dbcred") if n.decision]
+        assert chosen == ["jetty:8080", "CVE-2021-28164", "read web.xml"]
+
+
+async def test_depg_decision_table_follows_the_cursor(app_and_agent) -> None:
+    from textual.widgets import DataTable
+
+    app, agent = app_and_agent
+    async with app.run_test(size=(140, 40)) as pilot:
+        await replay_all(pilot, agent)
+        await pilot.press("ctrl+d")
+        await settle(pilot, 12)
+        table = app.screen.query_one("#depg-decisions", DataTable)
+        assert table.row_count == 1  # n-http is a root: one decision
+        # Walk down to n-admin, a child of n-http.
+        await pilot.press("down")
+        await settle(pilot, 8)
+        assert table.row_count == 2  # root's decision plus its own
+
+
+async def test_depg_path_of_a_root_is_just_itself(app_and_agent) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(140, 40)) as pilot:
+        await replay_all(pilot, agent)
+        await pilot.press("ctrl+d")
+        await settle(pilot, 12)
+        assert [n.id for n in app.screen.path_to("n-http")] == ["n-http"]
+        assert app.screen.path_to("no-such-node") == []
 
 
 async def test_memory_table_is_sortable(app_and_agent) -> None:

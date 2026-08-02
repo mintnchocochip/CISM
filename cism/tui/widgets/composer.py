@@ -12,6 +12,8 @@ from textual.containers import Horizontal
 from textual.message import Message
 from textual.widgets import Static, TextArea
 
+from ..redact import redact_command
+
 
 class ComposerInput(TextArea):
     """A TextArea that submits on enter instead of inserting a newline."""
@@ -113,8 +115,11 @@ class Composer(Horizontal):
         self._draft = ""
         if not text:
             return
-        if not self._history or self._history[-1] != text:
-            self._history.append(text)
+        # History is recalled with the arrow keys and so outlives the turn;
+        # a credential must not be recoverable from it.
+        recalled = redact_command(text)
+        if not self._history or self._history[-1] != recalled:
+            self._history.append(recalled)
         self.post_message(self.Submitted(text))
 
     def on_composer_input_history_move(
