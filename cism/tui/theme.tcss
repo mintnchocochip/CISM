@@ -1,0 +1,371 @@
+/* ══════════════════════════════════════════════════════════════════════
+   CISM terminal theme.
+
+   Dark-bg-first, low saturation. Exactly one accent — warm orange — used
+   for: focused composer border, tool names, the spinner glyph, and phase
+   rules. Everything else is a three-step grey ramp. Semantic colours are
+   used sparingly and never decoratively.
+
+   No inline styles exist anywhere in the Python. Text-level colouring is
+   pulled from the component classes declared below.
+   ══════════════════════════════════════════════════════════════════════ */
+
+$accent: #d97757;
+
+$fg-bright: #d8d4cf;
+$fg: #9c9791;
+$fg-dim: #5f5b56;
+
+$rule: #34312e;
+$bg: #141312;
+$bg-lift: #1c1a18;
+
+$err: #c0574d;
+$ok: #6f9455;
+$warn: #bf9b30;
+
+Screen {
+    background: $bg;
+    color: $fg;
+    layout: vertical;
+    /* The transcript is the only scroll region. Without this the screen
+       reserves its own scrollbar gutter and the transcript loses two
+       columns against the composer, leaving a ragged right edge. */
+    overflow: hidden hidden;
+}
+
+/* ── transcript ───────────────────────────────────────────────────── */
+
+Transcript {
+    height: 1fr;
+    /* 100%, not 1fr: an fr width shares the row budget with the composer's
+       horizontal margin and the transcript comes up two columns short. */
+    width: 100%;
+    padding: 1 2 0 2;
+    background: $bg;
+    scrollbar-size-vertical: 1;
+    scrollbar-background: $bg;
+    scrollbar-background-hover: $bg;
+    scrollbar-background-active: $bg;
+    scrollbar-color: $rule;
+    scrollbar-color-hover: $fg-dim;
+    scrollbar-color-active: $accent;
+}
+
+/* Deliberately not `Transcript > Widget` — ScrollBar subclasses Widget, so a
+   type selector that broad restyles the scrollbars too. */
+UserTurn, NarrationEntry, ToolEntry, PhaseRule {
+    width: 1fr;
+    height: auto;
+}
+
+UserTurn {
+    padding: 0 0 1 0;
+}
+
+UserTurn > .user--glyph { color: $fg-dim; }
+UserTurn > .user--text  { color: $fg-bright; }
+
+NarrationEntry {
+    padding: 0 0 1 0;
+    color: $fg;
+}
+
+NarrationEntry > .narration--text { color: $fg; }
+
+/* ── tool entries ─────────────────────────────────────────────────── */
+
+ToolEntry {
+    padding: 0 0 1 0;
+}
+
+ToolHeader > .tool--glyph { color: $accent; }
+ToolHeader > .tool--name  { color: $accent; text-style: bold; }
+ToolHeader > .tool--args  { color: $fg-dim; }
+
+ToolMeta > .tool--branch  { color: $fg-dim; }
+ToolMeta > .tool--summary { color: $fg-dim; }
+ToolMeta > .tool--tier    { color: $ok; }
+ToolMeta > .tool--hint    { color: $rule; }
+
+ToolEntry.-failed ToolHeader > .tool--glyph { color: $err; }
+ToolEntry.-failed ToolHeader > .tool--name  { color: $err; text-style: bold; }
+ToolEntry.-failed ToolMeta > .tool--summary { color: $err; }
+
+.tool-header {
+    height: auto;
+}
+
+.tool-meta {
+    height: auto;
+}
+
+.tool-meta:hover {
+    background: $bg-lift;
+}
+
+.tool-meta:focus {
+    background: $bg-lift;
+}
+
+.tool-body {
+    display: none;
+    height: auto;
+    max-height: 24;
+    padding: 0 0 0 5;
+    color: $fg-dim;
+    scrollbar-size-vertical: 1;
+    scrollbar-background: $bg;
+    scrollbar-color: $rule;
+    scrollbar-color-hover: $fg-dim;
+    scrollbar-color-active: $accent;
+}
+
+ToolEntry.-expanded .tool-body {
+    display: block;
+}
+
+.tool-body-text {
+    height: auto;
+    color: $fg-dim;
+}
+
+/* ── phase rule ───────────────────────────────────────────────────── */
+
+PhaseRule {
+    height: 3;
+    padding: 1 0;
+}
+
+PhaseRule > .phase--rule  { color: $rule; }
+PhaseRule > .phase--label { color: $accent; }
+
+/* ── slash-command overlay ────────────────────────────────────────── */
+
+SlashOverlay {
+    display: none;
+    height: auto;
+    max-height: 10;
+    margin: 0 1;
+    padding: 0 1;
+    border: round $rule;
+    background: $bg;
+}
+
+SlashOverlay.-active {
+    display: block;
+}
+
+SlashOverlay > OptionList {
+    height: auto;
+    max-height: 8;
+    border: none;
+    padding: 0;
+    background: $bg;
+    scrollbar-size-vertical: 1;
+    scrollbar-background: $bg;
+    scrollbar-color: $rule;
+}
+
+SlashOverlay > OptionList > .option-list--option-highlighted {
+    background: $bg-lift;
+    color: $fg-bright;
+}
+
+SlashOverlay > OptionList:focus > .option-list--option-highlighted {
+    background: $bg-lift;
+    color: $fg-bright;
+}
+
+SlashOverlay > .slash--name  { color: $accent; }
+SlashOverlay > .slash--arg   { color: $fg-dim; }
+SlashOverlay > .slash--help  { color: $fg-dim; }
+SlashOverlay > .slash--match { color: $fg-bright; text-style: bold; }
+
+/* ── working indicator ────────────────────────────────────────────── */
+
+WorkingIndicator {
+    display: none;
+    height: 1;
+    padding: 0 3;
+}
+
+WorkingIndicator.-active {
+    display: block;
+}
+
+WorkingIndicator > .work--glyph { color: $accent; }
+WorkingIndicator > .work--verb  { color: $fg; }
+WorkingIndicator > .work--meta  { color: $fg-dim; }
+
+/* ── composer ─────────────────────────────────────────────────────── */
+
+Composer {
+    height: auto;
+    max-height: 12;
+    layout: horizontal;
+    margin: 0 1;
+    padding: 0 1;
+    border: round $rule;
+    background: $bg;
+}
+
+Composer:focus-within {
+    border: round $accent;
+}
+
+Composer > #composer-glyph {
+    width: 2;
+    height: 1;
+    color: $fg-dim;
+}
+
+Composer:focus-within > #composer-glyph {
+    color: $accent;
+}
+
+ComposerInput {
+    width: 1fr;
+    height: auto;
+    max-height: 10;
+    border: none;
+    padding: 0;
+    background: $bg;
+    color: $fg-bright;
+}
+
+ComposerInput > .text-area--cursor {
+    background: $accent;
+    color: $bg;
+}
+
+ComposerInput > .text-area--selection {
+    background: $rule;
+}
+
+/* ── status bar ───────────────────────────────────────────────────── */
+
+StatusBar {
+    height: 1;
+    padding: 0 3;
+    color: $fg-dim;
+}
+
+StatusBar > .status--key   { color: $fg-dim; }
+StatusBar > .status--value { color: $fg; }
+StatusBar > .status--sep   { color: $rule; }
+StatusBar > .status--auto  { color: $accent; }
+StatusBar > .status--warn  { color: $warn; }
+
+/* ── modal overlays ───────────────────────────────────────────────── */
+
+DEPGModal, MemoryModal {
+    align: center middle;
+    background: $bg 70%;
+}
+
+#depg-frame, #memory-frame {
+    width: 96%;
+    height: 86%;
+    border: round $accent;
+    background: $bg;
+    padding: 0 1;
+}
+
+#depg-frame {
+    layout: vertical;
+}
+
+#depg-split {
+    layout: horizontal;
+    height: 1fr;
+}
+
+.modal-title {
+    height: 1;
+    color: $fg-dim;
+}
+
+#depg-left {
+    width: 62%;
+    height: 1fr;
+    padding: 0 1 0 0;
+}
+
+#depg-right {
+    width: 38%;
+    height: 1fr;
+    padding: 0 0 0 1;
+    border-left: solid $rule;
+}
+
+DEPGTree {
+    height: 1fr;
+    background: $bg;
+    padding: 0;
+    scrollbar-size-vertical: 1;
+    scrollbar-size-horizontal: 1;
+    /* A visible track keeps a lone thumb from reading as a stray glyph. */
+    scrollbar-background: $bg-lift;
+    scrollbar-color: $rule;
+    scrollbar-color-hover: $fg-dim;
+}
+
+DEPGTree > .tree--guides,
+DEPGTree > .tree--guides-hover,
+DEPGTree > .tree--guides-selected {
+    color: $rule;
+}
+
+DEPGTree > .tree--cursor {
+    background: $bg-lift;
+    color: $fg-bright;
+    text-style: none;
+}
+
+DEPGTree > .node--blocked   { color: $err; }
+DEPGTree > .node--resolved  { color: $ok; }
+DEPGTree > .node--untested  { color: $fg-dim; }
+DEPGTree > .node--weight    { color: $rule; }
+DEPGTree > .node--gamma     { color: $fg-dim; }
+
+DataTable {
+    height: 1fr;
+    background: $bg;
+    scrollbar-size-vertical: 1;
+    scrollbar-size-horizontal: 1;
+    scrollbar-background: $bg-lift;
+    scrollbar-color: $rule;
+    scrollbar-color-hover: $fg-dim;
+}
+
+DataTable > .datatable--header {
+    background: $bg;
+    color: $fg-dim;
+    text-style: none;
+}
+
+DataTable > .datatable--cursor {
+    background: $bg-lift;
+    color: $fg-bright;
+}
+
+DataTable > .datatable--hover {
+    background: $bg-lift;
+}
+
+MemoryTable > .mem--t1 { color: $fg-bright; }
+MemoryTable > .mem--t2 { color: $fg; }
+MemoryTable > .mem--t3 { color: $fg-dim; }
+
+.modal-footer {
+    height: auto;
+    padding: 1 0 0 0;
+    color: $fg-dim;
+    border-top: solid $rule;
+}
+
+.modal-hint {
+    height: 1;
+    color: $rule;
+}
