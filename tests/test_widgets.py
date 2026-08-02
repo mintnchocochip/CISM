@@ -317,9 +317,9 @@ async def test_indicator_glyph_cycles(app_and_agent) -> None:
         assert len(seen) > 1
 
 
-async def test_status_bar_matches_the_specified_format(app_and_agent) -> None:
-    app, _ = app_and_agent
-    async with app.run_test(size=(120, 24)) as pilot:
+async def test_status_bar_matches_the_specified_format(quiet_app) -> None:
+    app, _ = quiet_app
+    async with app.run_test(size=(160, 24)) as pilot:
         status = app.status
         status.phase = "recon"
         status.ctx_used = 12420
@@ -327,10 +327,11 @@ async def test_status_bar_matches_the_specified_format(app_and_agent) -> None:
         status.depg_nodes = 47
         status.mem_t1 = 8
         status.mem_t2 = 31
+        status.mem_t3 = 5
         await settle(pilot, 3)
         assert status.render().plain == (
-            "phase: recon · ctx 12.4k/32k (38%) · depg 47 nodes"
-            " · mem T1:8 T2:31 · ⏵⏵ auto"
+            "qwen2.5-7b-instruct · phase: recon · ctx 12.4k/32k (38%)"
+            " · depg 47 nodes · mem T1:8 T2:31 T3:5 · ⏵⏵ auto"
         )
 
 
@@ -342,4 +343,5 @@ async def test_status_bar_tracks_replayed_state(app_and_agent) -> None:
         assert app.status.depg_nodes == 11
         assert app.status.mem_t1 == 4
         assert app.status.mem_t2 == 4
+        assert app.status.mem_t3 == 2
         assert app.status.ctx_used == 12420

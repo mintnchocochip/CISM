@@ -251,11 +251,13 @@ StatusBar {
     color: $fg-dim;
 }
 
-StatusBar > .status--key   { color: $fg-dim; }
-StatusBar > .status--value { color: $fg; }
-StatusBar > .status--sep   { color: $rule; }
-StatusBar > .status--auto  { color: $accent; }
-StatusBar > .status--warn  { color: $warn; }
+StatusBar > .status--key    { color: $fg-dim; }
+StatusBar > .status--value  { color: $fg; }
+StatusBar > .status--sep    { color: $rule; }
+StatusBar > .status--auto   { color: $accent; }
+StatusBar > .status--warn   { color: $warn; }
+StatusBar > .status--model  { color: $fg-bright; }
+StatusBar > .status--target { color: $fg; }
 
 /* ── modal overlays ───────────────────────────────────────────────── */
 
@@ -287,16 +289,27 @@ DEPGModal, MemoryModal {
 }
 
 #depg-left {
-    width: 62%;
+    width: 50%;
     height: 1fr;
     padding: 0 1 0 0;
 }
 
 #depg-right {
-    width: 38%;
+    width: 50%;
     height: 1fr;
     padding: 0 0 0 1;
     border-left: solid $rule;
+}
+
+/* The decision path takes the top of the right pane; evidence takes what is
+   left, so a long trail never squeezes the observations out of view. */
+#depg-decisions {
+    height: 40%;
+    margin: 0 0 1 0;
+}
+
+#depg-evidence {
+    height: 1fr;
 }
 
 DEPGTree {
