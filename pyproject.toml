@@ -1,0 +1,29 @@
+[project]
+name = "cism"
+version = "0.1.0"
+description = "Cyber Investigation State Memory — SLM-driven VAPT agent, terminal surface"
+requires-python = ">=3.11"
+dependencies = ["textual>=8.0"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-textual-snapshot>=1.0",
+    "textual-dev>=1.7",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["cism*"]
+
+[tool.setuptools.package-data]
+"cism.tui" = ["*.tcss"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["error::DeprecationWarning:cism.*"]
