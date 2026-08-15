@@ -53,6 +53,25 @@ python demo_replay.py --speed 3 --loop
 `--speed 0` removes every pause, `--wait` holds playback until you send the
 first turn, and `--log` points at a different JSONL log.
 
+### Running the real agent instead of a replay
+
+`cism/agent/` is a LangGraph-backed core satisfying the same `Agent` seam
+`FakeAgent` does — see "The agent core" below for what it is and, more
+importantly, what it still is not. It needs the `agent` extra:
+
+```bash
+.venv/bin/pip install -e ".[dev,agent]"
+```
+
+```bash
+python run_agent.py
+python run_agent.py --target 10.0.0.5
+```
+
+Also no lab, no weights, no network — the model behind it is a canned
+`DummyChatModel` and the two tools it can call are stubs — but it is a real
+run through LangGraph's own graph loop, not a scripted log.
+
 ## Keys
 
 | Key | |
@@ -134,10 +153,12 @@ class Agent(Protocol):
     async def aclose(self) -> None: ...
 ```
 
-Four methods and a queue. `FakeAgent` in [replay.py](cism/tui/replay.py)
-satisfies it today; a LangGraph-backed core satisfies it later without the TUI
-changing. `submit` must not block — it returns immediately and reports
-progress by emitting events.
+Four methods and a queue. Two things satisfy it today, and the TUI cannot
+tell them apart: `FakeAgent` in [replay.py](cism/tui/replay.py), which
+replays a recorded log, and `LangGraphAgent` in
+[cism/agent/core.py](cism/agent/core.py), which runs an actual LangGraph
+graph — see "The agent core" below. `submit` must not block — it returns
+immediately and reports progress by emitting events.
 
 ### The events
 
@@ -220,6 +241,71 @@ chunks so playback looks like live generation.
 
 Parse errors raise `ReplayLogError` at load time, before the app mounts, so a
 broken log never half-starts a demo.
+
+## The agent core
+
+`cism/agent/` is a real LangGraph graph behind `LangGraphAgent`, wired to the
+TUI through the same `Agent` seam as `FakeAgent`. It is deliberately still a
+skeleton — a canned model, two dummy tools, guardrails that let everything
+through — validated first so later work (real guardrail logic, real tools, a
+real model) is additive rather than a rewrite. See the design spec at
+[docs/superpowers/specs/2026-08-15-agent-workflow-skeleton-design.md](docs/superpowers/specs/2026-08-15-agent-workflow-skeleton-design.md)
+for the full rationale.
+
+```
+think ── llm.invoke() (DummyChatModel today)
+  │
+  tool_calls, under the turn cap?
+  │no ──▶ respond ── output guardrail runs on the final text ──▶ end of run
+  │yes
+act ── for each call: action guardrail runs, then the tool executes if allowed
+  │
+phase_router ── proposes a legal phase move via PhaseStateMachine
+  │
+  └──▶ think (loop)
+```
+
+- **Phase** (`cism/agent/state.py`) — the six-phase enum below, with an
+  explicit transition table rather than a strict linear sequence, so a
+  realistic pivot (post-exploitation on one host kicking off recon on
+  another) is legal while an arbitrary jump is not. `PhaseStateMachine`'s
+  `transition()` is the single choke point every phase change goes through.
+
+  ```python
+  class Phase(Enum):
+      RECON = 1
+      ENUMERATION = 2
+      VULNERABILITY_DISCOVERY = 3
+      EXPLOITATION = 4
+      POST_EXPLOITATION = 5
+      REPORTING = 6
+  ```
+
+- **Guardrails** (`cism/agent/guardrails/`) — chain of responsibility, three
+  seams (input, action, output), each currently a single pass-through stage.
+  Adding a real check later is appending a stage; neither the chain runner
+  nor the graph shape changes.
+- **Tools** (`cism/agent/tools/`) — `ToolRegistry` is a hard allowlist: a
+  tool is reachable only if it was explicitly constructed into the registry,
+  and looking up a name that wasn't raises rather than failing silently. The
+  two registered today, `dummy_nmap` and `dummy_msfconsole`, return canned
+  output; a real tool becomes reachable the same way, by construction, with
+  no change to the graph.
+- **DEPG domain model** (`cism/depg/`) — `Node` and `Edge`, the agent's
+  mutable working copy of the dependency/error-propagation graph, distinct
+  from the frozen `DEPGNode`/`DEPGEdge` wire format above. `to_event()` is
+  the only place either touches `cism.tui.events`. Not populated by anything
+  in this skeleton yet — the propagation math and graph traversal are later
+  work.
+- **Logging** (`cism/agent/logging.py`) — separate from both the event
+  stream and DEPG evidence: JSONL operational logging for graph steps, tool
+  calls, and guardrail decisions, written to `~/.cism/logs/agent.log` with a
+  1-day retention TTL enforced by both file rotation and a startup sweep.
+
+What isn't here yet: real guardrail logic, real tools, a real model, DEPG
+propagation/traversal, and phase locking. Each was designed with a single,
+explicit seam to extend into, so none of it should require reshaping what's
+already built.
 
 ## The status line
 
@@ -310,10 +396,15 @@ grey ramp, with red, green, and yellow used only semantically.
 pytest
 ```
 
-177 tests: the event contract and its serialisation, the replayer, transcript
+217 tests: the event contract and its serialisation, the replayer, transcript
 and composer behaviour, every keybinding, status-line elision at ten widths,
 credential masking end to end, both modals, and ten SVG snapshots pinning the
-look.
+look — plus, for the agent core, the phase state machine's legal and illegal
+transitions, the guardrail chain's short-circuit behaviour, the tool
+registry's allowlist, DEPG node/edge wire-format round-trips, the logger's
+retention sweep, `LangGraphAgent` run end to end (including a blocked input
+and a blocked action), and one test driving `CISMApp` with a real
+`LangGraphAgent` instead of `FakeAgent`.
 
 The spinner has its own invariant test — every glyph must be exactly one cell
 and not East-Asian-Ambiguous. The first glyph set failed both, which is why
@@ -357,7 +448,19 @@ cism/tui/
     slash.py          the fuzzy slash-command overlay
     depg_modal.py     Tree + decision-path and evidence DataTables
     memory_modal.py   sortable DataTable + live salience equation
-demo_replay.py        the demo entry point
+cism/agent/            the LangGraph-backed core — see "The agent core"
+  core.py               LangGraphAgent — satisfies the Agent protocol
+  graph.py              build_graph() — the compiled LangGraph, pure factory
+  nodes.py              think / act / phase_router / respond
+  state.py              Phase, PHASE_TRANSITIONS, PhaseStateMachine, AgentState
+  llm.py                DummyChatModel — canned, deterministic
+  logging.py            JSONL operational logging, 1-day retention TTL
+  tools/                ToolRegistry (hard allowlist) + dummy_nmap/dummy_msfconsole
+  guardrails/           GuardrailChain, GuardrailSeam — three pass-through seams
+cism/depg/              the dependency/error-propagation graph domain model
+  node.py, edge.py      mutable Node/Edge, to_event() into the TUI wire format
+demo_replay.py        the demo entry point (FakeAgent, replays a log)
 demo/recon_run.jsonl  the recorded run
+run_agent.py          the live entry point (LangGraphAgent, still dummy underneath)
 bench/stream_bench.py the streaming benchmark
 ```
