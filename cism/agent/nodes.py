@@ -19,13 +19,16 @@ from typing import Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages.tool import ToolCall
 
 from cism.agent.guardrails import GuardrailChain
 from cism.agent.state import AgentState, IllegalPhaseTransition, Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry
+from cism.depg import ExtractorRegistry, Graph
 
 __all__ = [
     "make_act_node",
+    "make_depg_update_node",
     "make_phase_router",
     "make_respond_node",
     "make_think_node",
@@ -111,6 +114,53 @@ def make_act_node(
         return {"messages": results}
 
     return act
+
+
+def _trailing_tool_results(messages: list) -> list[tuple[ToolCall | None, ToolMessage]]:
+    """The run of ``ToolMessage``s the most recent ``act`` step appended,
+    each paired with its originating ``ToolCall`` (found on the preceding
+    ``AIMessage`` — a ``ToolMessage`` alone doesn't carry the call's
+    original arguments). Exact, not a heuristic: ``depg_update`` always runs
+    immediately after ``act``, and nothing else appends messages between
+    them."""
+    results: list[ToolMessage] = []
+    for message in reversed(messages):
+        if isinstance(message, ToolMessage):
+            results.append(message)
+        else:
+            break
+    results.reverse()
+
+    calls_by_id: dict[str, ToolCall] = {}
+    ai_index = len(messages) - len(results) - 1
+    if results and ai_index >= 0:
+        for call in getattr(messages[ai_index], "tool_calls", None) or []:
+            calls_by_id[call["id"]] = call
+
+    return [(calls_by_id.get(m.tool_call_id), m) for m in results]
+
+
+def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState], dict]:
+    def depg_update(state: AgentState) -> dict:
+        graph = Graph.from_state(state["depg_nodes"], state["depg_edges"])
+
+        for call, message in _trailing_tool_results(state["messages"]):
+            if getattr(message, "status", "success") == "error":
+                continue  # no real evidence came from a blocked/failed call
+            extraction = extractors.get(message.name or "").extract(
+                call, message, graph, state["target"]
+            )
+            for node in extraction.nodes:
+                graph.upsert_node(node)
+            for edge in extraction.edges:
+                graph.add_edge(edge)
+
+        # depg_nodes/depg_edges have no reducer, so LangGraph's LastValue
+        # channel fully replaces state with whatever is returned here — the
+        # full merged graph must always come back, never just this step's delta.
+        return {"depg_nodes": graph.nodes, "depg_edges": graph.edges}
+
+    return depg_update
 
 
 def make_phase_router() -> Callable[[AgentState], dict]:
