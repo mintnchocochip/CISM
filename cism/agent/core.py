@@ -28,8 +28,12 @@ from cism.agent.llm import DummyChatModel
 from cism.agent.logging import get_agent_logger
 from cism.agent.state import Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
+from cism.depg import ExtractorRegistry, GenericExtractor
 from cism.tui.events import (
     AgentEvent,
+    DEPGEdge,
+    DEPGNode,
+    DEPGUpdated,
     Interrupted,
     Narration,
     PhaseChanged,
@@ -53,17 +57,23 @@ class LangGraphAgent:
         llm: BaseChatModel | None = None,
         tools: ToolRegistry | None = None,
         guardrails: GuardrailSeam | None = None,
+        extractors: ExtractorRegistry | None = None,
         target: str = "",
     ) -> None:
         self.events: asyncio.Queue[AgentEvent] = asyncio.Queue()
         self._llm = llm or DummyChatModel()
         self._tools = tools or ToolRegistry([dummy_nmap, dummy_msfconsole])
         self._guardrails = guardrails or GuardrailSeam.no_op()
-        self._graph = build_graph(self._llm, self._tools, self._guardrails)
+        self._extractors = extractors or ExtractorRegistry({}, GenericExtractor())
+        self._graph = build_graph(self._llm, self._tools, self._guardrails, self._extractors)
         self._phase = PhaseStateMachine(Phase.RECON)
         self._target = target
         self._task: asyncio.Task[None] | None = None
         self._log = get_agent_logger()
+        #: The last DEPGUpdated payload emitted, so depg_update running on
+        #: every loop iteration doesn't flood the TUI with identical events
+        #: on iterations where nothing about the graph actually changed.
+        self._last_depg: tuple[tuple[DEPGNode, ...], tuple[DEPGEdge, ...]] = ((), ())
 
     async def start(self) -> None:
         """Nothing to warm up for a dummy backend. A real model/tool
@@ -164,6 +174,17 @@ class LangGraphAgent:
             if new_phase is not None and new_phase != self._phase.current:
                 self._phase.transition(new_phase)
                 await self.events.put(PhaseChanged(phase=new_phase.to_wire()))
+
+        elif node == "depg_update":
+            nodes = update.get("depg_nodes") or {}
+            edges = update.get("depg_edges") or []
+            payload = (
+                tuple(n.to_event() for n in nodes.values()),
+                tuple(e.to_event() for e in edges),
+            )
+            if payload != self._last_depg:
+                self._last_depg = payload
+                await self.events.put(DEPGUpdated(nodes=payload[0], edges=payload[1]))
 
         elif node == "respond":
             for message in update.get("messages", []):

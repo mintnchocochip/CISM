@@ -13,6 +13,7 @@ from cism.agent import LangGraphAgent
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam, PassThroughStage
 from cism.tui.events import (
     Agent,
+    DEPGUpdated,
     Interrupted,
     Narration,
     PhaseChanged,
@@ -75,6 +76,29 @@ async def test_dummy_run_produces_a_final_narration_and_two_phase_changes(
 
     phase_changes = [e.phase for e in events if isinstance(e, PhaseChanged)]
     assert phase_changes == ["enumeration", "vulnerability-discovery"]
+    await agent.aclose()
+
+
+async def test_a_default_run_populates_the_depg_from_live_tool_calls(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent(target="10.0.0.5")
+    events = await _run_to_completion(agent, "scan 10.0.0.5")
+
+    depg_updates = [e for e in events if isinstance(e, DEPGUpdated)]
+    assert depg_updates
+    assert depg_updates[-1].nodes
+    assert all(n.target == "10.0.0.5" for n in depg_updates[-1].nodes)
+    await agent.aclose()
+
+
+async def test_depg_updates_are_never_emitted_back_to_back_unchanged(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent(target="10.0.0.5")
+    events = await _run_to_completion(agent, "scan 10.0.0.5")
+
+    depg_updates = [e for e in events if isinstance(e, DEPGUpdated)]
+    seen = [(e.nodes, e.edges) for e in depg_updates]
+    assert len(seen) == len(set(seen))
     await agent.aclose()
 
 
