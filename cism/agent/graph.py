@@ -13,6 +13,9 @@ stub versions or real ones later.
              act ── for each call: action_chain.run(call), then
                      ToolRegistry.get(call.name).invoke(call) if allowed
                │
+         depg_update ── ExtractorRegistry turns successful tool results
+                         into DEPG nodes/edges
+               │
          phase_router ── PhaseStateMachine proposes a legal transition
                │
                └──▶ think (loop)
@@ -27,6 +30,7 @@ from langgraph.graph.state import CompiledStateGraph
 from cism.agent.guardrails import GuardrailSeam
 from cism.agent.nodes import (
     make_act_node,
+    make_depg_update_node,
     make_phase_router,
     make_respond_node,
     make_think_node,
@@ -34,6 +38,7 @@ from cism.agent.nodes import (
 )
 from cism.agent.state import AgentState
 from cism.agent.tools import ToolRegistry
+from cism.depg import ExtractorRegistry
 
 __all__ = ["build_graph"]
 
@@ -42,17 +47,20 @@ def build_graph(
     llm: BaseChatModel,
     tools: ToolRegistry,
     guardrails: GuardrailSeam,
+    extractors: ExtractorRegistry,
 ) -> CompiledStateGraph:
     graph = StateGraph(AgentState)
 
     graph.add_node("think", make_think_node(llm))
     graph.add_node("act", make_act_node(tools, guardrails.action))
+    graph.add_node("depg_update", make_depg_update_node(extractors))
     graph.add_node("phase_router", make_phase_router())
     graph.add_node("respond", make_respond_node(guardrails.output))
 
     graph.add_edge(START, "think")
     graph.add_conditional_edges("think", route_after_think, {"act": "act", "respond": "respond"})
-    graph.add_edge("act", "phase_router")
+    graph.add_edge("act", "depg_update")
+    graph.add_edge("depg_update", "phase_router")
     graph.add_edge("phase_router", "think")
     graph.add_edge("respond", END)
 

@@ -1,15 +1,27 @@
 """The Dependency / Error Propagation Graph domain model.
 
-Deliberately minimal today: just the two working types the agent mutates as
-a run progresses. Graph traversal, containment, and the propagation/gamma
-math are not implemented yet — they arrive later as new modules in this same
-package (e.g. ``graph.py``, ``propagation.py``), which is why ``Node`` and
-``Edge`` have no dependency on anything in ``cism.agent``.
+``Node``/``Edge`` are the working types the agent mutates as a run
+progresses; ``Graph`` is the container that merges them as extraction
+proposes new ones; ``ExtractorRegistry``/``CauseExtractor`` is the seam that
+turns a tool's output into ``Node``/``Edge`` proposals in the first place.
+The propagation/gamma math (``propagation.py``) is still later work — none
+of this package depends on anything in ``cism.agent`` or ``cism.tui``
+except through ``Node.to_event()``/``Edge.to_event()``/``Graph.to_event()``.
 """
 
 from __future__ import annotations
 
 from .edge import Edge
+from .extract import CauseExtractor, Extraction, ExtractorRegistry, GenericExtractor
+from .graph import Graph
 from .node import Node
 
-__all__ = ["Edge", "Node"]
+__all__ = [
+    "CauseExtractor",
+    "Edge",
+    "Extraction",
+    "ExtractorRegistry",
+    "GenericExtractor",
+    "Graph",
+    "Node",
+]
