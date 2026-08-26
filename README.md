@@ -246,9 +246,12 @@ broken log never half-starts a demo.
 
 `cism/agent/` is a real LangGraph graph behind `LangGraphAgent`, wired to the
 TUI through the same `Agent` seam as `FakeAgent`. It is deliberately still a
-skeleton — a canned model, two dummy tools, guardrails that let everything
-through — validated first so later work (real guardrail logic, real tools, a
-real model) is additive rather than a rewrite. See the design spec at
+skeleton by default — a canned model, dummy tools, guardrails that let
+everything through — validated first so later work (real tools, real
+guardrail checks, a real model) is additive rather than a rewrite; a first
+slice of that later work (real sandboxed tools, a real scope guardrail, live
+DEPG population) now exists as opt-in pieces, described below. See the
+design spec at
 [docs/superpowers/specs/2026-08-15-agent-workflow-skeleton-design.md](docs/superpowers/specs/2026-08-15-agent-workflow-skeleton-design.md)
 for the full rationale.
 
@@ -259,6 +262,8 @@ think ── llm.invoke() (DummyChatModel today)
   │no ──▶ respond ── output guardrail runs on the final text ──▶ end of run
   │yes
 act ── for each call: action guardrail runs, then the tool executes if allowed
+  │
+depg_update ── ExtractorRegistry turns successful tool results into DEPG nodes/edges
   │
 phase_router ── proposes a legal phase move via PhaseStateMachine
   │
@@ -282,30 +287,51 @@ phase_router ── proposes a legal phase move via PhaseStateMachine
   ```
 
 - **Guardrails** (`cism/agent/guardrails/`) — chain of responsibility, three
-  seams (input, action, output), each currently a single pass-through stage.
-  Adding a real check later is appending a stage; neither the chain runner
-  nor the graph shape changes.
+  seams (input, action, output). Input and output are still pass-through;
+  the action chain has its first real stage, `ScopeGuardStage`
+  (`guardrails/scope.py`), which blocks a tool call whose target falls
+  outside a declared `EngagementScope` (a CIDR/domain allowlist) — a
+  heuristic safety net, since it can only check targets it can actually find
+  in a call's arguments, not a formal guarantee. Adding another real check
+  is still just appending a stage; neither the chain runner nor the graph
+  shape changes.
 - **Tools** (`cism/agent/tools/`) — `ToolRegistry` is a hard allowlist: a
   tool is reachable only if it was explicitly constructed into the registry,
-  and looking up a name that wasn't raises rather than failing silently. The
-  two registered today, `dummy_nmap` and `dummy_msfconsole`, return canned
-  output; a real tool becomes reachable the same way, by construction, with
-  no change to the graph.
+  and looking up a name that wasn't raises rather than failing silently.
+  `LangGraphAgent()`'s default stays `dummy_nmap`/`dummy_msfconsole` (canned
+  output, no subprocess); real, subprocess-backed tools — `nmap`, `curl`,
+  `hydra` so far, with the rest of a ~53-tool catalog still to come — are
+  opt-in, constructed into the registry explicitly by whoever wants a live
+  run. Every real tool goes through one seam, `run_sandboxed()`
+  (`tools/sandbox.py`): argv-only execution (never `shell=True`), a per-call
+  scratch directory that no longer exists once the call returns, and a hard
+  timeout that kills the whole process tree, not just the leaf — behind a
+  `Runner` protocol so a container-backed implementation can replace
+  `SubprocessRunner` later without any tool function changing.
 - **DEPG domain model** (`cism/depg/`) — `Node` and `Edge`, the agent's
   mutable working copy of the dependency/error-propagation graph, distinct
-  from the frozen `DEPGNode`/`DEPGEdge` wire format above. `to_event()` is
-  the only place either touches `cism.tui.events`. Not populated by anything
-  in this skeleton yet — the propagation math and graph traversal are later
-  work.
+  from the frozen `DEPGNode`/`DEPGEdge` wire format above. `Graph`
+  (`depg/graph.py`) is the container that merges nodes/edges as they're
+  proposed; `ExtractorRegistry`/`CauseExtractor` (`depg/extract.py`) is the
+  seam a tool's result turns into `Node`/`Edge` proposals through — today
+  only `GenericExtractor` is registered, stamping one untested node per
+  successful tool call with the tool's own name as its cause-class, so a
+  live run now shows real (if unlabeled) DEPG nodes instead of the empty
+  modal a bare agent run used to leave. `to_event()`/`Graph.to_event()` are
+  the only places any of this touches `cism.tui.events`. Cause-class-specific
+  extraction, γ/propagation math, and graph traversal are still later work.
 - **Logging** (`cism/agent/logging.py`) — separate from both the event
   stream and DEPG evidence: JSONL operational logging for graph steps, tool
   calls, and guardrail decisions, written to `~/.cism/logs/agent.log` with a
   1-day retention TTL enforced by both file rotation and a startup sweep.
 
-What isn't here yet: real guardrail logic, real tools, a real model, DEPG
-propagation/traversal, and phase locking. Each was designed with a single,
-explicit seam to extend into, so none of it should require reshaping what's
-already built.
+What isn't here yet: a real model, the rest of the tool catalog (~50 more
+tools beyond `nmap`/`curl`/`hydra`), cause-class-specific DEPG extraction
+(today's `GenericExtractor` labels every node with the calling tool's own
+name), γ/propagation math, phase locking, and guardrail logic beyond the
+action chain's scope check (input and output are still pass-through). Each
+was designed with a single, explicit seam to extend into, so none of it
+should require reshaping what's already built.
 
 ## The status line
 
@@ -396,14 +422,18 @@ grey ramp, with red, green, and yellow used only semantically.
 pytest
 ```
 
-217 tests: the event contract and its serialisation, the replayer, transcript
+258 tests: the event contract and its serialisation, the replayer, transcript
 and composer behaviour, every keybinding, status-line elision at ten widths,
 credential masking end to end, both modals, and ten SVG snapshots pinning the
 look — plus, for the agent core, the phase state machine's legal and illegal
 transitions, the guardrail chain's short-circuit behaviour, the tool
-registry's allowlist, DEPG node/edge wire-format round-trips, the logger's
-retention sweep, `LangGraphAgent` run end to end (including a blocked input
-and a blocked action), and one test driving `CISMApp` with a real
+registry's allowlist, DEPG node/edge wire-format round-trips, the `Graph`
+container's merge/dedupe rules, `depg_update` turning tool results into DEPG
+nodes, the logger's retention sweep, `LangGraphAgent` run end to end
+(including a blocked input, a blocked action, and a live run's `DEPGUpdated`
+stream), `run_sandboxed`'s timeout/process-tree-kill/output-capping behaviour,
+`ScopeGuardStage`'s allow/block heuristics, a real `curl` call proven end to
+end through the graph loop, and one test driving `CISMApp` with a real
 `LangGraphAgent` instead of `FakeAgent`.
 
 The spinner has its own invariant test — every glyph must be exactly one cell
@@ -451,14 +481,19 @@ cism/tui/
 cism/agent/            the LangGraph-backed core — see "The agent core"
   core.py               LangGraphAgent — satisfies the Agent protocol
   graph.py              build_graph() — the compiled LangGraph, pure factory
-  nodes.py              think / act / phase_router / respond
+  nodes.py              think / act / depg_update / phase_router / respond
   state.py              Phase, PHASE_TRANSITIONS, PhaseStateMachine, AgentState
   llm.py                DummyChatModel — canned, deterministic
   logging.py            JSONL operational logging, 1-day retention TTL
   tools/                ToolRegistry (hard allowlist) + dummy_nmap/dummy_msfconsole
-  guardrails/           GuardrailChain, GuardrailSeam — three pass-through seams
+    sandbox.py            run_sandboxed() — the shared execution seam for real tools
+    discovery.py, linux.py, credentials.py   real tools so far: nmap, curl, hydra
+  guardrails/           GuardrailChain, GuardrailSeam — input/output still pass-through
+    scope.py              ScopeGuardStage — the action chain's first real check
 cism/depg/              the dependency/error-propagation graph domain model
   node.py, edge.py      mutable Node/Edge, to_event() into the TUI wire format
+  graph.py              Graph — merges nodes/edges as extraction proposes them
+  extract.py            ExtractorRegistry/CauseExtractor — GenericExtractor so far
 demo_replay.py        the demo entry point (FakeAgent, replays a log)
 demo/recon_run.jsonl  the recorded run
 run_agent.py          the live entry point (LangGraphAgent, still dummy underneath)
