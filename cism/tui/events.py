@@ -32,6 +32,7 @@ __all__ = [
     "MemoryRow",
     "MemoryUpdated",
     "Narration",
+    "NarrationRedacted",
     "PhaseChanged",
     "RunFinished",
     "RunStarted",
@@ -232,6 +233,20 @@ class Narration(_Event):
 
 
 @dataclass(frozen=True, slots=True)
+class NarrationRedacted(_Event):
+    """Replaces whatever has already been shown for ``entry_id`` with a
+    withheld-content notice. Used when the output guardrail's verdict on
+    the complete text differs from what was already streamed to the
+    transcript — the seam a real (currently pass-through) output guardrail
+    needs to retroactively take back content that reached the screen
+    before the guardrail finished running on it.
+    """
+
+    entry_id: str = ""
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class ToolStarted(_Event):
     call_id: str
     tool: str
@@ -318,6 +333,7 @@ AgentEvent: TypeAlias = (
     RunStarted
     | RunFinished
     | Narration
+    | NarrationRedacted
     | ToolStarted
     | ToolOutput
     | ToolFinished
@@ -336,6 +352,7 @@ EVENT_TYPES: dict[str, type] = {
         RunStarted,
         RunFinished,
         Narration,
+        NarrationRedacted,
         ToolStarted,
         ToolOutput,
         ToolFinished,
