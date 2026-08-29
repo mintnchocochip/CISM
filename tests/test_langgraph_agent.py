@@ -21,10 +21,12 @@ from cism.tui.events import (
     Agent,
     DEPGUpdated,
     Interrupted,
+    ModelInfo,
     Narration,
     PhaseChanged,
     RunFinished,
     RunStarted,
+    SessionState,
     ToolFailed,
     ToolFinished,
     ToolStarted,
@@ -58,6 +60,64 @@ class _RecordingChatModel(BaseChatModel):
         return self
 
 
+def test_no_env_vars_falls_back_to_dummy(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("CISM_LLM_BASE_URL", raising=False)
+    monkeypatch.delenv("CISM_LLM_MODEL", raising=False)
+
+    agent = LangGraphAgent()
+
+    session = agent._session()
+    assert session.endpoint == "local (dummy)"
+    assert session.model == "dummy"
+    assert session.key_env_var == ""
+    assert session.key_present is False
+
+
+def test_env_vars_build_a_real_connector(tmp_path, monkeypatch) -> None:
+    from langchain_openai import ChatOpenAI
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CISM_LLM_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("CISM_LLM_MODEL", "qwen2.5:3b")
+    monkeypatch.setenv("CISM_API_KEY", "ollama")
+
+    agent = LangGraphAgent()
+
+    assert isinstance(agent._llm, ChatOpenAI)
+    session = agent._session()
+    assert session.endpoint == "http://localhost:11434/v1"
+    assert session.model == "qwen2.5:3b"
+    assert session.key_env_var == "CISM_API_KEY"
+    assert session.key_present is True
+    assert session.models_available == (ModelInfo("qwen2.5:3b", loaded=True),)
+
+
+async def test_start_emits_the_initial_session_state(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("CISM_LLM_BASE_URL", raising=False)
+
+    agent = LangGraphAgent()
+    await agent.start()
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, SessionState)
+    assert event.endpoint == "local (dummy)"
+
+
+def test_explicit_llm_without_metadata_is_unlabeled_not_dummy(tmp_path, monkeypatch) -> None:
+    """An externally-injected model (as tests already do) with no
+    endpoint/model_name/key_env_var given is not mislabeled as the dummy
+    backend — it's simply unlabeled."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    model = _RecordingChatModel()
+
+    agent = LangGraphAgent(llm=model)
+
+    assert agent._endpoint == ""
+    assert agent._model_name == ""
+
+
 def test_a_model_that_supports_bind_tools_is_bound_to_the_registry(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     model = _RecordingChatModel()
@@ -88,7 +148,8 @@ async def test_a_default_run_starts_and_finishes_ok(tmp_path, monkeypatch) -> No
 
     events = await _run_to_completion(agent, "scan 10.0.0.5 and tell me what is exposed")
 
-    assert isinstance(events[0], RunStarted)
+    assert isinstance(events[0], SessionState)
+    assert isinstance(events[1], RunStarted)
     assert isinstance(events[-1], RunFinished)
     assert events[-1].ok is True
     await agent.aclose()
