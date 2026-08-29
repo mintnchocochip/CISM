@@ -47,6 +47,22 @@ from cism.tui.events import (
 __all__ = ["LangGraphAgent"]
 
 
+def _bind_tools_if_supported(llm: BaseChatModel, tools: ToolRegistry) -> BaseChatModel:
+    """The think node needs a model bound to the registry's tool schemas to
+    get real tool selection out of it, but ``DummyChatModel`` was never
+    built to support that — it hand-constructs ``tool_calls`` and inherits
+    ``BaseChatModel.bind_tools``'s default, which raises ``NotImplementedError``.
+    Rather than special-case that one class by name (or touch it to add a
+    no-op override, which isn't this module's file to change), any model
+    that can't be bound is used unbound — so the dummy default keeps working
+    exactly as before, and any future non-tool-calling model degrades the
+    same way instead of crashing agent construction."""
+    try:
+        return llm.bind_tools(tools.all())
+    except NotImplementedError:
+        return llm
+
+
 class LangGraphAgent:
     """Satisfies ``cism.tui.events.Agent``. All dependencies default to the
     dummy/no-op stubs so the loop can be validated with no lab, no weights,
@@ -65,7 +81,8 @@ class LangGraphAgent:
         self._tools = tools or ToolRegistry([dummy_nmap, dummy_msfconsole])
         self._guardrails = guardrails or GuardrailSeam.no_op()
         self._extractors = extractors or ExtractorRegistry({}, GenericExtractor())
-        self._graph = build_graph(self._llm, self._tools, self._guardrails, self._extractors)
+        bound_llm = _bind_tools_if_supported(self._llm, self._tools)
+        self._graph = build_graph(bound_llm, self._tools, self._guardrails, self._extractors)
         self._phase = PhaseStateMachine(Phase.RECON)
         self._target = target
         self._task: asyncio.Task[None] | None = None
