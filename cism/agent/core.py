@@ -181,6 +181,10 @@ class LangGraphAgent:
             self._endpoint = endpoint
             self._model_name = model_name
             bound_llm = _bind_tools_if_supported(self._llm, self._tools)
+            # This reassignment takes effect on the *next* submit(), not one
+            # already in flight: an in-progress _run()'s astream() iteration
+            # was already handed the old self._graph object and keeps
+            # pulling from it regardless of what self._graph points to now.
             self._graph = build_graph(
                 bound_llm, self._tools, self._guardrails, self._extractors
             )
@@ -275,8 +279,22 @@ class LangGraphAgent:
     ) -> None:
         if node == "think":
             for message in update.get("messages", []):
+                had_calls = False
                 for call in getattr(message, "tool_calls", None) or []:
                     pending_calls[call["id"]] = call
+                    had_calls = True
+                if had_calls:
+                    # This turn routes to "act", not "respond" — any text it
+                    # streamed alongside the tool call (real models sometimes
+                    # emit a sentence of preamble next to a call) is not the
+                    # run's final answer. Clear it now so it doesn't linger
+                    # and get concatenated with a later think turn's text,
+                    # which would desync the guardrail-mismatch comparison
+                    # in the "respond" branch below and trigger a
+                    # false-positive NarrationRedacted. Only the final
+                    # answer turn (no tool_calls) leaves streamed["text"]
+                    # intact for that comparison.
+                    streamed["text"] = ""
 
         elif node == "act":
             for message in update.get("messages", []):

@@ -387,6 +387,73 @@ async def test_final_answer_streams_as_multiple_events_then_one_close(tmp_path, 
     assert "".join(n.text for n in narrations) == "Scan complete."
 
 
+class _PreambleThenToolCallChatModel(BaseChatModel):
+    """A fake model whose first turn streams ordinary preamble text
+    alongside a tool call (content and a tool call in the same turn — real
+    models sometimes do this), and whose second turn (after the tool
+    result comes back) streams only the final answer with no tool calls.
+    Exercises the leftover-preamble bug: without the fix, the first turn's
+    "Let me check. " content lingers in ``core.py``'s ``streamed["text"]``
+    accumulator and corrupts the comparison against the real final answer
+    once the run reaches "respond"."""
+
+    call_count: int = 0
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-preamble-then-tool-call-chat-model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        raise NotImplementedError("this test double only supports astream")
+
+    async def _astream(self, messages, stop=None, run_manager=None, **kwargs):
+        self.call_count += 1
+        if self.call_count == 1:
+            yield ChatGenerationChunk(message=AIMessageChunk(content="Let me check. "))
+            yield ChatGenerationChunk(
+                message=AIMessageChunk(
+                    content="",
+                    tool_call_chunks=[
+                        {
+                            "name": "dummy_nmap",
+                            "args": '{"target": "10.0.0.5"}',
+                            "id": "call_1",
+                            "index": 0,
+                        }
+                    ],
+                )
+            )
+        else:
+            yield ChatGenerationChunk(message=AIMessageChunk(content="Scan "))
+            yield ChatGenerationChunk(message=AIMessageChunk(content="complete."))
+
+    def bind_tools(self, tools, *, tool_choice=None, **kwargs):
+        return self
+
+
+async def test_preamble_before_a_tool_call_does_not_corrupt_the_final_narration(
+    tmp_path, monkeypatch
+) -> None:
+    """Regression test for the false-positive NarrationRedacted bug: a
+    think turn that streams non-empty content *and* routes to "act" (via
+    a tool call) must not leave its text sitting in the accumulator for
+    the next think turn's text to be appended to. If it does, "respond"'s
+    real final text won't match the corrupted accumulator and the run
+    incorrectly ends in NarrationRedacted instead of a clean close."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    llm = _PreambleThenToolCallChatModel()
+    agent = LangGraphAgent(llm=llm, target="10.0.0.5")
+
+    events = await _run_to_completion(agent, "scan it")
+
+    redacted = [e for e in events if isinstance(e, NarrationRedacted)]
+    assert redacted == []
+
+    narrations = [e for e in events if isinstance(e, Narration)]
+    assert narrations and narrations[-1].done is True
+    assert narrations[-1].text == ""
+
+
 async def test_guardrail_rewrite_emits_narration_redacted_instead_of_close(
     tmp_path, monkeypatch
 ) -> None:
