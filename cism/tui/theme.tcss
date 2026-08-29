@@ -72,6 +72,7 @@ NarrationEntry {
 }
 
 NarrationEntry > .narration--text { color: $fg; }
+NarrationEntry > .narration--hint { color: $rule; }
 
 /* ── tool entries ─────────────────────────────────────────────────── */
 

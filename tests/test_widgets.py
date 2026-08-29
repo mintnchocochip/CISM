@@ -88,6 +88,72 @@ async def test_narration_widget_identity_is_stable_across_chunks(
         assert original.text == "first second"
 
 
+async def test_narration_entry_is_expanded_by_default(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        agent.events.put_nowait(Narration("e1", "hello", done=True))
+        await settle(pilot)
+        entry = app.transcript.query_one(NarrationEntry)
+        assert entry.expanded is True
+
+
+async def test_toggling_a_finished_narration_entry_collapses_it(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        agent.events.put_nowait(Narration("e1", "hello", done=True))
+        await settle(pilot)
+        entry = app.transcript.query_one(NarrationEntry)
+        entry.toggle()
+        await settle(pilot, 5)
+        assert entry.expanded is False
+        entry.toggle()
+        await settle(pilot, 5)
+        assert entry.expanded is True
+
+
+async def test_toggling_a_still_streaming_narration_entry_does_nothing(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        agent.events.put_nowait(Narration("e1", "hello", done=False))
+        await settle(pilot)
+        entry = app.transcript.query_one(NarrationEntry)
+        entry.toggle()
+        await settle(pilot, 5)
+        assert entry.expanded is True
+
+
+async def test_redact_replaces_shown_text_with_a_withheld_notice(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        agent.events.put_nowait(Narration("e1", "some streamed text"))
+        await settle(pilot)
+        entry = app.transcript.narration("e1")
+        entry.redact("blocked: contains a secret")
+        await settle(pilot, 5)
+        assert entry.text == "blocked: contains a secret"
+        assert entry.done is True
+        assert entry.redacted is True
+
+
+async def test_last_collapsible_picks_the_more_recent_of_tool_and_narration(
+    quiet_app,
+) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        agent.events.put_nowait(ToolStarted("c1", "nmap", "-sV"))
+        await settle(pilot)
+        agent.events.put_nowait(Narration("e1", "hello", done=True))
+        await settle(pilot)
+        last = app.transcript.last_collapsible()
+        assert isinstance(last, NarrationEntry)
+
+        agent.events.put_nowait(ToolStarted("c2", "curl", ""))
+        await settle(pilot)
+        last = app.transcript.last_collapsible()
+        assert isinstance(last, ToolEntry)
+        assert last.call_id == "c2"
+
+
 async def test_tool_output_is_collapsed_by_default(app_and_agent) -> None:
     app, agent = app_and_agent
     async with app.run_test(size=(100, 30)) as pilot:
