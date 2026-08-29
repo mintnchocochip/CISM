@@ -51,9 +51,14 @@ class NarrationEntry(Static):
     Chunks are appended to one Rich ``Text`` held by the widget and flushed on
     a coalescing timer. The widget is never rebuilt and the buffer is never
     re-joined, so append cost does not grow with entry length.
+
+    Expanded by default — you watch it type live, and a finished answer
+    shouldn't vanish on its own. ``ctrl+o`` (routed through
+    ``Transcript.last_collapsible()``) can collapse it once it's ``done``,
+    the same mechanism ``ToolEntry`` already uses for tool output.
     """
 
-    COMPONENT_CLASSES = {"narration--text"}
+    COMPONENT_CLASSES = {"narration--text", "narration--hint"}
 
     FLUSH_INTERVAL = 0.06
 
@@ -61,12 +66,18 @@ class NarrationEntry(Static):
         super().__init__()
         self.entry_id = entry_id
         self.done = False
+        self.redacted = False
         self._text = Text()
         self._timer = None
+        self._collapsed = False
 
     @property
     def text(self) -> str:
         return self._text.plain
+
+    @property
+    def expanded(self) -> bool:
+        return not self._collapsed
 
     def append(self, chunk: str) -> None:
         self._text.append(chunk)
@@ -77,6 +88,22 @@ class NarrationEntry(Static):
         self.done = True
         self._flush()
 
+    def redact(self, reason: str) -> None:
+        """Replace whatever has been shown so far with a withheld-content
+        notice — used when the output guardrail's verdict differs from
+        what was already streamed."""
+        self.done = True
+        self.redacted = True
+        self._collapsed = False
+        self._text = Text(reason or "[response withheld by output guardrail]")
+        self._flush()
+
+    def toggle(self) -> None:
+        if not self.done:
+            return
+        self._collapsed = not self._collapsed
+        self.refresh(layout=True)
+
     def _flush(self) -> None:
         if self._timer is not None:
             self._timer.stop()
@@ -84,7 +111,14 @@ class NarrationEntry(Static):
         self.refresh(layout=True)
 
     def render(self) -> Text:
-        self._text.style = self.get_component_rich_style("narration--text")
+        style = self.get_component_rich_style("narration--text")
+        self._text.style = style
+        if self._collapsed and self.done:
+            hint_style = self.get_component_rich_style("narration--hint")
+            line_count = self._text.plain.count("\n") + 1 if self._text.plain else 0
+            out = Text()
+            out.append(f"[{line_count} lines collapsed · ctrl+o to expand]", style=hint_style)
+            return out
         return self._text
 
 
@@ -309,6 +343,7 @@ class Transcript(VerticalScroll):
         self._narrations: dict[str, NarrationEntry] = {}
         self._tools: dict[str, ToolEntry] = {}
         self._tool_order: list[ToolEntry] = []
+        self._collapsible_order: list[ToolEntry | NarrationEntry] = []
         self._following = True
         self._expected_y = 0.0
         self._follow_timer = None
@@ -359,6 +394,7 @@ class Transcript(VerticalScroll):
         if entry is None:
             entry = NarrationEntry(entry_id)
             self._narrations[entry_id] = entry
+            self._collapsible_order.append(entry)
             self.mount(entry)
         return entry
 
@@ -366,6 +402,7 @@ class Transcript(VerticalScroll):
         entry = ToolEntry(call_id, tool, args)
         self._tools[call_id] = entry
         self._tool_order.append(entry)
+        self._collapsible_order.append(entry)
         self.mount(entry)
         return entry
 
@@ -374,6 +411,9 @@ class Transcript(VerticalScroll):
 
     def last_tool(self) -> ToolEntry | None:
         return self._tool_order[-1] if self._tool_order else None
+
+    def last_collapsible(self) -> ToolEntry | NarrationEntry | None:
+        return self._collapsible_order[-1] if self._collapsible_order else None
 
     def add_phase_rule(self, framework: str, phase: str) -> PhaseRule:
         widget = PhaseRule(framework, phase)
@@ -392,6 +432,7 @@ class Transcript(VerticalScroll):
         self._narrations.clear()
         self._tools.clear()
         self._tool_order.clear()
+        self._collapsible_order.clear()
         self.remove_children()
         self._following = True
         self._expected_y = 0.0

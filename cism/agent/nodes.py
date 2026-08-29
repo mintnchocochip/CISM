@@ -55,8 +55,18 @@ DEFAULT_NEXT_PHASE: dict[Phase, Phase] = {
 
 
 def make_think_node(llm: BaseChatModel) -> Callable[[AgentState], dict]:
-    def think(state: AgentState) -> dict:
-        response = llm.invoke(state["messages"])
+    async def think(state: AgentState) -> dict:
+        response = None
+        async for chunk in llm.astream(state["messages"]):
+            response = chunk if response is None else response + chunk
+        if response is None:
+            # A provider that errors mid-handshake or returns an empty
+            # completion can leave the stream with zero chunks. Without
+            # this, ``response`` stays None and "respond" later crashes
+            # doing ``str(last.content)`` on it — caught by core.py's
+            # broad except as a generic "run failed", but an unhelpful
+            # failure mode. An empty final answer is a better default.
+            response = AIMessage(content="")
         return {"messages": [response]}
 
     return think

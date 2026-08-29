@@ -256,7 +256,7 @@ design spec at
 for the full rationale.
 
 ```
-think ── llm.invoke() (DummyChatModel today)
+think ── llm.astream(), accumulated into one message (DummyChatModel by default, or a real OpenAI-compatible connector — see run_agent.py --base-url/--model)
   │
   tool_calls, under the turn cap?
   │no ──▶ respond ── output guardrail runs on the final text ──▶ end of run
@@ -496,6 +496,8 @@ cism/depg/              the dependency/error-propagation graph domain model
   extract.py            ExtractorRegistry/CauseExtractor — GenericExtractor so far
 demo_replay.py        the demo entry point (FakeAgent, replays a log)
 demo/recon_run.jsonl  the recorded run
-run_agent.py          the live entry point (LangGraphAgent, still dummy underneath)
+run_agent.py          the live entry point (LangGraphAgent; a real OpenAI-compatible
+                         connector is opt-in via --base-url/--model or CISM_LLM_BASE_URL/
+                         CISM_LLM_MODEL, dummy remains the fallback when unconfigured)
 bench/stream_bench.py the streaming benchmark
 ```
