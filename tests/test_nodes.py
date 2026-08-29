@@ -6,9 +6,12 @@ what earlier steps already found.
 
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
-from cism.agent.nodes import make_depg_update_node
+from cism.agent.llm import DummyChatModel
+from cism.agent.nodes import make_depg_update_node, make_think_node
 from cism.agent.state import Phase
 from cism.depg import ExtractorRegistry, GenericExtractor
 
@@ -33,6 +36,48 @@ def _tool_round(call_id: str, name: str, content: str, *, error: bool = False):
 
 def _depg_update():
     return make_depg_update_node(ExtractorRegistry({}, GenericExtractor()))
+
+
+class _StreamingChatModel(BaseChatModel):
+    """A BaseChatModel that genuinely streams multiple chunks, unlike the
+    _generate-only fallback every other test double in this repo relies
+    on — proves make_think_node's accumulation actually handles more than
+    one chunk, not just the single-chunk fallback case."""
+
+    chunks: list = []
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-streaming-chat-model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        return ChatResult(
+            generations=[ChatGeneration(message=AIMessage(content="".join(self.chunks)))]
+        )
+
+    async def _astream(self, messages, stop=None, run_manager=None, **kwargs):
+        for piece in self.chunks:
+            yield ChatGenerationChunk(message=AIMessageChunk(content=piece))
+
+
+async def test_think_node_accumulates_streamed_chunks_into_one_message() -> None:
+    llm = _StreamingChatModel(chunks=["Scan ", "of ", "10.0.0.5 ", "complete."])
+    think = make_think_node(llm)
+    state = _state([HumanMessage(content="scan it")])
+
+    update = await think(state)
+
+    assert update["messages"][0].content == "Scan of 10.0.0.5 complete."
+
+
+async def test_think_node_still_works_against_a_non_streaming_model() -> None:
+    llm = DummyChatModel()
+    think = make_think_node(llm)
+    state = _state([HumanMessage(content="scan 10.0.0.5")])
+
+    update = await think(state)
+
+    assert update["messages"][0].tool_calls[0]["name"] == "dummy_nmap"
 
 
 def test_a_successful_tool_call_produces_a_depg_node_for_the_target() -> None:
