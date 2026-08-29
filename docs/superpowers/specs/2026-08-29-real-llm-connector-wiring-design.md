@@ -52,6 +52,20 @@ asks for it directly).
   existing `build_chat_model` docstring already caveats (server support for
   the `tools` field is independent of whether the *model itself* was
   trained for function calling).
+- **Real reasoning/"thinking" content** (a distinct, collapsible entry
+  showing model reasoning separate from the final answer). Blocked on an
+  open upstream bug, not a missing decision: `langchain_openai.ChatOpenAI`
+  — the client this whole design is built on — currently silently drops
+  `reasoning_content` for OpenAI-compatible providers
+  ([langchain-ai/langchain#35516](https://github.com/langchain-ai/langchain/issues/35516),
+  [#35059](https://github.com/langchain-ai/langchain/issues/35059),
+  [#31326](https://github.com/langchain-ai/langchain/issues/31326)).
+  Ollama's own `message.thinking` field is clean, but only through its
+  native `/api/chat`, not the `/v1` OpenAI-compat layer this spec
+  standardizes on — using it would mean a second, Ollama-only client path,
+  a materially bigger decision than this spec's scope. The collapsible
+  entry mechanism built for the streamed answer (below) is reusable the day
+  this becomes unblocked; the extraction itself is not attempted here.
 
 ## Design
 
@@ -220,6 +234,106 @@ This is the one entry point representing a human trying to do a live run;
 everywhere else (tests, library use) the same fallback stays silent by
 design.
 
+### 5. Streaming the final answer
+
+`make_think_node` becomes async and calls `llm.astream(...)` instead of
+`llm.invoke(...)`:
+
+```python
+def make_think_node(llm: BaseChatModel) -> Callable[[AgentState], dict]:
+    async def think(state: AgentState) -> dict:
+        response = None
+        async for chunk in llm.astream(state["messages"]):
+            response = chunk if response is None else response + chunk
+        return {"messages": [response]}
+    return think
+```
+
+(`AIMessageChunk.__add__` is how LangChain accumulates a streamed response
+into one message — the standard idiom, not something bespoke here.)
+
+LangGraph supports async node functions transparently — `core.py` already
+drives everything through `self._graph.astream(...)`. `core.py`'s `_run()`
+adds `"messages"` to its stream modes:
+
+```python
+async for stream_mode, payload in self._graph.astream(
+    initial_state, stream_mode=["updates", "messages"]
+):
+    if stream_mode == "messages":
+        chunk, _metadata = payload
+        if chunk.content:
+            await self.events.put(
+                Narration(entry_id=f"{run_id}-final", text=chunk.content, done=False)
+            )
+        continue
+    for node, update in payload.items():
+        ...  # existing per-node translation, unchanged
+```
+
+Tool-call-producing turns naturally emit no visible text this way — their
+chunks carry empty `content` (the tool call itself streams as a separate
+delta shape), so `if chunk.content` already excludes them without needing
+to know which kind of turn is in progress.
+
+The `respond` node still runs afterward, still calls the output guardrail
+on the complete accumulated text — same as today, just after the chunks
+that made up that text have already reached the TUI, not before. Because
+`respond`'s input (`content = str(last.message.content)`) is exactly the
+concatenation of what was already streamed, the translator can tell
+whether the guardrail changed anything by comparing the two:
+
+```python
+elif node == "respond":
+    for message in update.get("messages", []):
+        entry_id = f"{run_id}-final"
+        if guard_changed_the_text:  # result.value != the streamed content
+            await self.events.put(NarrationRedacted(entry_id=entry_id, reason=result.reason))
+        else:
+            await self.events.put(Narration(entry_id=entry_id, text="", done=True))
+```
+
+Pass-through today means the redaction branch never fires — the entry just
+closes with no further text appended, since everything was already shown.
+
+### 6. Collapsible narration entries
+
+`NarrationEntry` (`cism/tui/widgets/transcript.py`) gains the same
+`-expanded` CSS class plus `expanded` property and `toggle()` method
+`ToolEntry` already has — reusing the mechanism, not inventing a second
+one. Default is expanded (you watch it type live, and a finished answer
+shouldn't vanish on its own); collapse is manual only.
+
+`Transcript` gains a `last_narration()` alongside its existing `last_tool()`.
+`CISMApp.action_toggle_output` (bound to `ctrl+o`, currently
+`self.transcript.last_tool().toggle()`) is generalized to toggle whichever
+of the two — last tool entry or last narration entry — is more recent, so
+the existing binding covers both. No new keybinding, no new keymap surface.
+
+### 7. `NarrationRedacted` — the seam a real output guardrail needs later
+
+One new frozen event in `cism/tui/events.py`'s existing union, alongside
+`Narration`:
+
+```python
+@dataclass(frozen=True, slots=True)
+class NarrationRedacted(_Event):
+    entry_id: str = ""
+    reason: str = ""
+```
+
+`_apply` in `app.py` gets one more branch (`transcript.narration(event.entry_id).redact(event.reason)`),
+and `NarrationEntry` gets a `redact(reason)` method that replaces whatever
+is currently shown with a withheld-content notice, regardless of what was
+already streamed. Nothing emits this event yet — the output guardrail
+chain is still pass-through, so the branch built in section 5 that would
+fire it is currently dead code, proven only by a test that fakes a
+blocking guardrail stage. The point is that the day real output-guardrail
+logic exists, it's "emit an event that already has a widget method," not
+"design a way to take back something already on screen" from scratch —
+matching this codebase's stated discipline of validating seams before the
+logic behind them exists.
+
 ### Left alone
 
 - `DummyChatModel` itself: unchanged, stays in `cism/agent/llm.py` as the
@@ -253,10 +367,32 @@ design.
 - New `tests/test_run_agent.py`: `parse_args` — `--base-url` without
   `--model` errors; both given produces the expected values; default
   `--key-env-var` is `CISM_API_KEY`.
+- `tests/test_langgraph_agent.py`, streaming cases: a fake `astream`-capable
+  `BaseChatModel` (same style as `_RecordingChatModel`/`_CallsCurlOnce`
+  already in this suite) proves a final answer arrives as multiple
+  non-`done` `Narration` events sharing one `entry_id`, followed by exactly
+  one `done=True` with no duplicated text; a tool-call-producing turn
+  emits no narration text at all.
+- A test-local guardrail stage that actually rewrites/blocks content
+  (not real logic — just enough to exercise the branch) proves
+  `NarrationRedacted` fires with the right `entry_id`/`reason` instead of a
+  plain `done=True` close.
+- `tests/test_transcript.py` (or wherever `NarrationEntry`/`ToolEntry` are
+  already covered): `NarrationEntry.toggle()`/`expanded`/`redact()`, and
+  `action_toggle_output` picking whichever of last-tool/last-narration is
+  more recent.
 
 ## Left open
 
 - Persistence (see "Out of scope") — next design.
+- Real reasoning/"thinking" content extraction (see "Out of scope") —
+  blocked on the upstream `langchain-openai` bug; revisit once it's fixed,
+  or as a separate deliberate decision to add an Ollama-native second
+  client path for it.
+- Whether a finished streamed answer should ever auto-collapse (e.g. past
+  some length) rather than always defaulting to expanded. Not decided —
+  defaulting to expanded (matching "an answer shouldn't vanish on its own")
+  until there's a concrete reason to revisit.
 - Whether `CISM_LLM_KEY_ENV_VAR` is the right name for the third env var,
   versus reusing `CISM_API_KEY` as both "the var name" and "the var" by
   convention (i.e. dropping the indirection entirely for the env-driven
