@@ -9,8 +9,14 @@ from __future__ import annotations
 
 import asyncio
 
+from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+
 from cism.agent import LangGraphAgent
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam, PassThroughStage
+from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
 from cism.tui.events import (
     Agent,
     DEPGUpdated,
@@ -24,6 +30,42 @@ from cism.tui.events import (
     ToolStarted,
     drain,
 )
+
+
+class _RecordingChatModel(BaseChatModel):
+    """A ``BaseChatModel`` that, unlike ``DummyChatModel``, does implement
+    ``bind_tools`` — standing in for a real provider integration so the
+    binding wired up in ``cism.agent.core`` can be asserted without a
+    network-backed model."""
+
+    bound_tools: list = []
+
+    @property
+    def _llm_type(self) -> str:
+        return "cism-recording-chat-model"
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs,
+    ) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content="done"))])
+
+    def bind_tools(self, tools, *, tool_choice=None, **kwargs):
+        self.bound_tools = list(tools)
+        return self
+
+
+def test_a_model_that_supports_bind_tools_is_bound_to_the_registry(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    model = _RecordingChatModel()
+    tools = ToolRegistry([dummy_nmap, dummy_msfconsole])
+
+    LangGraphAgent(llm=model, tools=tools)
+
+    assert {t.name for t in model.bound_tools} == {"dummy_nmap", "dummy_msfconsole"}
 
 
 async def _run_to_completion(agent: LangGraphAgent, text: str, timeout: float = 5.0) -> list:

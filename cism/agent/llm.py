@@ -9,12 +9,15 @@ conversation, so a run is reproducible call for call:
 - one tool result (nmap)      -> call ``dummy_msfconsole`` on the target
 - two or more tool results    -> a final answer, no further tool calls
 
-Swapping this for a real model later is a one-line change in whatever
-constructs the graph, since both are just ``BaseChatModel`` instances.
+Swapping this for a real model is the one-line change that docstring
+promised: see ``make_openai_compatible_chat_model`` below, which builds a
+network-capable ``BaseChatModel`` for whoever opts into one, since both are
+just ``BaseChatModel`` instances.
 """
 
 from __future__ import annotations
 
+import os
 import re
 import uuid
 from typing import Any
@@ -23,8 +26,9 @@ from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_openai import ChatOpenAI
 
-__all__ = ["DummyChatModel"]
+__all__ = ["DummyChatModel", "make_openai_compatible_chat_model"]
 
 _IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _DEFAULT_TARGET = "0.0.0.0"
@@ -91,3 +95,49 @@ class DummyChatModel(BaseChatModel):
             )
 
         return ChatResult(generations=[ChatGeneration(message=reply)])
+
+
+def make_openai_compatible_chat_model(
+    base_url: str,
+    api_key_env_var: str,
+    model: str,
+    **kwargs: Any,
+) -> BaseChatModel:
+    """A ``ChatOpenAI`` pointed at any server that speaks the OpenAI chat
+    completions wire format — llama.cpp's ``--api`` mode, vLLM, LM Studio,
+    real OpenAI, or Ollama's ``/v1`` endpoint. One construction path covers
+    all of them because that wire format is the actual shared implementation,
+    not a coincidence: Ollama's OpenAI-compatible endpoint requires the
+    ``api_key`` field to be present and non-empty but never validates its
+    contents (see https://docs.ollama.com/api/openai-compatibility), which is
+    exactly why this takes the *name* of an environment variable rather than
+    a key value — the same ``key_env_var``/``key_present`` split the TUI's
+    ``SessionState`` already uses, so a local no-auth server still gets a
+    real (if throwaway) secret name to report instead of a hole in that
+    contract.
+
+    Caveat a caller must know before relying on tool calls against a local
+    server: whether the *model being served* supports function calling is
+    independent of whether the server's endpoint does. Ollama's endpoint
+    supports the tools field, but only for models trained for it (e.g.
+    Llama 3.1, Mistral Nemo, Firefunction v2, Command-R) — an
+    unsupported model will not necessarily error, it may instead emit raw
+    tool-call-shaped JSON as ordinary text content, which looks like a
+    model failing to call anything rather than a config problem.
+
+    Tool binding is deliberately not done here: this factory only ever
+    builds the model, so what it returns is a plain, uncommitted
+    ``BaseChatModel`` regardless of which tools (if any) the caller intends
+    to bind onto it later, exactly like ``DummyChatModel`` needs no tools to
+    exist. Binding is the caller's job (see ``LangGraphAgent``), which is
+    also where the tool *registry* — the other half of the pairing — lives.
+    """
+    api_key = os.environ.get(api_key_env_var, "")
+    if not api_key:
+        raise ValueError(
+            f"environment variable {api_key_env_var!r} is not set; "
+            "an OpenAI-compatible server still requires a non-empty api_key "
+            "even when (as with Ollama) it never checks the value"
+        )
+
+    return ChatOpenAI(base_url=base_url, api_key=api_key, model=model, **kwargs)
