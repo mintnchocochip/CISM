@@ -10,7 +10,7 @@ conversation, so a run is reproducible call for call:
 - two or more tool results    -> a final answer, no further tool calls
 
 Swapping this for a real model is the one-line change that docstring
-promised: see ``make_openai_compatible_chat_model`` below, which builds a
+promised: see ``build_chat_model`` below, which builds a
 network-capable ``BaseChatModel`` for whoever opts into one, since both are
 just ``BaseChatModel`` instances.
 """
@@ -28,7 +28,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_openai import ChatOpenAI
 
-__all__ = ["DummyChatModel", "make_openai_compatible_chat_model"]
+__all__ = ["DummyChatModel", "build_chat_model"]
 
 _IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _DEFAULT_TARGET = "0.0.0.0"
@@ -97,9 +97,9 @@ class DummyChatModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=reply)])
 
 
-def make_openai_compatible_chat_model(
+def build_chat_model(
     base_url: str,
-    api_key_env_var: str,
+    key_env_var: str,
     model: str,
     **kwargs: Any,
 ) -> BaseChatModel:
@@ -132,10 +132,10 @@ def make_openai_compatible_chat_model(
     exist. Binding is the caller's job (see ``LangGraphAgent``), which is
     also where the tool *registry* — the other half of the pairing — lives.
     """
-    api_key = os.environ.get(api_key_env_var, "")
+    api_key = os.environ.get(key_env_var, "")
     if not api_key:
         raise ValueError(
-            f"environment variable {api_key_env_var!r} is not set; "
+            f"environment variable {key_env_var!r} is not set; "
             "an OpenAI-compatible server still requires a non-empty api_key "
             "even when (as with Ollama) it never checks the value"
         )
