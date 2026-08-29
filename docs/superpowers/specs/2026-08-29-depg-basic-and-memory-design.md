@@ -32,7 +32,13 @@ In scope:
 - The precondition edge-creation rule.
 - A `memory_update` graph node bridging step context into memory rows.
 - The `contested` node state added to the wire contract.
-- A phase-parameterized `think` node (per-phase prompt + tool subset).
+- A phase-parameterized `think` node via `PhaseProfile` (per-phase prompt +
+  tool subset + action stages).
+- A `SupportPolicy` seam in the reducer, so graded γ-propagation is a later
+  drop-in, not a rewrite.
+- A tool-authoring layer (§15): a kwargs-based `ToolSpec` data catalog for the
+  common CLI shape, a `sandboxed_tool` decorator escape hatch, and capability
+  tags born on each tool.
 
 Out of scope (captured in §12, the deferred log):
 
@@ -44,6 +50,8 @@ Out of scope (captured in §12, the deferred log):
   node-reconciliation pass.
 - IP ↔ hostname aliasing.
 - `inconclusive` observations lowering confidence.
+- Externalizing the tool catalog to YAML/TOML (kept as typed Python rows for
+  now; a factory-read change later, the author's call).
 
 ## 3. Architecture
 
@@ -90,6 +98,7 @@ termination is governed by the turn cap (`MAX_AI_TURNS`), not a second branch.
 |---|---|---|
 | `agent/core.py` — `LangGraphAgent` | the graph, the event queue, the TUI `Agent` seam, the input guardrail (pre-graph) | the TUI |
 | `agent/graph.py` — `build_graph()` | wiring nodes + routes (pure factory) | core |
+| `agent/profiles.py` — `PhaseProfile`/`PhaseProfiles` | per-phase prompt, tool subset, action stages | `think`, `act` |
 | `agent/nodes.py` | the six node functions | graph |
 | `agent/llm.py` | `DummyChatModel` / real OpenAI-compat model | injected into `think` |
 | `agent/tools/` | `ToolRegistry`, `run_sandboxed`, tools | `act` |
@@ -99,12 +108,11 @@ termination is governed by the turn cap (`MAX_AI_TURNS`), not a second branch.
 
 ### The nodes
 
-- **`think(phase)`** — phase-parameterized: each phase supplies its own system
-  prompt and its own tool subset (selected from the registry by current
-  phase). This makes each phase independently tunable and evaluable now,
-  without splitting into separate agents. `make_think_node` gains the phase
-  prompt/tool-subset selection; `phase_router` remains the seam where a
-  phase's logical agent is later promoted to a real subagent.
+- **`think(phase)`** — phase-parameterized through a `PhaseProfile` (see §3.1):
+  the profile for the current phase supplies the system prompt and the tool
+  subset. Nodes never branch on phase themselves — they read the profile — so
+  the graph stays uniform. `phase_router` remains the seam where a phase's
+  profile is later handed to a real subagent instead of the shared `think`.
 - **`act`** — runs each tool call through the action guardrail, then executes
   it; produces success or error `ToolMessage`s. Unchanged in shape.
 - **`depg_update`** — routes results to extractors → facts → nodes/edges →
@@ -120,6 +128,28 @@ termination is governed by the turn cap (`MAX_AI_TURNS`), not a second branch.
 Deliberate split the design leans on: **`depg_update` records findings about
 targets; `memory_update` records everything the agent experienced.** A
 guardrail block is not a finding — it reaches memory but never the graph.
+
+### 3.1 Phase profiles
+
+One profile per phase, data-driven; `think`/`act` consume a registry and never
+branch on phase:
+
+```python
+@dataclass(frozen=True)
+class PhaseProfile:
+    phase: Phase
+    system_prompt: str
+    tool_names: frozenset[str]                       # subset drawn from the registry
+    action_stages: tuple[GuardrailStage, ...] = ()   # phase-specific, appended to the base chain
+
+class PhaseProfiles:
+    def get(self, phase: Phase) -> PhaseProfile: ...
+```
+
+`make_think_node(llm, profiles)` selects the prompt + tools by current phase and
+binds them; `make_act_node(registry, base_chain, profiles)` runs the base action
+chain plus the profile's stages. Adding a phase is a profile entry; promoting one
+to a subagent later hands that same profile off at `phase_router`.
 
 ## 4. Schema
 
@@ -177,18 +207,27 @@ mutators.
 ## 5. State reducer
 
 `state` is never assigned by an extractor. It is computed here, the only place
-it changes:
+it changes. The one weight-sensitive decision — whether a node is still
+supported — is an injected policy, so graded γ-propagation later is a new policy
+class, not a reducer rewrite:
 
 ```python
-def reduce_state(node, parents) -> NodeState:
-    D = latest verdict in node.evidence that is "alive" or "dead"   # else: inference ("none")
-    supported = (not parents) or any(p.state != "blocked" for p in parents)
+class SupportPolicy(Protocol):
+    def supported(self, node: Node, parents: list[Node]) -> bool: ...
 
-    if D == "dead":                     return "blocked"     # own failure — sticky
-    if D == "alive" and supported:      return "resolved"
-    if D == "alive" and not supported:  return "contested"   # own proof, every precondition dead
-    if D is None and supported:         return "untested"    # plausible inference
-    return "blocked"                                          # inference, no live parent → propagated
+class BinarySupport:                       # basic: a parent is live or dead, weight ignored
+    def supported(self, node, parents):
+        return not parents or any(p.state != "blocked" for p in parents)
+
+def reduce_state(node, parents, support: SupportPolicy) -> NodeState:
+    D = latest verdict in node.evidence that is "alive" or "dead"   # else: inference ("none")
+    ok = support.supported(node, parents)
+
+    if D == "dead":            return "blocked"      # own failure — sticky
+    if D == "alive" and ok:    return "resolved"
+    if D == "alive":           return "contested"    # own proof, every precondition dead
+    if D is None and ok:       return "untested"     # plausible inference
+    return "blocked"                                  # inference, no live parent → propagated
 ```
 
 Two properties make this correct and cheap:
@@ -403,6 +442,14 @@ confinement, exec restriction, network egress allow-list), which the current
 `Runner` protocol is already the seam for that swap. This is high safety
 priority but a distinct track from DEPG-basic.
 
+Two concrete seam bindings: phase-specific stages arrive via
+`PhaseProfile.action_stages` (exploitation can add `WriteGuard`/`ExecGuard` that
+recon does not), and the capability tag is born on the tool declaration (§15),
+not retrofitted. For the sandbox, a `BubblewrapRunner` implements `Runner`, and
+the engagement scope becomes a constructor argument so egress allow-listing is
+OS-enforced — fusing the scope check with the sandbox instead of leaving it a
+heuristic on call arguments.
+
 ### Per-phase subagents (future direction — spec sketch)
 
 For now: one physical graph, phase-parameterized `think` (per-phase prompt +
@@ -447,8 +494,13 @@ Mirroring existing style (`tests/test_depg_graph.py`, `tests/test_nodes.py`):
   phase change, guardrail block); dedup / `hits` behaviour; guardrail block
   reaches memory but produces no DEPG node.
 - `contested` wire round-trip and one refreshed DEPG snapshot.
-- Phase-parameterized `think`: the correct per-phase prompt and tool subset are
-  selected for the current phase.
+- `PhaseProfile` selection drives `think`/`act`: the correct per-phase prompt and
+  tool subset are chosen, and a phase's `action_stages` run in addition to the
+  base chain.
+- The reducer takes a `SupportPolicy`; `BinarySupport` reproduces every §14 case.
+- Tool catalog: a `ToolSpec` row renders correct argv (flag rendering, bool vs
+  value, target placement, `allow_raw` passthrough); every built tool routes
+  through `run_sandboxed` and carries its capability tag.
 
 ## 14. Worked examples
 
@@ -528,4 +580,85 @@ Final:
 Exercises the whole machine: success, an inference chain, a direct failure
 (H), a propagated failure (B → G), a prune, and a pivot to success on a
 surviving branch — all in the single-agent loop.
+
+## 15. Tool authoring
+
+Adding a tool should be a data entry, not a hand-written function. Three tiers,
+escalating only when a tool needs it; all three route through `run_sandboxed`
+and carry a capability tag, so none can bypass the sandbox.
+
+**Tier 1 — a kwargs data row (the norm).** Most CLI tools are
+`binary <flags> <target>`. Model flags as named kwargs so the model fills typed
+params instead of assembling CLI syntax from memory:
+
+```python
+@dataclass(frozen=True)
+class Flag:
+    cli: str                                   # "-p", "-sV"
+    kind: Literal["value", "bool"] = "value"
+
+@dataclass(frozen=True)
+class ToolSpec:
+    binary: str
+    capability: Capability                      # reads | writes | executes | destructive
+    description: str
+    flags: dict[str, Flag] = field(default_factory=dict)   # kwarg -> Flag
+    target: str = "positional"                  # "positional" | a flag like "-u" | "" for none
+    allow_raw: bool = False                     # expose an `extra` argv passthrough
+    timeout: float = 60.0
+
+CATALOG = {
+    "nmap": ToolSpec("nmap", "reads", "Port/service scan.",
+                     flags={"ports": Flag("-p"), "service": Flag("-sV", "bool")},
+                     allow_raw=True),
+    "nikto": ToolSpec("nikto", "reads", "Web server vuln scan.", target="-host"),
+}
+```
+
+A factory turns each row into a sandboxed, capability-tagged `BaseTool` whose LLM
+schema is generated from its flags (bool → boolean param, value → string param).
+`nmap(target="10.0.0.5", ports="1-1000", service=True)` renders
+`["-p", "1-1000", "-sV", "10.0.0.5"]`. `allow_raw` is opt-in, so destructive
+tools can deny arbitrary flags.
+
+**Tier 2 — the `extra` passthrough** (`allow_raw=True`) for occasional arbitrary
+flags. Still argv-appended via `shlex.split`, so no shell injection.
+
+**Tier 3 — a decorated function** for tools with real prep (file
+materialization, subcommands): the function returns the argv tail and receives
+the per-call scratch dir when it declares one.
+
+```python
+@sandboxed_tool(binary="hydra", capability="executes")
+def hydra(target: str, userlist: list[str], passlist: list[str], *, scratch: Path) -> list[str]:
+    """Brute-force login credentials against a service."""
+    u = write_lines(scratch, "users.txt", userlist)
+    p = write_lines(scratch, "pass.txt", passlist)
+    return ["-L", u, "-P", p, target]
+```
+
+Registration stays an explicit allowlist:
+`ToolRegistry(build_catalog(CATALOG) + [hydra, msfconsole])`. The catalog is
+typed Python data now; externalizing to YAML/TOML later is a factory-read change
+(the author's call, deferred). Lives in `tools/base.py` (factory, decorator,
+`write_lines`) and `tools/catalog.py` (the rows) — separable from the DEPG work.
+
+## 16. Extensibility seams and later-rework accounting
+
+What each deferred item costs to add, given the seams above. Everything except
+continuous-confidence γ and subagent orchestration is additive against an
+existing seam.
+
+| Deferred item | Seam that absorbs it | Later change | Blast radius |
+|---|---|---|---|
+| γ weight (threshold model) | `SupportPolicy` | new policy class + inject | 1 class, 0 reducer/caller change |
+| γ weight (continuous confidence) | none | reducer + `Node`/wire gain a confidence field | moderate rework |
+| RWX guardrails | action chain + `PhaseProfile.action_stages` | new stages + capability tags | stages additive; tags born on the tool (§15) |
+| Sandbox isolation | `Runner` protocol | new `BubblewrapRunner`, inject | 1 class, 0 tool/node change |
+| Network egress = scope | `Runner` constructor arg | runner reads scope | small, contained |
+| Per-phase subagents | `phase_router` dispatch + `PhaseProfile` | handoff / shared-state orchestration | largest; profile carries per-phase config |
+| Tool catalog → YAML/TOML | catalog is pure data | factory reads a file | small, contained |
+
+The two real reworks — continuous-confidence γ and subagent orchestration — are
+both explicitly out of basic.
 ```
