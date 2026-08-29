@@ -135,6 +135,20 @@ async def test_redact_replaces_shown_text_with_a_withheld_notice(quiet_app) -> N
         assert entry.redacted is True
 
 
+async def test_narration_redacted_replaces_the_shown_text(quiet_app) -> None:
+    from cism.tui.events import NarrationRedacted
+
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        agent.events.put_nowait(Narration("e1", "some streamed text"))
+        await settle(pilot)
+        agent.events.put_nowait(NarrationRedacted("e1", "blocked: contains a secret"))
+        await settle(pilot)
+        entry = app.transcript.narration("e1")
+        assert entry.text == "blocked: contains a secret"
+        assert entry.redacted is True
+
+
 async def test_last_collapsible_picks_the_more_recent_of_tool_and_narration(
     quiet_app,
 ) -> None:
