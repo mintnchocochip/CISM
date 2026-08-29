@@ -269,3 +269,79 @@ async def test_a_blocked_action_never_reaches_the_tool(tmp_path, monkeypatch) ->
     assert all("scope violation" in e.reason for e in failures)
     assert not any(isinstance(e, ToolFinished) for e in events)
     await agent.aclose()
+
+
+async def test_api_command_rebuilds_the_connector(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CISM_LLM_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("CISM_LLM_MODEL", "qwen2.5:3b")
+    monkeypatch.setenv("CISM_API_KEY", "ollama")
+    agent = LangGraphAgent()
+
+    await agent.submit("/api http://localhost:9999/v1")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, SessionState)
+    assert event.endpoint == "http://localhost:9999/v1"
+    assert agent._endpoint == "http://localhost:9999/v1"
+    assert agent._model_name == "qwen2.5:3b"  # unchanged
+
+
+async def test_model_command_rebuilds_the_connector(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CISM_LLM_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("CISM_LLM_MODEL", "qwen2.5:3b")
+    monkeypatch.setenv("CISM_API_KEY", "ollama")
+    agent = LangGraphAgent()
+
+    await agent.submit("/model llama3.1")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, SessionState)
+    assert event.model == "llama3.1"
+    assert agent._endpoint == "http://localhost:11434/v1"  # unchanged
+
+
+async def test_bare_model_command_just_reports_session_state(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CISM_LLM_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("CISM_LLM_MODEL", "qwen2.5:3b")
+    monkeypatch.setenv("CISM_API_KEY", "ollama")
+    agent = LangGraphAgent()
+
+    await agent.submit("/model")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, SessionState)
+    assert event.model == "qwen2.5:3b"
+
+
+async def test_api_command_refuses_when_still_on_dummy(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("CISM_LLM_BASE_URL", raising=False)
+    agent = LangGraphAgent()
+
+    await agent.submit("/api http://localhost:11434/v1")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, Narration)
+    assert "nothing to re-point" in event.text
+    assert agent._endpoint == "local (dummy)"
+
+
+async def test_api_command_with_missing_key_env_var_leaves_prior_config_intact(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CISM_LLM_BASE_URL", "http://localhost:11434/v1")
+    monkeypatch.setenv("CISM_LLM_MODEL", "qwen2.5:3b")
+    monkeypatch.setenv("CISM_API_KEY", "ollama")
+    agent = LangGraphAgent()
+    monkeypatch.delenv("CISM_API_KEY")
+
+    await agent.submit("/api http://localhost:9999/v1")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, Narration)
+    assert "CISM_API_KEY" in event.text
+    assert agent._endpoint == "http://localhost:11434/v1"  # unchanged
