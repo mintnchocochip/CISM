@@ -11,8 +11,8 @@ import asyncio
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
 from cism.agent import LangGraphAgent
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam, PassThroughStage
@@ -23,6 +23,7 @@ from cism.tui.events import (
     Interrupted,
     ModelInfo,
     Narration,
+    NarrationRedacted,
     PhaseChanged,
     RunFinished,
     RunStarted,
@@ -345,3 +346,68 @@ async def test_api_command_with_missing_key_env_var_leaves_prior_config_intact(
     assert isinstance(event, Narration)
     assert "CISM_API_KEY" in event.text
     assert agent._endpoint == "http://localhost:11434/v1"  # unchanged
+
+
+class _StreamingChatModel(BaseChatModel):
+    """Like tests/test_nodes.py's fake of the same name, plus a no-op
+    bind_tools so it survives LangGraphAgent's tool-binding step — the
+    tests here exercise a plain answer, never a tool call."""
+
+    chunks: list = []
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-streaming-chat-model-core"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        return ChatResult(
+            generations=[ChatGeneration(message=AIMessage(content="".join(self.chunks)))]
+        )
+
+    async def _astream(self, messages, stop=None, run_manager=None, **kwargs):
+        for piece in self.chunks:
+            yield ChatGenerationChunk(message=AIMessageChunk(content=piece))
+
+    def bind_tools(self, tools, *, tool_choice=None, **kwargs):
+        return self
+
+
+async def test_final_answer_streams_as_multiple_events_then_one_close(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    llm = _StreamingChatModel(chunks=["Scan ", "complete."])
+    agent = LangGraphAgent(llm=llm)
+
+    events = await _run_to_completion(agent, "scan it")
+
+    narrations = [e for e in events if isinstance(e, Narration)]
+    assert len(narrations) >= 2
+    assert all(n.entry_id == narrations[0].entry_id for n in narrations)
+    assert [n.done for n in narrations] == [False] * (len(narrations) - 1) + [True]
+    assert narrations[-1].text == ""
+    assert "".join(n.text for n in narrations) == "Scan complete."
+
+
+async def test_guardrail_rewrite_emits_narration_redacted_instead_of_close(
+    tmp_path, monkeypatch
+) -> None:
+    from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam, PassThroughStage
+
+    class _BlockEverything:
+        def run(self, value):
+            return GuardrailResult(allowed=False, value=value, reason="test block")
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    llm = _StreamingChatModel(chunks=["Scan ", "complete."])
+    guardrails = GuardrailSeam(
+        input=GuardrailChain([PassThroughStage()]),
+        action=GuardrailChain([PassThroughStage()]),
+        output=_BlockEverything(),
+    )
+    agent = LangGraphAgent(llm=llm, guardrails=guardrails)
+
+    events = await _run_to_completion(agent, "scan it")
+
+    redacted = [e for e in events if isinstance(e, NarrationRedacted)]
+    assert len(redacted) == 1
+    assert "test block" in redacted[0].reason
+    assert not any(isinstance(e, Narration) and e.done for e in events)
