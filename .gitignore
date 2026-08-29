@@ -219,3 +219,6 @@ __marimo__/
 
 # Textual snapshot test report (regenerated on every failing run)
 snapshot_report.html
+
+# Subagent-driven-development progress ledger (scratch, not part of history)
+.superpowers/
