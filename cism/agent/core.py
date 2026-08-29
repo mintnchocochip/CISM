@@ -15,6 +15,7 @@ step — this module is tested standalone.
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 from typing import Any
 
@@ -24,7 +25,7 @@ from langchain_core.messages.tool import ToolCall
 
 from cism.agent.graph import build_graph
 from cism.agent.guardrails import GuardrailSeam
-from cism.agent.llm import DummyChatModel
+from cism.agent.llm import DummyChatModel, build_chat_model
 from cism.agent.logging import get_agent_logger
 from cism.agent.state import Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
@@ -35,10 +36,12 @@ from cism.tui.events import (
     DEPGNode,
     DEPGUpdated,
     Interrupted,
+    ModelInfo,
     Narration,
     PhaseChanged,
     RunFinished,
     RunStarted,
+    SessionState,
     ToolFailed,
     ToolFinished,
     ToolStarted,
@@ -63,6 +66,18 @@ def _bind_tools_if_supported(llm: BaseChatModel, tools: ToolRegistry) -> BaseCha
         return llm
 
 
+def _llm_from_env() -> tuple[BaseChatModel, str, str, str]:
+    """Real connector if the environment describes one, Dummy otherwise.
+    Never raises: an unconfigured environment is a valid, common case
+    (every test in this repo runs in one), not an error."""
+    base_url = os.environ.get("CISM_LLM_BASE_URL", "")
+    model = os.environ.get("CISM_LLM_MODEL", "")
+    key_env_var = os.environ.get("CISM_LLM_KEY_ENV_VAR", "CISM_API_KEY")
+    if base_url and model:
+        return build_chat_model(base_url, key_env_var, model), base_url, model, key_env_var
+    return DummyChatModel(), "local (dummy)", "", ""
+
+
 class LangGraphAgent:
     """Satisfies ``cism.tui.events.Agent``. All dependencies default to the
     dummy/no-op stubs so the loop can be validated with no lab, no weights,
@@ -75,9 +90,18 @@ class LangGraphAgent:
         guardrails: GuardrailSeam | None = None,
         extractors: ExtractorRegistry | None = None,
         target: str = "",
+        endpoint: str = "",
+        model_name: str = "",
+        key_env_var: str = "",
     ) -> None:
         self.events: asyncio.Queue[AgentEvent] = asyncio.Queue()
-        self._llm = llm or DummyChatModel()
+        if llm is None:
+            self._llm, self._endpoint, self._model_name, self._key_env_var = _llm_from_env()
+        else:
+            self._llm = llm
+            self._endpoint = endpoint
+            self._model_name = model_name
+            self._key_env_var = key_env_var
         self._tools = tools or ToolRegistry([dummy_nmap, dummy_msfconsole])
         self._guardrails = guardrails or GuardrailSeam.no_op()
         self._extractors = extractors or ExtractorRegistry({}, GenericExtractor())
@@ -93,8 +117,21 @@ class LangGraphAgent:
         self._last_depg: tuple[tuple[DEPGNode, ...], tuple[DEPGEdge, ...]] = ((), ())
 
     async def start(self) -> None:
-        """Nothing to warm up for a dummy backend. A real model/tool
-        backend would open its connections here."""
+        """Announce the session before any run, so the status bar reflects
+        what's actually running (dummy or real) even if nothing is
+        submitted yet."""
+        await self.events.put(self._session())
+
+    def _session(self) -> SessionState:
+        return SessionState(
+            model=self._model_name or "dummy",
+            models_available=(
+                (ModelInfo(self._model_name, loaded=True),) if self._model_name else ()
+            ),
+            endpoint=self._endpoint,
+            key_env_var=self._key_env_var,
+            key_present=bool(os.environ.get(self._key_env_var)) if self._key_env_var else False,
+        )
 
     async def submit(self, text: str) -> None:
         """Schedules the run as its own task and returns immediately, per
