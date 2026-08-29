@@ -70,6 +70,41 @@ async def test_think_node_accumulates_streamed_chunks_into_one_message() -> None
     assert update["messages"][0].content == "Scan of 10.0.0.5 complete."
 
 
+class _EmptyStreamChatModel(BaseChatModel):
+    """A model whose ``astream`` yields zero chunks — standing in for a
+    provider that errors mid-handshake or returns an empty completion.
+    Overrides the public ``astream`` directly (rather than ``_astream``)
+    to force truly zero iterations: ``BaseChatModel``'s own default
+    ``astream()`` wrapper raises ``ValueError("No generation chunks were
+    returned")`` itself when the underlying ``_astream`` yields nothing,
+    so going through ``_astream`` can't exercise the zero-chunk path this
+    test targets. Proves make_think_node's accumulation defaults to an
+    empty AIMessage instead of returning None, which would otherwise blow
+    up downstream in the "respond" node's ``str(last.content)``."""
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-empty-stream-chat-model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=""))])
+
+    async def astream(self, *args, **kwargs):
+        return
+        yield  # pragma: no cover - makes this an async generator with no items
+
+
+async def test_think_node_defaults_to_an_empty_message_when_the_stream_yields_nothing() -> None:
+    llm = _EmptyStreamChatModel()
+    think = make_think_node(llm)
+    state = _state([HumanMessage(content="scan it")])
+
+    update = await think(state)
+
+    assert update["messages"][0] is not None
+    assert update["messages"][0].content == ""
+
+
 async def test_think_node_still_works_against_a_non_streaming_model() -> None:
     llm = DummyChatModel()
     think = make_think_node(llm)
