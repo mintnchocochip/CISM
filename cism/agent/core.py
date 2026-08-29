@@ -137,10 +137,54 @@ class LangGraphAgent:
         """Schedules the run as its own task and returns immediately, per
         the Agent protocol's "must not block" contract. A new submission
         cancels one already in flight — same discipline the TUI's own
-        worker groups apply on its side."""
+        worker groups apply on its side. ``/api``/``/model`` are answered
+        directly instead of being scheduled as a graph run."""
+        if text.startswith("/"):
+            name, _, argument = text[1:].partition(" ")
+            if name in ("api", "model"):
+                await self._configure(name, argument.strip())
+                return
         if self._task is not None and not self._task.done():
             self._task.cancel()
         self._task = asyncio.create_task(self._run(text))
+
+    async def _configure(self, name: str, argument: str) -> None:
+        if argument and not self._key_env_var:
+            await self.events.put(
+                Narration(
+                    entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                    text=(
+                        "No live endpoint is configured for this run (still on "
+                        "the dummy backend) — nothing to re-point. Set "
+                        "CISM_LLM_BASE_URL/CISM_LLM_MODEL or restart with "
+                        "--base-url/--model."
+                    ),
+                    done=True,
+                )
+            )
+            return
+
+        if argument:
+            endpoint = argument if name == "api" else self._endpoint
+            model_name = argument if name == "model" else self._model_name
+            try:
+                llm = build_chat_model(endpoint, self._key_env_var, model_name)
+            except ValueError as exc:
+                await self.events.put(
+                    Narration(
+                        entry_id=f"cfg-{uuid.uuid4().hex[:8]}", text=str(exc), done=True
+                    )
+                )
+                return
+            self._llm = llm
+            self._endpoint = endpoint
+            self._model_name = model_name
+            bound_llm = _bind_tools_if_supported(self._llm, self._tools)
+            self._graph = build_graph(
+                bound_llm, self._tools, self._guardrails, self._extractors
+            )
+
+        await self.events.put(self._session())
 
     async def interrupt(self) -> None:
         if self._task is not None and not self._task.done():
