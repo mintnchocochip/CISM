@@ -55,8 +55,10 @@ DEFAULT_NEXT_PHASE: dict[Phase, Phase] = {
 
 
 def make_think_node(llm: BaseChatModel) -> Callable[[AgentState], dict]:
-    def think(state: AgentState) -> dict:
-        response = llm.invoke(state["messages"])
+    async def think(state: AgentState) -> dict:
+        response = None
+        async for chunk in llm.astream(state["messages"]):
+            response = chunk if response is None else response + chunk
         return {"messages": [response]}
 
     return think
