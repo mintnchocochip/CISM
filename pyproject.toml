@@ -15,6 +15,7 @@ dev = [
 agent = [
     "langgraph>=0.2",
     "langchain-core>=0.3",
+    "langchain-openai>=0.2",
 ]
 
 [build-system]
@@ -30,4 +31,5 @@ include = ["cism*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+pythonpath = ["."]
 filterwarnings = ["error::DeprecationWarning:cism.*"]

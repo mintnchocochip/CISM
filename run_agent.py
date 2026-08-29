@@ -3,24 +3,28 @@
 
 Unlike ``demo_replay.py`` this does not replay a recorded log — it drives
 ``cism.agent.LangGraphAgent`` live, through the same ``Agent`` protocol.
-Still a skeleton underneath, though: a canned ``DummyChatModel`` and two
-dummy tools, no real model, no real scanners, guardrails wired as
-pass-throughs. See ``cism/agent/`` for what's behind it and the design spec
-at ``docs/superpowers/specs/2026-08-15-agent-workflow-skeleton-design.md``
-for what isn't built yet.
 
-Requires the ``agent`` extra::
+With no flags, the agent falls back to whatever ``CISM_LLM_BASE_URL``/
+``CISM_LLM_MODEL`` say (or ``DummyChatModel`` if neither is set — see
+``cism/agent/core.py``). To point at a real OpenAI-compatible server
+(llama.cpp, vLLM, LM Studio, real OpenAI, or Ollama's ``/v1`` endpoint)
+without touching the environment::
 
     .venv/bin/pip install -e ".[dev,agent]"
-    python run_agent.py
-    python run_agent.py --target 10.0.0.5
+    python run_agent.py --base-url http://localhost:11434/v1 --model qwen2.5:3b
+    python run_agent.py --target 10.0.0.5 --base-url http://localhost:11434/v1 --model qwen2.5:3b
+
+See ``cism/agent/`` for what's behind it and the design spec at
+``docs/superpowers/specs/2026-08-29-real-llm-connector-wiring-design.md``.
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 
 from cism.agent import LangGraphAgent
+from cism.agent.llm import build_chat_model
 from cism.tui.app import CISMApp
 
 
@@ -29,12 +33,44 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--target", default="", help="initial target context, e.g. 10.0.0.5"
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--base-url",
+        default="",
+        help="OpenAI-compatible endpoint, e.g. http://localhost:11434/v1",
+    )
+    parser.add_argument("--model", default="", help="model name/id on that server")
+    parser.add_argument(
+        "--key-env-var",
+        default="CISM_API_KEY",
+        help="name of the env var holding the API key (default: CISM_API_KEY)",
+    )
+    args = parser.parse_args(argv)
+    if args.base_url and not args.model:
+        parser.error("--base-url requires --model")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    agent = LangGraphAgent(target=args.target)
+    if args.base_url:
+        llm = build_chat_model(args.base_url, args.key_env_var, args.model)
+        agent = LangGraphAgent(
+            llm=llm,
+            target=args.target,
+            endpoint=args.base_url,
+            model_name=args.model,
+            key_env_var=args.key_env_var,
+        )
+    else:
+        agent = LangGraphAgent(target=args.target)
+
+    if agent._endpoint == "local (dummy)":
+        print(
+            "No real endpoint configured — running against the dummy backend.\n"
+            "Pass --base-url/--model, or set CISM_LLM_BASE_URL/CISM_LLM_MODEL.",
+            file=sys.stderr,
+        )
+
     CISMApp(agent).run()
     return 0
 

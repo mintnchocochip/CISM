@@ -5,7 +5,7 @@ stub versions or real ones later.
 
 ::
 
-    entry -> think ── llm.invoke() (input guardrail already ran in core.py)
+    entry -> think ── llm.astream(), accumulated into one message (input guardrail already ran in core.py)
                │
        tool_calls in response, under the turn cap?
                │no ──▶ respond ── output_chain runs on final text ──▶ END

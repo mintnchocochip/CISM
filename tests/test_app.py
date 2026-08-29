@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from conftest import drain, replay_all, settle
 
-from cism.tui.events import Narration, ToolStarted
+from cism.tui.events import Narration, ToolFinished, ToolStarted
 from cism.tui.redact import MASK
 from cism.tui.widgets.depg_modal import DEPGModal, DEPGTree
 from cism.tui.widgets.memory_modal import MemoryModal, MemoryTable
@@ -62,10 +62,23 @@ async def test_full_replay_builds_the_expected_transcript(app_and_agent) -> None
 # -- keybinds ---------------------------------------------------------------
 
 
-async def test_ctrl_o_toggles_the_last_tool_output(app_and_agent) -> None:
-    app, agent = app_and_agent
+# NOTE: unlike its sibling below, this uses ``quiet_app`` (not the full demo
+# replay) and pushes only tool events, with no narration after the tool call.
+# ``action_toggle_output`` now toggles ``last_collapsible()``, and in the demo
+# log's actual tail a narration entry (``n-wrap``) is created *after* the last
+# tool call, so replaying the full log would make ctrl+o hit that narration
+# entry instead of the curl tool entry, defeating this test's purpose. Here
+# the tool call is deliberately kept as the most-recently-created collapsible
+# entry, so this still verifies ctrl+o reaches ``last_tool()`` when it is also
+# ``last_collapsible()`` -- see
+# ``test_ctrl_o_toggles_the_last_narration_when_it_is_more_recent`` for the
+# narration-is-more-recent case.
+async def test_ctrl_o_toggles_the_last_tool_output(quiet_app) -> None:
+    app, agent = quiet_app
     async with app.run_test(size=(100, 30)) as pilot:
-        await replay_all(pilot, agent)
+        agent.events.put_nowait(ToolStarted("c-curl", "curl", "-s http://10.0.0.5/"))
+        agent.events.put_nowait(ToolFinished("c-curl", "done", 3))
+        await settle(pilot)
         last = app.transcript.last_tool()
         assert last is not None and last.tool == "curl"
         await pilot.press("ctrl+o")
@@ -74,6 +87,24 @@ async def test_ctrl_o_toggles_the_last_tool_output(app_and_agent) -> None:
         await pilot.press("ctrl+o")
         await settle(pilot, 8)
         assert last.expanded is False
+
+
+async def test_ctrl_o_toggles_the_last_narration_when_it_is_more_recent(
+    app_and_agent,
+) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(100, 30)) as pilot:
+        await replay_all(pilot, agent)
+        last = app.transcript.last_collapsible()
+        from cism.tui.widgets.transcript import NarrationEntry
+
+        assert isinstance(last, NarrationEntry)
+        await pilot.press("ctrl+o")
+        await settle(pilot, 8)
+        assert last.expanded is False
+        await pilot.press("ctrl+o")
+        await settle(pilot, 8)
+        assert last.expanded is True
 
 
 async def test_ctrl_d_opens_and_escape_closes_the_depg_view(app_and_agent) -> None:
