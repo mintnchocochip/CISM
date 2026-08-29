@@ -11,15 +11,15 @@ from __future__ import annotations
 import pytest
 from langchain_openai import ChatOpenAI
 
-from cism.agent.llm import make_openai_compatible_chat_model
+from cism.agent.llm import build_chat_model
 
 
 def test_missing_api_key_env_var_raises_rather_than_silently_using_none(monkeypatch) -> None:
     monkeypatch.delenv("CISM_TEST_MODEL_KEY", raising=False)
     with pytest.raises(ValueError, match="CISM_TEST_MODEL_KEY"):
-        make_openai_compatible_chat_model(
+        build_chat_model(
             base_url="http://localhost:8080/v1",
-            api_key_env_var="CISM_TEST_MODEL_KEY",
+            key_env_var="CISM_TEST_MODEL_KEY",
             model="some-model",
         )
 
@@ -27,9 +27,9 @@ def test_missing_api_key_env_var_raises_rather_than_silently_using_none(monkeypa
 def test_builds_a_chat_openai_pointed_at_the_given_endpoint(monkeypatch) -> None:
     monkeypatch.setenv("CISM_TEST_MODEL_KEY", "sk-placeholder")
 
-    model = make_openai_compatible_chat_model(
+    model = build_chat_model(
         base_url="http://localhost:8080/v1",
-        api_key_env_var="CISM_TEST_MODEL_KEY",
+        key_env_var="CISM_TEST_MODEL_KEY",
         model="local-llama",
     )
 
@@ -44,9 +44,9 @@ def test_ollamas_openai_compatible_endpoint_uses_the_same_construction_path(monk
     at it takes no special-casing, just a different base_url/model."""
     monkeypatch.setenv("CISM_TEST_OLLAMA_KEY", "ollama")
 
-    model = make_openai_compatible_chat_model(
+    model = build_chat_model(
         base_url="http://localhost:11434/v1",
-        api_key_env_var="CISM_TEST_OLLAMA_KEY",
+        key_env_var="CISM_TEST_OLLAMA_KEY",
         model="llama3.1",
     )
 
@@ -57,9 +57,9 @@ def test_ollamas_openai_compatible_endpoint_uses_the_same_construction_path(monk
 def test_extra_kwargs_pass_through_to_chat_openai(monkeypatch) -> None:
     monkeypatch.setenv("CISM_TEST_MODEL_KEY", "sk-placeholder")
 
-    model = make_openai_compatible_chat_model(
+    model = build_chat_model(
         base_url="http://localhost:8080/v1",
-        api_key_env_var="CISM_TEST_MODEL_KEY",
+        key_env_var="CISM_TEST_MODEL_KEY",
         model="local-llama",
         temperature=0.2,
     )
