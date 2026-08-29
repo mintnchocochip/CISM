@@ -33,6 +33,7 @@ from .events import (
     MemoryUpdated,
     ModelInfo,
     Narration,
+    NarrationRedacted,
     PhaseChanged,
     RunFinished,
     RunStarted,
@@ -201,6 +202,9 @@ class CISMApp(App[None]):
                 entry.append(event.text)
             if event.done:
                 entry.finish()
+
+        elif isinstance(event, NarrationRedacted):
+            transcript.narration(event.entry_id).redact(event.reason)
 
         elif isinstance(event, ToolStarted):
             transcript.add_tool(event.call_id, event.tool, event.args)
@@ -487,7 +491,7 @@ class CISMApp(App[None]):
         self.push_screen(MemoryModal(self.memory_rows, self.memory_terms))
 
     def action_toggle_output(self) -> None:
-        entry = self.transcript.last_tool()
+        entry = self.transcript.last_collapsible()
         if entry is not None:
             entry.toggle()
 
