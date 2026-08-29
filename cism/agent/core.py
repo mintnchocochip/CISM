@@ -38,6 +38,7 @@ from cism.tui.events import (
     Interrupted,
     ModelInfo,
     Narration,
+    NarrationRedacted,
     PhaseChanged,
     RunFinished,
     RunStarted,
@@ -224,13 +225,38 @@ class LangGraphAgent:
         }
 
         pending_calls: dict[str, ToolCall] = {}
+        streamed: dict[str, str] = {"text": ""}
         ok = True
         try:
-            async for step in self._graph.astream(initial_state, stream_mode="updates"):
-                for node, update in step.items():
+            async for stream_mode, payload in self._graph.astream(
+                initial_state, stream_mode=["updates", "messages"]
+            ):
+                if stream_mode == "messages":
+                    chunk, metadata = payload
+                    # "messages" mode carries two shapes: token-level chat
+                    # model deltas from "think" (what we want to narrate
+                    # progressively), and the complete final message every
+                    # node returns (including "respond"'s already-guarded
+                    # answer) — LangGraph emits both over this channel. Only
+                    # the "think" node is a real streaming source here, so
+                    # anything else is a duplicate of state we already
+                    # translate via the "updates" branch below and must be
+                    # skipped, or "respond"'s text would double up in
+                    # ``streamed["text"]`` and desync the guardrail-mismatch
+                    # comparison below.
+                    if metadata.get("langgraph_node") != "think":
+                        continue
+                    content = getattr(chunk, "content", "")
+                    if content:
+                        streamed["text"] += content
+                        await self.events.put(
+                            Narration(entry_id=f"{run_id}-final", text=content, done=False)
+                        )
+                    continue
+                for node, update in payload.items():
                     if not update:
                         continue
-                    await self._translate(node, update, run_id, pending_calls)
+                    await self._translate(node, update, run_id, pending_calls, streamed)
         except Exception as exc:  # a graph-loop failure is content, not a crash
             ok = False
             await self.events.put(
@@ -245,6 +271,7 @@ class LangGraphAgent:
         update: dict[str, Any],
         run_id: str,
         pending_calls: dict[str, ToolCall],
+        streamed: dict[str, str],
     ) -> None:
         if node == "think":
             for message in update.get("messages", []):
@@ -286,6 +313,12 @@ class LangGraphAgent:
 
         elif node == "respond":
             for message in update.get("messages", []):
-                await self.events.put(
-                    Narration(entry_id=f"{run_id}-final", text=str(message.content), done=True)
-                )
+                entry_id = f"{run_id}-final"
+                final_text = str(message.content)
+                if final_text != streamed["text"]:
+                    await self.events.put(
+                        NarrationRedacted(entry_id=entry_id, reason=final_text)
+                    )
+                else:
+                    await self.events.put(Narration(entry_id=entry_id, text="", done=True))
+                streamed["text"] = ""
