@@ -47,13 +47,13 @@ def test_a_successful_tool_call_produces_a_depg_node_for_the_target() -> None:
     assert node.evidence
 
 
-def test_an_errored_tool_call_produces_no_node() -> None:
+def test_an_errored_tool_call_now_produces_a_node_instead_of_being_dropped() -> None:
     ai, result = _tool_round("call-1", "dummy_nmap", "boom", error=True)
     state = _state([HumanMessage(content="scan it"), ai, result])
 
     update = _depg_update()(state)
 
-    assert update["depg_nodes"] == {}
+    assert len(update["depg_nodes"]) == 1
 
 
 def test_multiple_tool_calls_in_one_step_each_produce_their_own_node() -> None:
@@ -87,4 +87,53 @@ def test_nodes_found_on_an_earlier_step_survive_a_step_with_no_new_evidence() ->
 
     update = depg_update(second_state)
 
-    assert update["depg_nodes"].keys() == first["depg_nodes"].keys()
+    assert update["depg_nodes"].keys() >= first["depg_nodes"].keys()
+
+
+def test_a_failed_tool_call_now_produces_a_blocked_tombstone_node() -> None:
+    ai, result = _tool_round("call-1", "dummy_nmap", "boom", error=True)
+    state = _state([HumanMessage(content="scan it"), ai, result])
+
+    update = _depg_update()(state)
+
+    assert len(update["depg_nodes"]) == 1
+    node = next(iter(update["depg_nodes"].values()))
+    assert node.state == "blocked"
+
+
+def test_a_second_call_on_the_same_target_gets_an_edge_from_the_first() -> None:
+    depg_update = _depg_update()
+    ai1, result1 = _tool_round("call-1", "dummy_nmap", "ok")
+    first = depg_update(_state([HumanMessage(content="scan it"), ai1, result1]))
+
+    ai2, result2 = _tool_round("call-2", "dummy_msfconsole", "ok too")
+    second_state = _state(
+        [HumanMessage(content="scan it"), ai1, result1, ai2, result2],
+        depg_nodes=first["depg_nodes"], depg_edges=first["depg_edges"],
+    )
+    update = depg_update(second_state)
+
+    assert len(update["depg_edges"]) == 1
+
+
+def test_nodes_produced_in_the_same_step_do_not_link_to_each_other() -> None:
+    """Two sibling ports from one nmap-shaped call must not chain A -> B."""
+    from cism.depg import ExtractorRegistry
+    from cism.depg.extractors import NmapExtractor
+
+    depg_update = make_depg_update_node(
+        ExtractorRegistry({"nmap": NmapExtractor()}, GenericExtractor())
+    )
+    ai = AIMessage(
+        content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {"target": "10.0.0.5"}}]
+    )
+    result = ToolMessage(
+        content="22/tcp   open  ssh\n80/tcp   open  http\n",
+        tool_call_id="c1", name="nmap",
+    )
+    state = _state([HumanMessage(content="scan it"), ai, result])
+
+    update = depg_update(state)
+
+    assert len(update["depg_nodes"]) == 2
+    assert update["depg_edges"] == []
