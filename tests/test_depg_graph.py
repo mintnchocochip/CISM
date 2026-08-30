@@ -186,3 +186,60 @@ def test_last_for_target_tracks_the_most_recently_touched_node() -> None:
     graph.upsert_node(Node(id="b", cause_class="c", target="10.0.0.5", signal="b"))
 
     assert graph.last_for_target["10.0.0.5"] == "b"
+
+
+def _blocked(id: str, target: str = "t") -> Node:
+    node = Node(id=id, cause_class="c", target=target, signal=id, state="blocked")
+    return node
+
+
+def test_prune_collapses_a_fully_blocked_chain_into_one_marker() -> None:
+    graph = Graph()
+    graph.nodes = {"a": _blocked("a"), "b": _blocked("b"), "c": _blocked("c")}
+    graph.add_edge(Edge(parent="a", child="b"))
+    graph.add_edge(Edge(parent="b", child="c"))
+
+    graph.prune()
+
+    assert set(graph.nodes) - {"a", "b", "c"}
+    assert not ({"a", "b", "c"} & set(graph.nodes))
+    (marker,) = graph.nodes.values()
+    assert marker.cause_class == "dead-region"
+    assert marker.state == "blocked"
+    assert "a" in marker.evidence[-1].exit_signal
+    assert "b" in marker.evidence[-1].exit_signal
+    assert "c" in marker.evidence[-1].exit_signal
+
+
+def test_prune_leaves_a_region_alone_if_it_still_feeds_a_live_node() -> None:
+    graph = Graph()
+    graph.nodes = {
+        "a": _blocked("a"),
+        "b": _blocked("b"),
+        "live": Node(id="live", cause_class="c", target="t", signal="live", state="resolved"),
+    }
+    graph.add_edge(Edge(parent="a", child="b"))
+    graph.add_edge(Edge(parent="b", child="live"))
+
+    graph.prune()
+
+    assert {"a", "b", "live"} == set(graph.nodes)
+
+
+def test_prune_rewires_a_live_ancestor_edge_onto_the_marker() -> None:
+    graph = Graph()
+    graph.nodes = {
+        "live": Node(id="live", cause_class="c", target="t", signal="live", state="resolved"),
+        "a": _blocked("a"),
+        "b": _blocked("b"),
+    }
+    graph.add_edge(Edge(parent="live", child="a"))
+    graph.add_edge(Edge(parent="a", child="b"))
+
+    graph.prune()
+
+    remaining_ids = set(graph.nodes) - {"live"}
+    (marker_id,) = remaining_ids
+    assert Edge(parent="live", child=marker_id) in [
+        Edge(parent=e.parent, child=e.child) for e in graph.edges
+    ]
