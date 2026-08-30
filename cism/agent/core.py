@@ -28,6 +28,7 @@ from cism.agent.graph import build_graph
 from cism.agent.guardrails import GuardrailSeam
 from cism.agent.llm import DummyChatModel, build_chat_model
 from cism.agent.logging import get_agent_logger
+from cism.agent.profiles import PhaseProfiles, default_profiles
 from cism.agent.state import Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
 from cism.depg import ExtractorRegistry, GenericExtractor
@@ -54,22 +55,6 @@ from cism.tui.events import (
 __all__ = ["LangGraphAgent"]
 
 
-def _bind_tools_if_supported(llm: BaseChatModel, tools: ToolRegistry) -> BaseChatModel:
-    """The think node needs a model bound to the registry's tool schemas to
-    get real tool selection out of it, but ``DummyChatModel`` was never
-    built to support that — it hand-constructs ``tool_calls`` and inherits
-    ``BaseChatModel.bind_tools``'s default, which raises ``NotImplementedError``.
-    Rather than special-case that one class by name (or touch it to add a
-    no-op override, which isn't this module's file to change), any model
-    that can't be bound is used unbound — so the dummy default keeps working
-    exactly as before, and any future non-tool-calling model degrades the
-    same way instead of crashing agent construction."""
-    try:
-        return llm.bind_tools(tools.all())
-    except NotImplementedError:
-        return llm
-
-
 def _llm_from_env() -> tuple[BaseChatModel, str, str, str]:
     """Real connector if the environment describes one, Dummy otherwise.
     Never raises: an unconfigured environment is a valid, common case
@@ -93,6 +78,7 @@ class LangGraphAgent:
         tools: ToolRegistry | None = None,
         guardrails: GuardrailSeam | None = None,
         extractors: ExtractorRegistry | None = None,
+        profiles: PhaseProfiles | None = None,
         target: str = "",
         endpoint: str = "",
         model_name: str = "",
@@ -109,8 +95,10 @@ class LangGraphAgent:
         self._tools = tools or ToolRegistry([dummy_nmap, dummy_msfconsole])
         self._guardrails = guardrails or GuardrailSeam.no_op()
         self._extractors = extractors or ExtractorRegistry({}, GenericExtractor())
-        bound_llm = _bind_tools_if_supported(self._llm, self._tools)
-        self._graph = build_graph(bound_llm, self._tools, self._guardrails, self._extractors)
+        self._profiles = profiles or default_profiles(self._tools)
+        self._graph = build_graph(
+            self._llm, self._tools, self._guardrails, self._extractors, self._profiles
+        )
         self._phase = PhaseStateMachine(Phase.RECON)
         self._target = target
         self._task: asyncio.Task[None] | None = None
@@ -183,13 +171,12 @@ class LangGraphAgent:
             self._llm = llm
             self._endpoint = endpoint
             self._model_name = model_name
-            bound_llm = _bind_tools_if_supported(self._llm, self._tools)
             # This reassignment takes effect on the *next* submit(), not one
             # already in flight: an in-progress _run()'s astream() iteration
             # was already handed the old self._graph object and keeps
             # pulling from it regardless of what self._graph points to now.
             self._graph = build_graph(
-                bound_llm, self._tools, self._guardrails, self._extractors
+                self._llm, self._tools, self._guardrails, self._extractors, self._profiles
             )
 
         await self.events.put(self._session())
