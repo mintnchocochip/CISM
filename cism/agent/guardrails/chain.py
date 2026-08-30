@@ -55,6 +55,10 @@ class GuardrailChain(Generic[T]):
     def __init__(self, stages: list[GuardrailStage[T]]) -> None:
         self._stages = list(stages)
 
+    @property
+    def stages(self) -> list[GuardrailStage[T]]:
+        return list(self._stages)
+
     def run(self, value: T) -> GuardrailResult[T]:
         current = value
         for stage in self._stages:
