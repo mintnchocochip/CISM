@@ -72,3 +72,10 @@ def test_guardrail_seam_no_op_passes_everything_through() -> None:
     assert seam.output.run("text").allowed
     call = {"name": "dummy_nmap", "args": {"target": "10.0.0.5"}, "id": "c1", "type": "tool_call"}
     assert seam.action.run(call).allowed
+
+
+def test_stages_exposes_the_chains_stage_list() -> None:
+    stage = PassThroughStage()
+    chain = GuardrailChain([stage])
+
+    assert chain.stages == [stage]
