@@ -21,6 +21,7 @@ from cism.tui.events import (
     Agent,
     DEPGUpdated,
     Interrupted,
+    MemoryUpdated,
     ModelInfo,
     Narration,
     NarrationRedacted,
@@ -269,6 +270,19 @@ async def test_a_blocked_action_never_reaches_the_tool(tmp_path, monkeypatch) ->
     assert failures
     assert all("scope violation" in e.reason for e in failures)
     assert not any(isinstance(e, ToolFinished) for e in events)
+    await agent.aclose()
+
+
+async def test_a_live_run_emits_memory_updated(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent(target="10.0.0.5")
+    await agent.start()
+
+    events = await _run_to_completion(agent, "scan 10.0.0.5")
+
+    memory_events = [e for e in events if isinstance(e, MemoryUpdated)]
+    assert memory_events
+    assert memory_events[-1].rows
     await agent.aclose()
 
 
