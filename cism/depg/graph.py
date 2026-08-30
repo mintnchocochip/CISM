@@ -1,6 +1,6 @@
 """cism/depg/graph.py — the agent's mutable working copy of the DEPG: node
 identity/merge, edges with cycle rejection, and the dirty-frontier state
-settle. Pruning of fully-dead regions is Task 5, in this same file.
+settle, plus pruning of fully-dead regions.
 """
 
 from __future__ import annotations
@@ -8,6 +8,7 @@ from __future__ import annotations
 from collections import deque
 
 from cism.depg.edge import Edge
+from cism.depg.evidence import Evidence
 from cism.depg.node import Node
 from cism.depg.reducer import BinarySupport, SupportPolicy, reduce_state
 from cism.tui.events import DEPGEdge, DEPGNode
@@ -107,6 +108,84 @@ class Graph:
                 if child not in queued:
                     queued.add(child)
                     frontier.append(child)
+
+    def prune(self) -> None:
+        """Collapses a maximal weakly-connected all-BLOCKED region into one
+        dead-region marker, as long as nothing outside still depends on it.
+        Provenance is never deleted, only summarized."""
+        blocked = {nid for nid, n in self.nodes.items() if n.state == "blocked"}
+        visited: set[str] = set()
+        for start in list(blocked):
+            if start in visited:
+                continue
+            component = self._weakly_connected(start, blocked)
+            visited |= component
+            if self._has_edge_to_outside_non_blocked(component):
+                continue
+            self._collapse(component)
+
+    def _weakly_connected(self, start: str, universe: set[str]) -> set[str]:
+        seen = {start}
+        queue = deque([start])
+        while queue:
+            current = queue.popleft()
+            neighbors = self._children.get(current, []) + self._parents.get(current, [])
+            for neighbor in neighbors:
+                if neighbor in universe and neighbor not in seen:
+                    seen.add(neighbor)
+                    queue.append(neighbor)
+        return seen
+
+    def _has_edge_to_outside_non_blocked(self, component: set[str]) -> bool:
+        for node_id in component:
+            for child in self._children.get(node_id, []):
+                if child not in component and self.nodes[child].state != "blocked":
+                    return True
+        return False
+
+    def _collapse(self, component: set[str]) -> None:
+        members = sorted(component)
+        first = self.nodes[members[0]]
+        joined = "+".join(members)
+        marker_id = f"pruned:{first.target}:{joined}"
+        marker = Node(
+            id=marker_id,
+            cause_class="dead-region",
+            target=first.target,
+            signal=joined,
+            state="blocked",
+            evidence=[
+                Evidence(
+                    timestamp=first.evidence[-1].timestamp if first.evidence else "",
+                    tool="prune",
+                    exit_signal=f"collapsed {len(members)} dead nodes: {', '.join(members)}",
+                    tier="T3",
+                    verdict="dead",
+                )
+            ],
+        )
+
+        kept_edges: list[Edge] = []
+        for e in self.edges:
+            parent_in, child_in = e.parent in component, e.child in component
+            if parent_in and child_in:
+                continue
+            if parent_in:
+                kept_edges.append(Edge(parent=marker_id, child=e.child, weight=e.weight))
+            elif child_in:
+                kept_edges.append(Edge(parent=e.parent, child=marker_id, weight=e.weight))
+            else:
+                kept_edges.append(e)
+        self.edges = kept_edges
+
+        for node_id in members:
+            del self.nodes[node_id]
+        self.nodes[marker_id] = marker
+
+        self._children = {}
+        self._parents = {}
+        for e in self.edges:
+            self._index_edge(e)
 
     def roots(self) -> list[Node]:
         """Nodes with no incoming edge."""
