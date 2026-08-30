@@ -1,0 +1,67 @@
+"""cism/agent/tools/base.py: render_argv is pure; build_catalog wires each
+row through run_sandboxed and carries its capability tag."""
+
+from __future__ import annotations
+
+from unittest.mock import patch
+
+from cism.agent.tools.base import build_catalog, render_argv
+from cism.agent.tools.catalog import Flag, ToolSpec
+
+
+def test_render_argv_places_a_bool_flag_and_a_value_flag() -> None:
+    spec = ToolSpec(
+        binary="nmap", capability="reads", description="d",
+        flags={"ports": Flag("-p"), "service": Flag("-sV", "bool")},
+    )
+    argv = render_argv(spec, "10.0.0.5", ports="1-1000", service=True)
+
+    assert argv == ["-p", "1-1000", "-sV", "10.0.0.5"]
+
+
+def test_render_argv_omits_an_unset_bool_flag() -> None:
+    spec = ToolSpec(
+        binary="nmap", capability="reads", description="d",
+        flags={"service": Flag("-sV", "bool")},
+    )
+    argv = render_argv(spec, "10.0.0.5", service=False)
+
+    assert argv == ["10.0.0.5"]
+
+
+def test_render_argv_places_target_behind_its_flag_when_not_positional() -> None:
+    spec = ToolSpec(binary="nikto", capability="reads", description="d", target="-host")
+    argv = render_argv(spec, "10.0.0.5")
+
+    assert argv == ["-host", "10.0.0.5"]
+
+
+def test_render_argv_appends_extra_only_when_allow_raw() -> None:
+    spec = ToolSpec(binary="nmap", capability="reads", description="d", allow_raw=True)
+    argv = render_argv(spec, "10.0.0.5", extra="--top-ports 20")
+
+    assert argv == ["--top-ports", "20", "10.0.0.5"]
+
+
+def test_build_catalog_produces_one_tool_per_row_with_its_capability() -> None:
+    catalog = {
+        "nikto": ToolSpec(binary="nikto", capability="reads", description="d", target="-host")
+    }
+    (tool,) = build_catalog(catalog)
+
+    assert tool.name == "nikto"
+    assert tool.metadata["capability"] == "reads"
+
+
+def test_a_built_tool_routes_through_run_sandboxed() -> None:
+    catalog = {
+        "nikto": ToolSpec(binary="nikto", capability="reads", description="d", target="-host")
+    }
+    (tool,) = build_catalog(catalog)
+
+    with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
+        result = tool.invoke({"target": "10.0.0.5"})
+
+    assert result == "ok"
+    mock_run.assert_called_once()
+    assert mock_run.call_args.args[0] == ["nikto", "-host", "10.0.0.5"]
