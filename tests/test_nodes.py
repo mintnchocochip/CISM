@@ -7,13 +7,42 @@ what earlier steps already found.
 from __future__ import annotations
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
 from cism.agent.llm import DummyChatModel
 from cism.agent.nodes import make_depg_update_node, make_think_node
+from cism.agent.profiles import PhaseProfile, PhaseProfiles
 from cism.agent.state import Phase
+from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
 from cism.depg import ExtractorRegistry, GenericExtractor
+
+#: The three plain think-node tests below don't care about phase-scoped
+#: prompts/tools, just that make_think_node's streaming accumulation works
+#: — an empty-tools RECON profile is the minimal fixture for that.
+_NO_OP_PROFILES = PhaseProfiles(
+    {Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="", tool_names=frozenset())}
+)
+
+
+class _RecordingChatModelForNodesTest(BaseChatModel):
+    """The smallest model think() can drive: answers once, binds anything."""
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-recording-model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content="done"))])
+
+    def bind_tools(self, tools, **kwargs):
+        return self
 
 
 def _state(messages, depg_nodes=None, depg_edges=None) -> dict:
@@ -62,7 +91,7 @@ class _StreamingChatModel(BaseChatModel):
 
 async def test_think_node_accumulates_streamed_chunks_into_one_message() -> None:
     llm = _StreamingChatModel(chunks=["Scan ", "of ", "10.0.0.5 ", "complete."])
-    think = make_think_node(llm)
+    think = make_think_node(llm, ToolRegistry([]), _NO_OP_PROFILES)
     state = _state([HumanMessage(content="scan it")])
 
     update = await think(state)
@@ -96,7 +125,7 @@ class _EmptyStreamChatModel(BaseChatModel):
 
 async def test_think_node_defaults_to_an_empty_message_when_the_stream_yields_nothing() -> None:
     llm = _EmptyStreamChatModel()
-    think = make_think_node(llm)
+    think = make_think_node(llm, ToolRegistry([]), _NO_OP_PROFILES)
     state = _state([HumanMessage(content="scan it")])
 
     update = await think(state)
@@ -107,7 +136,7 @@ async def test_think_node_defaults_to_an_empty_message_when_the_stream_yields_no
 
 async def test_think_node_still_works_against_a_non_streaming_model() -> None:
     llm = DummyChatModel()
-    think = make_think_node(llm)
+    think = make_think_node(llm, ToolRegistry([]), _NO_OP_PROFILES)
     state = _state([HumanMessage(content="scan 10.0.0.5")])
 
     update = await think(state)
@@ -345,3 +374,39 @@ def test_memory_update_dedupes_a_recurring_narration_into_hits() -> None:
     assert len(update["memory_items"]) == 1
     (item,) = update["memory_items"].values()
     assert item.hits == 2
+
+
+async def test_think_binds_only_the_current_phases_tools() -> None:
+    recorded: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def bind_tools(self, tools, **kwargs):
+            recorded.append(list(tools))
+            return self
+
+    profiles = PhaseProfiles({
+        Phase.RECON: PhaseProfile(
+            phase=Phase.RECON, system_prompt="p", tool_names=frozenset({"dummy_nmap"})
+        ),
+    })
+    tools = ToolRegistry([dummy_nmap, dummy_msfconsole])
+    think = make_think_node(_Recording(), tools, profiles)
+    state = _state([HumanMessage(content="x")])
+
+    await think(state)
+
+    assert [t.name for t in recorded[0]] == ["dummy_nmap"]
+
+
+async def test_think_prepends_the_phases_system_prompt_without_mutating_state() -> None:
+    profiles = PhaseProfiles({
+        Phase.RECON: PhaseProfile(
+            phase=Phase.RECON, system_prompt="RECON PROMPT", tool_names=frozenset()
+        ),
+    })
+    think = make_think_node(_RecordingChatModelForNodesTest(), ToolRegistry([]), profiles)
+    state = _state([HumanMessage(content="x")])
+
+    await think(state)
+
+    assert not any(isinstance(m, SystemMessage) for m in state["messages"])
