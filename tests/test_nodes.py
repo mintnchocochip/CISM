@@ -217,3 +217,131 @@ def test_nodes_produced_in_the_same_step_do_not_link_to_each_other() -> None:
 
     assert len(update["depg_nodes"]) == 2
     assert update["depg_edges"] == []
+
+
+def test_phase_router_reports_when_it_actually_moved() -> None:
+    from cism.agent.nodes import make_phase_router
+
+    router = make_phase_router()
+    state = _state(
+        [
+            HumanMessage(content="x"),
+            ToolMessage(content="ok", tool_call_id="c1", name="dummy_nmap"),
+        ]
+    )
+
+    update = router(state)
+
+    assert update["phase_changed"] is True
+
+
+def test_phase_router_reports_no_change_when_it_stays_put() -> None:
+    from cism.agent.nodes import make_phase_router
+
+    router = make_phase_router()
+    ai, result = _tool_round("call-1", "dummy_nmap", "boom", error=True)
+    state = _state([HumanMessage(content="x"), ai, result])
+
+    update = router(state)
+
+    assert update["phase_changed"] is False
+
+
+def _memory_state(messages, depg_nodes=None, phase_changed=False) -> dict:
+    return {
+        "messages": messages, "phase": Phase.RECON, "depg_nodes": depg_nodes or {},
+        "depg_edges": [], "run_id": "run-1", "target": "10.0.0.5",
+        "memory_items": {}, "phase_changed": phase_changed,
+    }
+
+
+def test_memory_update_records_a_successful_finding_from_this_step() -> None:
+    from cism.agent.nodes import make_memory_update_node
+    from cism.depg.evidence import Evidence
+    from cism.depg.node import Node
+
+    node = Node(
+        id="n1", cause_class="open-port", target="10.0.0.5", signal="22/tcp",
+        evidence=[
+            Evidence(
+                timestamp="t", tool="nmap", exit_signal="22/tcp open ssh",
+                tier="T2", call_id="c1",
+            )
+        ],
+    )
+    ai, result = _tool_round("c1", "nmap", "22/tcp open ssh")
+    state = _memory_state([HumanMessage(content="scan"), ai, result], depg_nodes={"n1": node})
+
+    update = make_memory_update_node()(state)
+
+    assert len(update["memory_items"]) == 1
+
+
+def test_memory_update_ignores_depg_nodes_from_an_earlier_step() -> None:
+    from cism.agent.nodes import make_memory_update_node
+    from cism.depg.evidence import Evidence
+    from cism.depg.node import Node
+
+    old_node = Node(
+        id="n1", cause_class="open-port", target="10.0.0.5", signal="22/tcp",
+        evidence=[
+            Evidence(timestamp="t", tool="nmap", exit_signal="x", tier="T2", call_id="old-call")
+        ],
+    )
+    ai, result = _tool_round("c2", "hydra", "no creds", error=True)
+    state = _memory_state([HumanMessage(content="scan"), ai, result], depg_nodes={"n1": old_node})
+
+    update = make_memory_update_node()(state)
+
+    depg_derived = [k for k in update["memory_items"] if k == "n1"]
+    assert depg_derived == []
+
+
+def test_memory_update_records_a_tool_failure() -> None:
+    from cism.agent.nodes import make_memory_update_node
+
+    ai, result = _tool_round("c1", "hydra", "wordlist exhausted", error=True)
+    state = _memory_state([HumanMessage(content="scan"), ai, result])
+
+    update = make_memory_update_node()(state)
+
+    assert len(update["memory_items"]) == 1
+
+
+def test_memory_update_records_narration_from_the_most_recent_ai_message() -> None:
+    from cism.agent.nodes import make_memory_update_node
+
+    ai = AIMessage(content="I found something interesting.")
+    state = _memory_state([HumanMessage(content="scan"), ai])
+
+    update = make_memory_update_node()(state)
+
+    assert len(update["memory_items"]) == 1
+
+
+def test_memory_update_records_a_phase_change() -> None:
+    from cism.agent.nodes import make_memory_update_node
+
+    ai, result = _tool_round("c1", "nmap", "ok")
+    state = _memory_state([HumanMessage(content="scan"), ai, result], phase_changed=True)
+
+    update = make_memory_update_node()(state)
+
+    assert any("phase" in item.snippet for item in update["memory_items"].values())
+
+
+def test_memory_update_dedupes_a_recurring_narration_into_hits() -> None:
+    from cism.agent.nodes import make_memory_update_node
+
+    memory_update = make_memory_update_node()
+    ai = AIMessage(content="same narration text")
+    state = _memory_state([HumanMessage(content="scan"), ai])
+    first = memory_update(state)
+
+    second_state = _memory_state([HumanMessage(content="scan"), ai])
+    second_state["memory_items"] = first["memory_items"]
+    update = memory_update(second_state)
+
+    assert len(update["memory_items"]) == 1
+    (item,) = update["memory_items"].values()
+    assert item.hits == 2
