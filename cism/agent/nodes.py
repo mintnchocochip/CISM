@@ -26,10 +26,12 @@ from cism.agent.state import AgentState, IllegalPhaseTransition, Phase, PhaseSta
 from cism.agent.tools import ToolRegistry
 from cism.depg import Edge, ExtractorRegistry, Graph
 from cism.depg.linking import find_precondition
+from cism.memory import MemoryStore, memory_key
 
 __all__ = [
     "make_act_node",
     "make_depg_update_node",
+    "make_memory_update_node",
     "make_phase_router",
     "make_respond_node",
     "make_think_node",
@@ -180,6 +182,7 @@ def make_phase_router() -> Callable[[AgentState], dict]:
         machine = PhaseStateMachine(current=state["phase"])
         last = state["messages"][-1]
         succeeded = isinstance(last, ToolMessage) and last.status != "error"
+        before = machine.current
 
         if succeeded:
             target = DEFAULT_NEXT_PHASE[machine.current]
@@ -188,9 +191,46 @@ def make_phase_router() -> Callable[[AgentState], dict]:
             except IllegalPhaseTransition:
                 pass  # stay put; an illegal proposed move is not a run failure
 
-        return {"phase": machine.current}
+        return {"phase": machine.current, "phase_changed": machine.current != before}
 
     return phase_router
+
+
+def make_memory_update_node() -> Callable[[AgentState], dict]:
+    def memory_update(state: AgentState) -> dict:
+        store = MemoryStore.from_state(state["memory_items"])
+        phase_tag = state["phase"].to_wire()
+        trailing = _trailing_tool_results(state["messages"])
+        this_step_call_ids = {message.tool_call_id for _, message in trailing}
+
+        # Every source below is scoped to this step alone. Widening any of
+        # them to the whole run would grow `hits` every iteration whether or
+        # not the item actually recurred.
+        for node in state["depg_nodes"].values():
+            if not node.evidence:
+                continue
+            latest = node.evidence[-1]
+            if latest.call_id in this_step_call_ids:
+                store.upsert(node.id, latest.tier, phase_tag, latest.exit_signal)
+
+        for _, message in trailing:
+            if getattr(message, "status", "success") != "error":
+                continue
+            snippet = str(message.content)[:120]
+            store.upsert(memory_key("tool-failure", phase_tag, snippet), "T3", phase_tag, snippet)
+
+        last_ai = next((m for m in reversed(state["messages"]) if isinstance(m, AIMessage)), None)
+        if last_ai is not None and str(last_ai.content).strip():
+            snippet = str(last_ai.content).strip()[:120]
+            store.upsert(memory_key("narration", phase_tag, snippet), "T3", phase_tag, snippet)
+
+        if state.get("phase_changed"):
+            snippet = f"phase -> {phase_tag}"
+            store.upsert(memory_key("phase-change", phase_tag, snippet), "T2", phase_tag, snippet)
+
+        return {"memory_items": store.items}
+
+    return memory_update
 
 
 def make_respond_node(output_chain: GuardrailChain) -> Callable[[AgentState], dict]:

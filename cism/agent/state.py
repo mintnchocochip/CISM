@@ -16,6 +16,7 @@ from langgraph.graph.message import add_messages
 
 from cism.depg.edge import Edge
 from cism.depg.node import Node
+from cism.memory import MemoryItem
 
 __all__ = [
     "AgentState",
@@ -94,7 +95,9 @@ class AgentState(TypedDict):
 
     messages: Annotated[list[Any], add_messages]
     phase: Phase
+    phase_changed: bool
     depg_nodes: dict[str, Node]
     depg_edges: list[Edge]
+    memory_items: dict[str, MemoryItem]
     run_id: str
     target: str
