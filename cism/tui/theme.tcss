@@ -340,6 +340,7 @@ DEPGTree > .tree--cursor {
 DEPGTree > .node--blocked   { color: $err; }
 DEPGTree > .node--resolved  { color: $ok; }
 DEPGTree > .node--untested  { color: $fg-dim; }
+DEPGTree > .node--contested { color: $warn; }
 DEPGTree > .node--weight    { color: $rule; }
 DEPGTree > .node--gamma     { color: $fg-dim; }
 

@@ -24,6 +24,7 @@ STATE_CLASS = {
     "blocked": "node--blocked",
     "resolved": "node--resolved",
     "untested": "node--untested",
+    "contested": "node--contested",
 }
 
 
@@ -34,6 +35,7 @@ class DEPGTree(Tree[DEPGNode]):
         "node--blocked",
         "node--resolved",
         "node--untested",
+        "node--contested",
         "node--weight",
         "node--gamma",
     }
@@ -97,10 +99,12 @@ class DEPGModal(ModalScreen[None]):
     def _title(self) -> str:
         blocked = sum(1 for n in self.nodes if n.state == "blocked")
         resolved = sum(1 for n in self.nodes if n.state == "resolved")
-        untested = len(self.nodes) - blocked - resolved
+        contested = sum(1 for n in self.nodes if n.state == "contested")
+        untested = len(self.nodes) - blocked - resolved - contested
         return (
             f"dependency / error propagation graph — {len(self.nodes)} nodes"
-            f"  ({blocked} blocked, {resolved} resolved, {untested} untested)"
+            f"  ({blocked} blocked, {resolved} resolved, {untested} untested,"
+            f" {contested} contested)"
         )
 
     def on_mount(self) -> None:
