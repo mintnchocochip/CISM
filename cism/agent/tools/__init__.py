@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from .base import build_catalog
+from .catalog import CATALOG
 from .dummy import dummy_msfconsole, dummy_nmap
 from .registry import ToolRegistry
 
-__all__ = ["ToolRegistry", "dummy_msfconsole", "dummy_nmap"]
+__all__ = ["CATALOG", "ToolRegistry", "build_catalog", "dummy_msfconsole", "dummy_nmap"]
