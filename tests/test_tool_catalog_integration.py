@@ -121,5 +121,9 @@ async def test_an_out_of_scope_target_is_blocked_before_the_subprocess_runs(
         events.extend(await asyncio.wait_for(drain(agent.events), timeout=10.0))
     await agent.aclose()
 
+    # A blocked call is evidence of its own: it becomes a dead tombstone
+    # node rather than being dropped, so the agent has a record of the
+    # attempt instead of silently re-proposing it.
     depg_updates = [e for e in events if isinstance(e, DEPGUpdated)]
-    assert not depg_updates  # a blocked call produces no evidence to extract
+    assert depg_updates
+    assert all(n.state == "blocked" for n in depg_updates[-1].nodes)
