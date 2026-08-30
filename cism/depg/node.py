@@ -3,18 +3,28 @@
 This is the mutable copy the agent updates as a run progresses. It is a
 different object from :class:`cism.tui.events.DEPGNode`, which is the
 frozen, whole-state-replacement wire format the TUI consumes. ``to_event()``
-is the only place this module touches ``cism.tui.events`` — nothing else in
-this package may import from ``cism.tui`` or ``cism.agent``, so DEPG stays
-independently testable and evolvable.
+is the only place this module touches ``cism.tui.events``.
+
+``id`` is a derived identity key, not a tool_call_id — see
+:func:`derive_node_id`. ``state`` is never set here or by an extractor; only
+:meth:`cism.depg.graph.Graph.settle` writes it.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from cism.tui.events import Decision, DEPGNode, Evidence, NodeState
+from cism.depg.evidence import Evidence
+from cism.tui.events import Decision, DEPGNode, NodeState
 
-__all__ = ["Node"]
+__all__ = ["Node", "derive_node_id"]
+
+
+def derive_node_id(cause_class: str, target: str, signal: str) -> str:
+    """Two observations merge only when all three match — this is what stops
+    "port 22" and "port 80" on the same host colliding into one node just
+    because they share a cause_class and target."""
+    return f"{cause_class}:{target}:{signal}"
 
 
 @dataclass(slots=True)
@@ -24,15 +34,15 @@ class Node:
     id: str
     cause_class: str
     target: str
-    generality: float = 0.0
-    state: NodeState = "untested"
-    downstream: int = 0
+    signal: str
     evidence: list[Evidence] = field(default_factory=list)
-    #: The choice that made this node current, if any.
     decision: Decision | None = None
+    state: NodeState = "untested"
+    generality: float = 0.0
+    downstream: int = 0
+    phase: str = ""
 
     def to_event(self) -> DEPGNode:
-        """Project this working node into the TUI's wire-format dataclass."""
         return DEPGNode(
             id=self.id,
             cause_class=self.cause_class,
@@ -40,6 +50,6 @@ class Node:
             generality=self.generality,
             state=self.state,
             downstream=self.downstream,
-            evidence=tuple(self.evidence),
+            evidence=tuple(e.to_event() for e in self.evidence),
             decision=self.decision,
         )

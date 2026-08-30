@@ -16,9 +16,9 @@ from langchain_core.messages import ToolMessage
 from langchain_core.messages.tool import ToolCall
 
 from cism.depg.edge import Edge
+from cism.depg.evidence import Evidence
 from cism.depg.graph import Graph
 from cism.depg.node import Node
-from cism.tui.events import Evidence
 
 __all__ = ["CauseExtractor", "Extraction", "ExtractorRegistry", "GenericExtractor"]
 
@@ -53,6 +53,7 @@ class GenericExtractor:
             id=message.tool_call_id,
             cause_class=tool_name,
             target=target,
+            signal=tool_name,
             evidence=[
                 Evidence(
                     timestamp=datetime.now().strftime("%H:%M:%S"),
