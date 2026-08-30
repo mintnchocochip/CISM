@@ -31,6 +31,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from cism.agent.guardrails import GuardrailSeam
+from cism.agent.profiles import PhaseProfiles
 from cism.agent.nodes import (
     make_act_node,
     make_depg_update_node,
@@ -52,11 +53,12 @@ def build_graph(
     tools: ToolRegistry,
     guardrails: GuardrailSeam,
     extractors: ExtractorRegistry,
+    profiles: PhaseProfiles,
 ) -> CompiledStateGraph:
     graph = StateGraph(AgentState)
 
-    graph.add_node("think", make_think_node(llm))
-    graph.add_node("act", make_act_node(tools, guardrails.action))
+    graph.add_node("think", make_think_node(llm, tools, profiles))
+    graph.add_node("act", make_act_node(tools, guardrails.action, profiles))
     graph.add_node("depg_update", make_depg_update_node(extractors))
     graph.add_node("phase_router", make_phase_router())
     graph.add_node("memory_update", make_memory_update_node())

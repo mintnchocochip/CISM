@@ -16,6 +16,8 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 
 from cism.agent import LangGraphAgent
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam, PassThroughStage
+from cism.agent.profiles import PhaseProfile, PhaseProfiles
+from cism.agent.state import Phase
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
 from cism.tui.events import (
     Agent,
@@ -118,16 +120,6 @@ def test_explicit_llm_without_metadata_is_unlabeled_not_dummy(tmp_path, monkeypa
 
     assert agent._endpoint == ""
     assert agent._model_name == ""
-
-
-def test_a_model_that_supports_bind_tools_is_bound_to_the_registry(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path))
-    model = _RecordingChatModel()
-    tools = ToolRegistry([dummy_nmap, dummy_msfconsole])
-
-    LangGraphAgent(llm=model, tools=tools)
-
-    assert {t.name for t in model.bound_tools} == {"dummy_nmap", "dummy_msfconsole"}
 
 
 async def _run_to_completion(agent: LangGraphAgent, text: str, timeout: float = 5.0) -> list:
@@ -492,3 +484,34 @@ async def test_guardrail_rewrite_emits_narration_redacted_instead_of_close(
     assert len(redacted) == 1
     assert "test block" in redacted[0].reason
     assert not any(isinstance(e, Narration) and e.done for e in events)
+
+
+async def test_tool_binding_happens_per_phase_inside_think_not_at_construction(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    model = _RecordingChatModel()
+    # Profiles that name tools this registry actually has, so "did it bind?"
+    # is a question about *when*, not about whether the names lined up.
+    profiles = PhaseProfiles(
+        {
+            phase: PhaseProfile(
+                phase=phase, system_prompt="p", tool_names=frozenset({"dummy_nmap"})
+            )
+            for phase in Phase
+        }
+    )
+    agent = LangGraphAgent(
+        llm=model,
+        tools=ToolRegistry([dummy_nmap, dummy_msfconsole]),
+        profiles=profiles,
+        target="10.0.0.5",
+    )
+
+    assert model.bound_tools == []  # nothing bound yet at construction time
+
+    await agent.start()
+    await _run_to_completion(agent, "scan 10.0.0.5")
+
+    assert model.bound_tools  # bound once think actually ran
+    await agent.aclose()
