@@ -18,7 +18,8 @@ from langchain_core.messages.tool import ToolCall
 from cism.depg.edge import Edge
 from cism.depg.evidence import Evidence
 from cism.depg.graph import Graph
-from cism.depg.node import Node
+from cism.depg.node import Node, derive_node_id
+from cism.depg.normalize import hash_signal
 
 __all__ = ["CauseExtractor", "Extraction", "ExtractorRegistry", "GenericExtractor"]
 
@@ -40,26 +41,33 @@ class CauseExtractor(Protocol):
 
 
 class GenericExtractor:
-    """The fallback: every successful tool call becomes exactly one untested
-    node, cause_class taken from the tool's own name. No real interpretation
-    of the output happens here, so the evidence tier stays at the weakest
-    (T3) rather than implying a confidence that hasn't been earned yet."""
+    """The fallback: every tool call becomes exactly one node, cause_class
+    taken from the tool's own name. No real interpretation of the output
+    happens here, so the evidence tier stays at the weakest (T3) rather than
+    implying a confidence that hasn't been earned yet. Failures are captured
+    too (verdict="dead"), not silently skipped."""
 
     def extract(
         self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
     ) -> Extraction:
         tool_name = message.name or "unknown-tool"
+        failed = getattr(message, "status", "success") == "error"
+        content = str(message.content)
+        signal = hash_signal(content)
+        call_id = call["id"] if call else message.tool_call_id
         node = Node(
-            id=message.tool_call_id,
+            id=derive_node_id(tool_name, target, signal),
             cause_class=tool_name,
             target=target,
-            signal=tool_name,
+            signal=signal,
             evidence=[
                 Evidence(
-                    timestamp=datetime.now().strftime("%H:%M:%S"),
+                    timestamp=_now_str(),
                     tool=tool_name,
-                    exit_signal=_summarize(message.content),
+                    exit_signal=_summarize(content),
                     tier="T3",
+                    verdict="dead" if failed else "alive",
+                    call_id=call_id,
                 )
             ],
         )
@@ -86,3 +94,7 @@ def _summarize(content: object) -> str:
     if len(text) <= _SUMMARY_LIMIT:
         return text
     return text[: _SUMMARY_LIMIT - 1] + "…"
+
+
+def _now_str() -> str:
+    return datetime.now().strftime("%H:%M:%S")
