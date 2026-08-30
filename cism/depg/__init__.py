@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from .edge import Edge
 from .extract import CauseExtractor, Extraction, ExtractorRegistry, GenericExtractor
+from .extractors import HydraExtractor, NmapExtractor
 from .graph import Graph
 from .node import Node
 
@@ -23,5 +24,7 @@ __all__ = [
     "ExtractorRegistry",
     "GenericExtractor",
     "Graph",
+    "HydraExtractor",
     "Node",
+    "NmapExtractor",
 ]
