@@ -63,7 +63,7 @@ def reset_sequence() -> None:
 # value objects
 # --------------------------------------------------------------------------
 
-NodeState: TypeAlias = Literal["blocked", "resolved", "untested"]
+NodeState: TypeAlias = Literal["blocked", "resolved", "untested", "contested"]
 Tier: TypeAlias = Literal["T1", "T2", "T3"]
 
 
