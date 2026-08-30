@@ -24,7 +24,8 @@ from langchain_core.messages.tool import ToolCall
 from cism.agent.guardrails import GuardrailChain
 from cism.agent.state import AgentState, IllegalPhaseTransition, Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry
-from cism.depg import ExtractorRegistry, Graph
+from cism.depg import Edge, ExtractorRegistry, Graph
+from cism.depg.linking import find_precondition
 
 __all__ = [
     "make_act_node",
@@ -153,18 +154,29 @@ def _trailing_tool_results(messages: list) -> list[tuple[ToolCall | None, ToolMe
 def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState], dict]:
     def depg_update(state: AgentState) -> dict:
         graph = Graph.from_state(state["depg_nodes"], state["depg_edges"])
+        phase_tag = state["phase"].to_wire()
 
         for call, message in _trailing_tool_results(state["messages"]):
-            if getattr(message, "status", "success") == "error":
-                continue  # no real evidence came from a blocked/failed call
             extraction = extractors.get(message.name or "").extract(
                 call, message, graph, state["target"]
             )
+            # Every precondition is resolved before any of this message's own
+            # nodes land, or two siblings from one call (nmap's two ports)
+            # would chain onto each other via the last-touched fallback.
+            preconditions = {
+                node.id: find_precondition(graph, node.target, call) for node in extraction.nodes
+            }
             for node in extraction.nodes:
-                graph.upsert_node(node)
+                node.phase = phase_tag
+                stored = graph.upsert_node(node)
+                precondition = preconditions[node.id]
+                if precondition is not None and precondition.id != stored.id:
+                    graph.add_edge(Edge(parent=precondition.id, child=stored.id))
             for edge in extraction.edges:
                 graph.add_edge(edge)
 
+        graph.settle()
+        graph.prune()
         # depg_nodes/depg_edges have no reducer, so LangGraph's LastValue
         # channel fully replaces state with whatever is returned here — the
         # full merged graph must always come back, never just this step's delta.
