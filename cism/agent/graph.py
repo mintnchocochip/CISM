@@ -18,6 +18,9 @@ stub versions or real ones later.
                │
          phase_router ── PhaseStateMachine proposes a legal transition
                │
+        memory_update ── this step's findings, failures, narration and
+                          phase move become retained memory rows
+               │
                └──▶ think (loop)
 """
 
@@ -31,6 +34,7 @@ from cism.agent.guardrails import GuardrailSeam
 from cism.agent.nodes import (
     make_act_node,
     make_depg_update_node,
+    make_memory_update_node,
     make_phase_router,
     make_respond_node,
     make_think_node,
@@ -55,13 +59,15 @@ def build_graph(
     graph.add_node("act", make_act_node(tools, guardrails.action))
     graph.add_node("depg_update", make_depg_update_node(extractors))
     graph.add_node("phase_router", make_phase_router())
+    graph.add_node("memory_update", make_memory_update_node())
     graph.add_node("respond", make_respond_node(guardrails.output))
 
     graph.add_edge(START, "think")
     graph.add_conditional_edges("think", route_after_think, {"act": "act", "respond": "respond"})
     graph.add_edge("act", "depg_update")
     graph.add_edge("depg_update", "phase_router")
-    graph.add_edge("phase_router", "think")
+    graph.add_edge("phase_router", "memory_update")
+    graph.add_edge("memory_update", "think")
     graph.add_edge("respond", END)
 
     return graph.compile()

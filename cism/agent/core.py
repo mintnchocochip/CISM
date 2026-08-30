@@ -15,6 +15,7 @@ step — this module is tested standalone.
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from typing import Any
 
@@ -29,12 +30,14 @@ from cism.agent.logging import get_agent_logger
 from cism.agent.state import Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
 from cism.depg import ExtractorRegistry, GenericExtractor
+from cism.memory import DEFAULT_SALIENCE_TERMS
 from cism.tui.events import (
     AgentEvent,
     DEPGEdge,
     DEPGNode,
     DEPGUpdated,
     Interrupted,
+    MemoryUpdated,
     Narration,
     PhaseChanged,
     RunFinished,
@@ -119,8 +122,10 @@ class LangGraphAgent:
         initial_state: dict[str, Any] = {
             "messages": [HumanMessage(content=guarded.value)],
             "phase": self._phase.current,
+            "phase_changed": False,
             "depg_nodes": {},
             "depg_edges": [],
+            "memory_items": {},
             "run_id": run_id,
             "target": self._target,
         }
@@ -185,6 +190,11 @@ class LangGraphAgent:
             if payload != self._last_depg:
                 self._last_depg = payload
                 await self.events.put(DEPGUpdated(nodes=payload[0], edges=payload[1]))
+
+        elif node == "memory_update":
+            items = update.get("memory_items") or {}
+            rows = tuple(item.to_event(time.time()) for item in items.values())
+            await self.events.put(MemoryUpdated(rows=rows, terms=DEFAULT_SALIENCE_TERMS))
 
         elif node == "respond":
             for message in update.get("messages", []):
