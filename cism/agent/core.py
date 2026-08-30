@@ -27,6 +27,7 @@ from cism.agent.graph import build_graph
 from cism.agent.guardrails import GuardrailSeam
 from cism.agent.llm import DummyChatModel
 from cism.agent.logging import get_agent_logger
+from cism.agent.profiles import PhaseProfiles, default_profiles
 from cism.agent.state import Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
 from cism.depg import ExtractorRegistry, GenericExtractor
@@ -61,6 +62,7 @@ class LangGraphAgent:
         tools: ToolRegistry | None = None,
         guardrails: GuardrailSeam | None = None,
         extractors: ExtractorRegistry | None = None,
+        profiles: PhaseProfiles | None = None,
         target: str = "",
     ) -> None:
         self.events: asyncio.Queue[AgentEvent] = asyncio.Queue()
@@ -68,7 +70,10 @@ class LangGraphAgent:
         self._tools = tools or ToolRegistry([dummy_nmap, dummy_msfconsole])
         self._guardrails = guardrails or GuardrailSeam.no_op()
         self._extractors = extractors or ExtractorRegistry({}, GenericExtractor())
-        self._graph = build_graph(self._llm, self._tools, self._guardrails, self._extractors)
+        self._profiles = profiles or default_profiles(self._tools)
+        self._graph = build_graph(
+            self._llm, self._tools, self._guardrails, self._extractors, self._profiles
+        )
         self._phase = PhaseStateMachine(Phase.RECON)
         self._target = target
         self._task: asyncio.Task[None] | None = None

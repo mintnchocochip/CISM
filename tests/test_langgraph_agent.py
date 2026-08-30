@@ -9,8 +9,15 @@ from __future__ import annotations
 
 import asyncio
 
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
+
 from cism.agent import LangGraphAgent
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam, PassThroughStage
+from cism.agent.profiles import PhaseProfile, PhaseProfiles
+from cism.agent.state import Phase
+from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
 from cism.tui.events import (
     Agent,
     DEPGUpdated,
@@ -25,6 +32,24 @@ from cism.tui.events import (
     ToolStarted,
     drain,
 )
+
+
+class _RecordingChatModel(BaseChatModel):
+    """Records what it was asked to bind, so a test can tell *when* binding
+    happened rather than only that it eventually did."""
+
+    bound_tools: list = []
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-recording-model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content="done"))])
+
+    def bind_tools(self, tools, **kwargs):
+        self.bound_tools = list(tools)
+        return self
 
 
 async def _run_to_completion(agent: LangGraphAgent, text: str, timeout: float = 5.0) -> list:
@@ -179,4 +204,35 @@ async def test_a_live_run_emits_memory_updated(tmp_path, monkeypatch) -> None:
     memory_events = [e for e in events if isinstance(e, MemoryUpdated)]
     assert memory_events
     assert memory_events[-1].rows
+    await agent.aclose()
+
+
+async def test_tool_binding_happens_per_phase_inside_think_not_at_construction(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    model = _RecordingChatModel()
+    # Profiles that name tools this registry actually has, so "did it bind?"
+    # is a question about *when*, not about whether the names lined up.
+    profiles = PhaseProfiles(
+        {
+            phase: PhaseProfile(
+                phase=phase, system_prompt="p", tool_names=frozenset({"dummy_nmap"})
+            )
+            for phase in Phase
+        }
+    )
+    agent = LangGraphAgent(
+        llm=model,
+        tools=ToolRegistry([dummy_nmap, dummy_msfconsole]),
+        profiles=profiles,
+        target="10.0.0.5",
+    )
+
+    assert model.bound_tools == []  # nothing bound yet at construction time
+
+    await agent.start()
+    await _run_to_completion(agent, "scan 10.0.0.5")
+
+    assert model.bound_tools  # bound once think actually ran
     await agent.aclose()

@@ -18,10 +18,11 @@ from __future__ import annotations
 from typing import Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from langchain_core.messages.tool import ToolCall
 
 from cism.agent.guardrails import GuardrailChain
+from cism.agent.profiles import PhaseProfiles
 from cism.agent.state import AgentState, IllegalPhaseTransition, Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry
 from cism.depg import Edge, ExtractorRegistry, Graph
@@ -57,9 +58,29 @@ DEFAULT_NEXT_PHASE: dict[Phase, Phase] = {
 }
 
 
-def make_think_node(llm: BaseChatModel) -> Callable[[AgentState], dict]:
+def _bind_tools_if_supported(llm: BaseChatModel, tools: list) -> BaseChatModel:
+    """A phase with no tools, or a model that never implements bind_tools
+    (DummyChatModel's inherited default raises NotImplementedError), is used
+    unbound rather than crashing the run."""
+    if not tools:
+        return llm
+    try:
+        return llm.bind_tools(tools)
+    except NotImplementedError:
+        return llm
+
+
+def make_think_node(
+    llm: BaseChatModel, tools: ToolRegistry, profiles: PhaseProfiles
+) -> Callable[[AgentState], dict]:
     def think(state: AgentState) -> dict:
-        response = llm.invoke(state["messages"])
+        profile = profiles.get(state["phase"])
+        phase_tools = [tools.get(name) for name in profile.tool_names if name in tools]
+        bound = _bind_tools_if_supported(llm, phase_tools)
+        # The prompt is prepended for this invocation only — never appended
+        # to state, or every loop iteration would stack another copy.
+        messages = [SystemMessage(content=profile.system_prompt), *state["messages"]]
+        response = bound.invoke(messages)
         return {"messages": [response]}
 
     return think
@@ -76,9 +97,12 @@ def route_after_think(state: AgentState) -> str:
 
 def make_act_node(
     tools: ToolRegistry,
-    action_chain: GuardrailChain,
+    base_action_chain: GuardrailChain,
+    profiles: PhaseProfiles,
 ) -> Callable[[AgentState], dict]:
     def act(state: AgentState) -> dict:
+        profile = profiles.get(state["phase"])
+        action_chain = GuardrailChain(base_action_chain.stages + list(profile.action_stages))
         last = state["messages"][-1]
         tool_calls = getattr(last, "tool_calls", None) or []
         results: list[ToolMessage] = []

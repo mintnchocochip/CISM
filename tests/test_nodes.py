@@ -6,11 +6,28 @@ what earlier steps already found.
 
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.outputs import ChatGeneration, ChatResult
 
 from cism.agent.nodes import make_depg_update_node
 from cism.agent.state import Phase
+from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
 from cism.depg import ExtractorRegistry, GenericExtractor
+
+
+class _RecordingChatModelForNodesTest(BaseChatModel):
+    """The smallest model think() can drive: answers once, binds anything."""
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-recording-model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content="done"))])
+
+    def bind_tools(self, tools, **kwargs):
+        return self
 
 
 def _state(messages, depg_nodes=None, depg_edges=None) -> dict:
@@ -265,3 +282,45 @@ def test_memory_update_dedupes_a_recurring_narration_into_hits() -> None:
     assert len(update["memory_items"]) == 1
     (item,) = update["memory_items"].values()
     assert item.hits == 2
+
+
+def test_think_binds_only_the_current_phases_tools() -> None:
+    from cism.agent.nodes import make_think_node
+    from cism.agent.profiles import PhaseProfile, PhaseProfiles
+
+    recorded: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def bind_tools(self, tools, **kwargs):
+            recorded.append(list(tools))
+            return self
+
+    profiles = PhaseProfiles({
+        Phase.RECON: PhaseProfile(
+            phase=Phase.RECON, system_prompt="p", tool_names=frozenset({"dummy_nmap"})
+        ),
+    })
+    tools = ToolRegistry([dummy_nmap, dummy_msfconsole])
+    think = make_think_node(_Recording(), tools, profiles)
+    state = _state([HumanMessage(content="x")])
+
+    think(state)
+
+    assert [t.name for t in recorded[0]] == ["dummy_nmap"]
+
+
+def test_think_prepends_the_phases_system_prompt_without_mutating_state() -> None:
+    from cism.agent.nodes import make_think_node
+    from cism.agent.profiles import PhaseProfile, PhaseProfiles
+
+    profiles = PhaseProfiles({
+        Phase.RECON: PhaseProfile(
+            phase=Phase.RECON, system_prompt="RECON PROMPT", tool_names=frozenset()
+        ),
+    })
+    think = make_think_node(_RecordingChatModelForNodesTest(), ToolRegistry([]), profiles)
+    state = _state([HumanMessage(content="x")])
+
+    think(state)
+
+    assert not any(isinstance(m, SystemMessage) for m in state["messages"])
