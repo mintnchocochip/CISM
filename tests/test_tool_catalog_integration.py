@@ -28,8 +28,7 @@ from cism.agent.guardrails import (
     PassThroughStage,
     ScopeGuardStage,
 )
-from cism.agent.tools import ToolRegistry
-from cism.agent.tools.linux import curl
+from cism.agent.tools import ToolRegistry, curl
 from cism.tui.events import DEPGUpdated, RunFinished, drain
 
 requires_curl = pytest.mark.skipif(shutil.which("curl") is None, reason="curl not installed")
@@ -51,7 +50,7 @@ class _CallsCurlOnce(BaseChatModel):
                 tool_calls=[
                     {
                         "name": "curl",
-                        "args": {"url": "http://127.0.0.1:1/", "options": "-sS --max-time 2"},
+                        "args": {"target": "http://127.0.0.1:1/", "extra": "-sS --max-time 2"},
                         "id": f"call_{uuid.uuid4().hex[:8]}",
                         "type": "tool_call",
                     }

@@ -34,17 +34,17 @@ def test_an_out_of_scope_ip_target_is_blocked() -> None:
 
 
 def test_an_exact_domain_match_is_allowed() -> None:
-    result = _stage().check(_call("curl", url="https://example.com/"))
+    result = _stage().check(_call("curl", target="https://example.com/"))
     assert result.allowed is True
 
 
 def test_a_subdomain_of_an_in_scope_domain_is_allowed() -> None:
-    result = _stage().check(_call("curl", url="https://api.example.com/report"))
+    result = _stage().check(_call("curl", target="https://api.example.com/report"))
     assert result.allowed is True
 
 
 def test_an_out_of_scope_domain_is_blocked() -> None:
-    result = _stage().check(_call("curl", url="https://evil.org/"))
+    result = _stage().check(_call("curl", target="https://evil.org/"))
     assert result.allowed is False
 
 
