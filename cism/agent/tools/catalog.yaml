@@ -27,3 +27,21 @@ dnsenum:
   binary: dnsenum
   capability: reads
   description: Enumerate DNS records and subdomains for a domain.
+
+nmap:
+  binary: nmap
+  capability: reads
+  description: Network/port scan.
+  allow_raw: true
+  # Explicit override, not the reads-only default above: nmap was already
+  # offered in every non-reporting phase before this migration (the old
+  # hand-written PhaseProfile._TOOLS table in cism/agent/profiles.py) —
+  # this preserves that. See the design doc §10 (Migration).
+  phases: [recon, enumeration, vulnerability-discovery, exploitation, post-exploitation]
+
+curl:
+  binary: curl
+  capability: reads
+  description: Fetch a URL and return its response.
+  allow_raw: true
+  phases: [recon, enumeration, vulnerability-discovery, exploitation, post-exploitation]

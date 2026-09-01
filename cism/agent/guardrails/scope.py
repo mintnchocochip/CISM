@@ -39,7 +39,7 @@ _TARGET_ARG_BY_TOOL: dict[str, str] = {
     "masscan": "target",
     "hydra": "target",
     "medusa": "target",
-    "curl": "url",
+    "curl": "target",
     "wget": "url",
     "gobuster": "url",
     "ffuf": "url",
