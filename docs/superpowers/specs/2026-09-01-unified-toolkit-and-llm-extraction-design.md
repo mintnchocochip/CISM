@@ -60,70 +60,92 @@ same sprint, not deferred.
   real model shows one shared graph cannot serve all six phases well," which is
   exactly the point at which per-role model choice (including for extraction)
   becomes a real question instead of a guess.
-- **Migrating the tool-catalog format to YAML/TOML.** Already deferred in the
-  original DEPG design spec; nothing here changes that call.
 - **Full RWX/graded-propagation guardrail work.** Only the one new guardrail
   stage (§6) is in scope; the rest of that workstream is untouched.
 
-## 4. Unified tool declaration: `CATALOG`, `EXTRACTORS`, `PHASES`
+## 4. Unified tool declaration: `CATALOG` (YAML, `phases:` inline) and `EXTRACTORS` (Python)
 
-One file, `cism/agent/tools/catalog.py`, three flat dicts, all keyed by the
-tool's final name:
+The original DEPG design spec deferred tool-catalog externalization
+explicitly as "the author's call, later" — this is that call, made now,
+**for the parts that are pure data.** Not everything qualifies; see the
+EXTRACTORS split below before assuming the whole system moved to YAML.
 
-```python
-CATALOG: dict[str, ToolSpec] = {...}          # required: how to run it
-EXTRACTORS: dict[str, CauseExtractor] = {...}  # optional: override the default parser
-PHASES: dict[str, frozenset[Phase]] = {...}    # optional-with-consequence: which phases offer it
+**`CATALOG` moves to a YAML file**, `cism/agent/tools/catalog.yaml`, one block
+per tool:
+
+```yaml
+nikto:
+  binary: nikto
+  capability: reads
+  description: Web server vulnerability scan.
+  target: "-host"
+
+nmap:
+  binary: nmap
+  capability: reads
+  description: Network/port scan.
+  allow_raw: true
+
+hydra:
+  binary: hydra
+  capability: executes
+  description: Credential brute-force.
+  allow_raw: false
+  phases: [exploitation]   # overrides the reads-only default below
 ```
 
-**`CATALOG`** is the only required entry, and the only thing that makes a tool
-exist at all. `ToolSpec` gains one new field beyond what already exists
-(`binary`, `capability`, `description`, `flags`, `target`, `allow_raw`,
-`timeout`):
+YAML over TOML: `flags` is a dict of dicts (`{port: {cli: "-p", kind:
+value}}`) once a tool needs the declared-allowlist path instead of
+`allow_raw` — YAML nests that naturally as one more indent level, TOML turns
+it into `[tool.flags.port]` table-array syntax that reads worse the deeper it
+nests. For a catalog that's fundamentally "one record per tool, some records
+with nested sub-fields," YAML is the closer fit.
+
+**`ToolSpec` becomes a Pydantic model, not a plain dataclass** — this is what
+keeps type safety after the move: a malformed row (wrong `capability` literal,
+missing `binary`) fails loudly with a real `ValidationError` at load time, the
+same "fails loudly instead of silently widening what the agent can execute"
+principle `ToolRegistry`'s own docstring already states as a hard requirement
+elsewhere in this codebase.
 
 ```python
-@dataclass(frozen=True, slots=True)
-class ToolSpec:
+class Flag(BaseModel):
+    cli: str
+    kind: Literal["value", "bool"] = "value"
+
+class ToolSpec(BaseModel):
     binary: str
     capability: Capability
     description: str
-    flags: dict[str, Flag] = field(default_factory=dict)
+    flags: dict[str, Flag] = {}
     target: str = "positional"
     allow_raw: bool = False
     timeout: float = 60.0
-    help_flag: str = "--help"   # NEW — see §5
+    help_flag: str = "--help"          # NEW — see §5
+    phases: frozenset[Phase] | None = None   # NEW — None = use the capability default
+
+    @field_validator("phases", mode="before")
+    @classmethod
+    def _parse_phases(cls, value):
+        if value is None:
+            return None
+        return frozenset(Phase[p.upper().replace("-", "_")] for p in value)
 ```
 
-**Default posture: `allow_raw=True`, no declared `flags`.** For the common
-case, a `CATALOG` row is just `binary`/`capability`/`description`/`target` —
-the model builds its own `extra` options string informed by `tool_help` (§5),
-exactly like the existing hand-written `nmap`/`curl` functions already do
-(`options: str = "-sV"` → `shlex.split(options)`). `render_argv` already
-supports this (`if spec.allow_raw and kwargs.get("extra"): argv +=
-shlex.split(...)`) — nothing to build here, just to actually use. The `flags`
-allowlist becomes something reached for only when a specific tool should be
-locked to a fixed set of arguments, not the default authoring path.
+`Phase` (`cism/agent/state.py`) is a plain `Enum` with int values, not a
+`str` enum — `phases:` entries in YAML use the same lowercase-hyphenated
+form the rest of the codebase already uses on the wire
+(`Phase.to_wire()`: `"vulnerability-discovery"`, not `"VULNERABILITY_
+DISCOVERY"`), and `_parse_phases` is the one place that translates between
+them, mirroring `to_wire()`'s own convention rather than inventing a second
+one.
 
-**`EXTRACTORS`** is populated only for tools where a hand-written parser is
-worth the maintenance cost — today that's `nmap`/`hydra`, staying exactly as
-they are. Every other tool name absent from this dict gets whatever
-`ExtractorRegistry`'s `default` is (§8). No entry, no extra code, still gets
-real (LLM-backed) extraction.
-
-**`PHASES`** answers "which phases offer this tool" — a different question
-from `phase_router`'s "should the run move to a different phase," which is
-untouched by this design (see §9). Default policy, split by capability:
-
-- `"reads"` tools not listed in `PHASES`: default to
-  `{Phase.RECON, Phase.ENUMERATION, Phase.VULNERABILITY_DISCOVERY}`.
-- `"executes"`/`"destructive"` tools not listed in `PHASES`: default to
-  `frozenset()` — **registered but unreachable in every phase** until
-  explicitly tagged. This is deliberate fail-closed behavior, not a bug: a
-  destructive tool should never become available to a phase because someone
-  forgot to think about it. **Put a loud comment at the `PHASES` declaration
-  saying exactly this** — it's the one place in this design where "it just
-  silently doesn't work" is correct behavior, and correct-but-silent is a
-  support burden if undocumented.
+**`phases:` folds into each tool's own YAML block** rather than living in a
+separate `PHASES` dict — a cleaner fit for YAML specifically than the earlier
+three-separate-Python-dicts sketch, since "everything about this one tool" is
+now genuinely one block to read, not one entry split across two structures.
+Default policy, unchanged from the earlier design, now read off `spec.phases`
+instead of a lookup table:
 
 ```python
 _DEFAULT_PHASES_BY_CAPABILITY: dict[Capability, frozenset[Phase]] = {
@@ -133,16 +155,56 @@ _DEFAULT_PHASES_BY_CAPABILITY: dict[Capability, frozenset[Phase]] = {
     "destructive": frozenset(),
 }
 
-def phases_for(name: str, spec: ToolSpec) -> frozenset[Phase]:
-    return PHASES.get(name, _DEFAULT_PHASES_BY_CAPABILITY[spec.capability])
+def phases_for(spec: ToolSpec) -> frozenset[Phase]:
+    return spec.phases if spec.phases is not None else _DEFAULT_PHASES_BY_CAPABILITY[spec.capability]
 ```
 
-**`PhaseProfile.tool_names` stops being hand-authored.** `default_profiles()`
-in `cism/agent/profiles.py` derives each phase's `tool_names` entirely from
-`CATALOG` + `PHASES` (via `phases_for`) — one source of truth. Hand-constructing
-a custom `PhaseProfiles` for a non-default scenario remains possible (the
-interface doesn't disappear), but the default stops being a manually
-maintained list that can silently drift from what's actually registered.
+`"executes"`/`"destructive"` tools with no `phases:` key still default to
+`frozenset()` — **registered but unreachable in every phase** until
+explicitly tagged. Still deliberate fail-closed behavior, not a bug, same
+reasoning as before: a destructive tool should never become available to a
+phase because someone forgot to think about it, and this is the one place in
+this design where "it just silently doesn't work" is correct — worth a loud
+comment at the top of `catalog.yaml` itself now, since that's where an author
+actually looks when adding a tool.
+
+**Loading, with `pyyaml` as a new dependency** (not currently in
+`pyproject.toml` — add it under the `agent` extra):
+
+```python
+import yaml
+from pathlib import Path
+
+_CATALOG_PATH = Path(__file__).parent / "catalog.yaml"
+
+def _load_catalog(path: Path = _CATALOG_PATH) -> dict[str, ToolSpec]:
+    raw = yaml.safe_load(path.read_text())
+    return {name: ToolSpec(**row) for name, row in raw.items()}
+
+CATALOG: dict[str, ToolSpec] = _load_catalog()
+```
+
+**`EXTRACTORS` stays a plain Python dict — this is the part that doesn't move,
+and it's a real constraint, not a style preference.** Its values are live
+`CauseExtractor` *instances* (`NmapExtractor()`, `HydraExtractor()`,
+eventually `LLMExtractor(llm)`), not data. Representing that in YAML means
+either inventing a class-path string (`extractor: "cism.depg.extractors.
+NmapExtractor"`) resolved via `importlib` at load time, or giving up and
+storing config-only data that still needs Python code to interpret — the
+first option is exactly the "dynamic lookup by arbitrary name" `ToolRegistry`
+was deliberately built to avoid, and the second option doesn't actually
+externalize anything, it just adds an indirection layer. `EXTRACTORS` staying
+code, populated only for the handful of tools where a hand-written parser
+earns its cost (§4 of the prior draft; unchanged), is the correct boundary:
+**pure data goes in YAML, code — even a one-line reference to code — stays in
+Python.**
+
+**`PhaseProfile.tool_names` stops being hand-authored**, same as before:
+`default_profiles()` in `cism/agent/profiles.py` derives each phase's
+`tool_names` from `CATALOG` via `phases_for(spec)` — one source of truth,
+now sourced from the YAML file instead of a Python literal, with the same
+"hand-construct a custom `PhaseProfiles` if you need something non-default"
+escape hatch untouched.
 
 ## 5. Runtime tool discovery: `tool_help`
 
@@ -382,16 +444,20 @@ def build_toolkit(
 ```
 
 `default_profiles()` (unchanged location, `cism/agent/profiles.py`) separately
-reads `CATALOG`/`PHASES` via `phases_for` to build each phase's `tool_names` —
-kept as its own function rather than folded into `build_toolkit`, since "which
-tools exist" and "which phase offers which tool" are genuinely different
-concerns that don't need to live in one mega-assembler.
+calls `phases_for(spec)` per `CATALOG` entry to build each phase's
+`tool_names` — kept as its own function rather than folded into
+`build_toolkit`, since "which tools exist" and "which phase offers which
+tool" are genuinely different concerns that don't need to live in one
+mega-assembler.
 
 ## 12. Testing
 
-- `EXTRACTORS`/`PHASES` keys are a subset of `CATALOG` keys plus known
-  decorator-tool names — one cheap test catches a typo at CI time instead of
-  it silently falling through to a default at runtime.
+- `catalog.yaml` loads into valid `ToolSpec`s for every current tool — a
+  malformed row (bad `capability` literal, unknown `phases:` name) fails via
+  `ValidationError` at import time, not silently at runtime.
+- `EXTRACTORS` keys are a subset of `CATALOG` keys plus known decorator-tool
+  names — one cheap test catches a typo at CI time instead of it silently
+  falling through to the default extractor at runtime.
 - `DangerousFlagGuardStage`: blocks each token in `_DANGEROUS_FLAG_TOKENS`
   individually; does not false-positive on a target/URL value containing `-o`
   as a substring (token match, not substring match).
@@ -414,19 +480,32 @@ concerns that don't need to live in one mega-assembler.
 **Placeholder scan:** no TBD/TODO — every section has real code or a named,
 justified deferral (§3).
 
-**Internal consistency:** `PHASES` default policy (§4) matches its stated
-rationale in §1 (why three files became one). `run_sandboxed`'s new default-
-runner resolution (§7) is consistent with `LLMExtractor`'s untouched-interface
-claim (§8) — neither changes an existing call signature other tests depend on.
-`tool_help`'s exemption from `PHASES` gating (§5) doesn't contradict the
+**Internal consistency:** the phase-availability default policy (§4) matches
+its stated rationale in §1 (why three files/registries became one YAML file
+plus one small Python dict). `run_sandboxed`'s new default-runner resolution
+(§7) is consistent with `LLMExtractor`'s untouched-interface claim (§8) —
+neither changes an existing call signature other tests depend on.
+`tool_help`'s exemption from phase gating (§5) doesn't contradict the
 fail-closed default for `"executes"`/`"destructive"` tools (§4) — different
-tools, different risk profile, stated explicitly.
+tools, different risk profile, stated explicitly. `EXTRACTORS` staying Python
+while `CATALOG` moves to YAML (§4) doesn't contradict "add a tool in one
+place" (§2) — a tool without a custom extractor never needs an `EXTRACTORS`
+entry at all, so the common case really is one YAML block.
 
-**Scope check:** one coherent design — tool declaration, discovery, the one
-guardrail stage, sandbox portability, and LLM extraction all compose into one
-`build_toolkit()` + one `ExtractorRegistry` default decision, not five
-disconnected features bolted together.
+**Scope check:** one coherent design — tool declaration (now YAML-backed),
+discovery, the one guardrail stage, sandbox portability, and LLM extraction
+all compose into one `build_toolkit()` + one `ExtractorRegistry` default
+decision, not six disconnected features bolted together.
 
 **Ambiguity check:** the two decisions with real ambiguity (live-tools-by-
 default, extraction model choice) are named as open and deferred in §3 with a
 stated trigger for revisiting, not silently assumed either way.
+
+**Cross-document propagation:** the original DEPG design spec
+([2026-08-29-depg-basic-and-memory-design.md](2026-08-29-depg-basic-and-memory-design.md))
+deferred two of this document's now-addressed items ("LLM-backed extraction,"
+"externalizing the tool catalog to YAML/TOML") and named a third
+("per-phase subagents") as the explicit trigger for revisiting §3's deferred
+extraction-model-choice — that source document has been annotated to point
+here, and this document points back to it (§3), so the decision trail reads
+in both directions instead of only forward.
