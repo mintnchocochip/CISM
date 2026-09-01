@@ -1,47 +1,77 @@
 """Data-driven tool declarations: most CLI tools are `binary <flags>
-<target>`, so they are rows here, not hand-written functions. See
-cism.agent.tools.base for the factory that turns a row into a real tool.
+<target>`, so they are rows in cism/agent/tools/catalog.yaml, not
+hand-written functions. See cism.agent.tools.base for the factory that
+turns a row into a real tool.
+
+ToolSpec is a Pydantic model, not a plain dataclass: a malformed row
+(wrong capability literal, an unknown phase name) fails loudly with a real
+ValidationError at import time — the same "fails loudly instead of
+silently widening what the agent can execute" principle ToolRegistry's own
+docstring already states elsewhere in this codebase.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
-__all__ = ["CATALOG", "Capability", "Flag", "ToolSpec"]
+import yaml
+from pydantic import BaseModel, field_validator
+
+from cism.agent.state import Phase
+
+__all__ = ["CATALOG", "Capability", "Flag", "ToolSpec", "phases_for"]
 
 Capability = Literal["reads", "writes", "executes", "destructive"]
 
+_CATALOG_PATH = Path(__file__).parent / "catalog.yaml"
 
-@dataclass(frozen=True, slots=True)
-class Flag:
+
+class Flag(BaseModel):
     cli: str
     kind: Literal["value", "bool"] = "value"
 
 
-@dataclass(frozen=True, slots=True)
-class ToolSpec:
+class ToolSpec(BaseModel):
     binary: str
     capability: Capability
     description: str
-    flags: dict[str, Flag] = field(default_factory=dict)
+    flags: dict[str, Flag] = {}
     target: str = "positional"
     allow_raw: bool = False
     timeout: float = 60.0
+    #: The rare binary needing `-h` (or something else) instead of `--help`
+    #: for cism.agent.tools.base._build_help_tool (see the design doc §5).
+    help_flag: str = "--help"
+    #: None means "use the capability default" (_DEFAULT_PHASES_BY_CAPABILITY
+    #: below); an explicit list overrides it entirely, it does not add to it.
+    phases: frozenset[Phase] | None = None
+
+    @field_validator("phases", mode="before")
+    @classmethod
+    def _parse_phases(cls, value: object) -> frozenset[Phase] | None:
+        if value is None:
+            return None
+        return frozenset(Phase[p.upper().replace("-", "_")] for p in value)
 
 
-CATALOG: dict[str, ToolSpec] = {
-    "nikto": ToolSpec(
-        binary="nikto", capability="reads",
-        description="Web server vulnerability scan.",
-        target="-host",
-    ),
-    "whatweb": ToolSpec(
-        binary="whatweb", capability="reads",
-        description="Fingerprint web technologies in use on a target.",
-    ),
-    "dnsenum": ToolSpec(
-        binary="dnsenum", capability="reads",
-        description="Enumerate DNS records and subdomains for a domain.",
-    ),
+_DEFAULT_PHASES_BY_CAPABILITY: dict[Capability, frozenset[Phase]] = {
+    "reads": frozenset({Phase.RECON, Phase.ENUMERATION, Phase.VULNERABILITY_DISCOVERY}),
+    "writes": frozenset(),
+    "executes": frozenset(),
+    "destructive": frozenset(),
 }
+
+
+def phases_for(spec: ToolSpec) -> frozenset[Phase]:
+    """A tool's real phase availability: its own `phases:` override if it
+    has one, otherwise the fail-closed default for its capability."""
+    return spec.phases if spec.phases is not None else _DEFAULT_PHASES_BY_CAPABILITY[spec.capability]
+
+
+def _load_catalog(path: Path = _CATALOG_PATH) -> dict[str, ToolSpec]:
+    raw = yaml.safe_load(path.read_text()) or {}
+    return {name: ToolSpec(**row) for name, row in raw.items()}
+
+
+CATALOG: dict[str, ToolSpec] = _load_catalog()
