@@ -6,7 +6,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from cism.agent.tools.base import build_catalog, render_argv
-from cism.agent.tools.catalog import Flag, ToolSpec
+from cism.agent.tools.catalog import CATALOG, Flag, ToolSpec
 
 
 def test_render_argv_places_a_bool_flag_and_a_value_flag() -> None:
@@ -65,3 +65,35 @@ def test_a_built_tool_routes_through_run_sandboxed() -> None:
     assert result == "ok"
     mock_run.assert_called_once()
     assert mock_run.call_args.args[0] == ["nikto", "-host", "10.0.0.5"]
+
+
+def test_nmap_catalog_row_builds_argv_from_target_and_extra() -> None:
+    (tool,) = build_catalog({"nmap": CATALOG["nmap"]})
+
+    with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
+        tool.invoke({"target": "10.0.0.5", "extra": "-p 80,443"})
+
+    assert mock_run.call_args.args[0] == ["nmap", "-p", "80,443", "10.0.0.5"]
+
+
+def test_nmap_catalog_row_with_no_extra_passes_no_flags() -> None:
+    """Unlike the old hand-written nmap(), which defaulted to "-sV" when no
+    options were given, the catalog's generic `extra` field has no per-tool
+    default value — this is an accepted, minor behavior change: the whole
+    point of tool_help (Task 4) is letting the model choose its own flags
+    rather than relying on one baked in here."""
+    (tool,) = build_catalog({"nmap": CATALOG["nmap"]})
+
+    with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
+        tool.invoke({"target": "10.0.0.5"})
+
+    assert mock_run.call_args.args[0] == ["nmap", "10.0.0.5"]
+
+
+def test_curl_catalog_row_builds_argv_from_target_and_extra() -> None:
+    (tool,) = build_catalog({"curl": CATALOG["curl"]})
+
+    with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
+        tool.invoke({"target": "https://example.com", "extra": "-sS -L"})
+
+    assert mock_run.call_args.args[0] == ["curl", "-sS", "-L", "https://example.com"]

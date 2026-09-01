@@ -1,8 +1,9 @@
-"""cism/agent/tools/{discovery,linux,credentials}.py: what argv each real
-tool function builds from its arguments — the actual, model-facing
-behavior of a tool call, independent of run_sandboxed's own execution
-mechanics (covered separately in test_sandbox.py). run_sandboxed itself is
-monkeypatched out so no real subprocess ever runs here.
+"""cism/agent/tools/credentials.py: what argv the hand-written hydra tool
+builds from its arguments. nmap and curl became data-driven catalog rows
+(see cism/agent/tools/catalog.yaml and tests/test_tool_catalog_build.py);
+hydra stays hand-written because its structured credential-list handling
+doesn't fit build_catalog's flat flags-and-target shape. run_sandboxed
+itself is monkeypatched out so no real subprocess ever runs here.
 """
 
 from __future__ import annotations
@@ -11,34 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from cism.agent.tools import credentials, discovery, linux
-
-
-def test_nmap_builds_argv_from_target_and_options(monkeypatch) -> None:
-    calls: list[list[str]] = []
-    monkeypatch.setattr(discovery, "run_sandboxed", lambda argv, **kw: calls.append(argv) or "ok")
-
-    discovery.nmap.invoke({"target": "10.0.0.5", "options": "-p 80,443"})
-
-    assert calls == [["nmap", "-p", "80,443", "10.0.0.5"]]
-
-
-def test_nmap_defaults_options_to_a_service_version_scan(monkeypatch) -> None:
-    calls: list[list[str]] = []
-    monkeypatch.setattr(discovery, "run_sandboxed", lambda argv, **kw: calls.append(argv) or "ok")
-
-    discovery.nmap.invoke({"target": "10.0.0.5"})
-
-    assert calls == [["nmap", "-sV", "10.0.0.5"]]
-
-
-def test_curl_builds_argv_from_url_and_options(monkeypatch) -> None:
-    calls: list[list[str]] = []
-    monkeypatch.setattr(linux, "run_sandboxed", lambda argv, **kw: calls.append(argv) or "ok")
-
-    linux.curl.invoke({"url": "https://example.com", "options": "-sS -L"})
-
-    assert calls == [["curl", "-sS", "-L", "https://example.com"]]
+from cism.agent.tools import credentials
 
 
 def test_hydra_materializes_explicit_credential_lists_to_scratch_files(monkeypatch) -> None:
