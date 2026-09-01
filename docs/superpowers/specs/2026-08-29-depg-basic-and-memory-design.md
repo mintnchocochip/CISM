@@ -43,15 +43,30 @@ In scope:
 Out of scope (captured in §12, the deferred log):
 
 - Read/write/execute guardrails and OS-level sandboxing (a separate
-  guardrail + sandbox workstream).
-- Per-phase subagents (documented as a future direction with a spec sketch).
+  guardrail + sandbox workstream). **Partially addressed** —
+  [2026-09-01-unified-toolkit-and-llm-extraction-design.md §6](2026-09-01-unified-toolkit-and-llm-extraction-design.md)
+  adds one dangerous-flag denylist guardrail stage and a portable sandbox-
+  runner seam, but not the fuller per-phase `WriteGuard`/`ExecGuard` system
+  this bullet originally meant — that workstream is still open.
+- Per-phase subagents (documented as a future direction with a spec sketch,
+  §"Per-phase subagents" below). **Still deferred** — now also the named
+  trigger condition for revisiting the LLM-extractor model-choice decision in
+  [2026-09-01-unified-toolkit-and-llm-extraction-design.md §3](2026-09-01-unified-toolkit-and-llm-extraction-design.md).
 - γ / graded propagation math (edge `weight` is reserved but inert here).
+  Still deferred, untouched by any later document.
 - LLM-backed extraction for the long-tail tool catalog, and an LLM/embedding
-  node-reconciliation pass.
-- IP ↔ hostname aliasing.
-- `inconclusive` observations lowering confidence.
+  node-reconciliation pass. **The first half is addressed** — see
+  [2026-09-01-unified-toolkit-and-llm-extraction-design.md §8](2026-09-01-unified-toolkit-and-llm-extraction-design.md)
+  (`LLMExtractor`, grounded structured-output extraction). The
+  node-reconciliation half is still deferred.
+- IP ↔ hostname aliasing. Still deferred.
+- `inconclusive` observations lowering confidence. Still deferred.
 - Externalizing the tool catalog to YAML/TOML (kept as typed Python rows for
-  now; a factory-read change later, the author's call).
+  now; a factory-read change later, the author's call). **Addressed** — see
+  [2026-09-01-unified-toolkit-and-llm-extraction-design.md §4](2026-09-01-unified-toolkit-and-llm-extraction-design.md):
+  `CATALOG` moves to YAML; `EXTRACTORS` deliberately stays Python (it holds
+  live code references, not data — see that section for why the split isn't
+  a compromise, it's a real boundary).
 
 ## 3. Architecture
 
@@ -456,6 +471,14 @@ For now: one physical graph, phase-parameterized `think` (per-phase prompt +
 tool subset) — giving per-phase tunability/evaluability without orchestration
 cost. Promote to real subagents when a real model shows one shared graph cannot
 serve all six phases well.
+
+> Cited as a forward reference from
+> [2026-09-01-unified-toolkit-and-llm-extraction-design.md §3](2026-09-01-unified-toolkit-and-llm-extraction-design.md):
+> `LLMExtractor` reuses the single shared `self._llm` for this sprint rather
+> than a separately configured extraction model, deliberately deferred until
+> either live testing or this promotion happens — per-role model choice
+> (including for extraction) only becomes a real question once each phase
+> has its own agent, not before.
 
 Sketch when that day comes:
 
