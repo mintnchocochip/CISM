@@ -16,6 +16,7 @@ agent = [
     "langgraph>=0.2",
     "langchain-core>=0.3",
     "langchain-openai>=0.2",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
@@ -27,6 +28,7 @@ include = ["cism*"]
 
 [tool.setuptools.package-data]
 "cism.tui" = ["*.tcss"]
+"cism.agent.tools" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

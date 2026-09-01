@@ -1,0 +1,29 @@
+# Every tool used by the agent is declared here: how to run it (binary,
+# flags, target, allow_raw), and which phases offer it (phases: — omit to
+# use the capability default below).
+#
+# Capability defaults when `phases:` is omitted:
+#   reads                        -> recon, enumeration, vulnerability-discovery
+#   writes / executes / destructive -> NONE — registered but unreachable in
+#                                      every phase until you add an explicit
+#                                      `phases:` key. This is deliberate,
+#                                      fail-closed behavior: a destructive
+#                                      tool should never become available to
+#                                      a phase just because nobody thought
+#                                      about it.
+
+nikto:
+  binary: nikto
+  capability: reads
+  description: Web server vulnerability scan.
+  target: "-host"
+
+whatweb:
+  binary: whatweb
+  capability: reads
+  description: Fingerprint web technologies in use on a target.
+
+dnsenum:
+  binary: dnsenum
+  capability: reads
+  description: Enumerate DNS records and subdomains for a domain.

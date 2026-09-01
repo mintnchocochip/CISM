@@ -12,7 +12,7 @@ from cism.agent.tools.catalog import Flag, ToolSpec
 def test_render_argv_places_a_bool_flag_and_a_value_flag() -> None:
     spec = ToolSpec(
         binary="nmap", capability="reads", description="d",
-        flags={"ports": Flag("-p"), "service": Flag("-sV", "bool")},
+        flags={"ports": Flag(cli="-p"), "service": Flag(cli="-sV", kind="bool")},
     )
     argv = render_argv(spec, "10.0.0.5", ports="1-1000", service=True)
 
@@ -22,7 +22,7 @@ def test_render_argv_places_a_bool_flag_and_a_value_flag() -> None:
 def test_render_argv_omits_an_unset_bool_flag() -> None:
     spec = ToolSpec(
         binary="nmap", capability="reads", description="d",
-        flags={"service": Flag("-sV", "bool")},
+        flags={"service": Flag(cli="-sV", kind="bool")},
     )
     argv = render_argv(spec, "10.0.0.5", service=False)
 
