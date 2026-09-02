@@ -9,9 +9,11 @@ from .chain import (
     GuardrailStage,
     PassThroughStage,
 )
+from .dangerous_flags import DangerousFlagGuardStage
 from .scope import EngagementScope, ScopeGuardStage
 
 __all__ = [
+    "DangerousFlagGuardStage",
     "EngagementScope",
     "GuardrailChain",
     "GuardrailResult",
