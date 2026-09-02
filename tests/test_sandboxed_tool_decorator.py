@@ -41,3 +41,12 @@ def test_decorated_tool_with_scratch_gets_a_real_directory() -> None:
 
     assert seen[0].exists() is False  # scratch_dir cleans up on exit
     assert mock_run.call_args.kwargs["cwd"] == seen[0]
+
+
+def test_a_decorated_tool_carries_its_binary_in_metadata() -> None:
+    @sandboxed_tool(binary="hydra-ish", capability="executes")
+    def probe(target: str) -> list[str]:
+        """Probe a target."""
+        return [target]
+
+    assert probe.metadata["binary"] == "hydra-ish"
