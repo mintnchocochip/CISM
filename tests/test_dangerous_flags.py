@@ -58,3 +58,13 @@ def test_a_target_value_containing_a_dangerous_token_as_a_substring_is_not_block
 def test_a_bare_dash_o_flag_is_blocked() -> None:
     result = _stage().check(_call(target="10.0.0.5", extra="-o /tmp/pwn.txt"))
     assert result.allowed is False
+
+
+def test_an_unparseable_extra_argument_is_blocked_not_raised() -> None:
+    """An unbalanced quote makes shlex.split raise ValueError. The guard
+    must fail closed (block the call) rather than let the exception escape
+    — this stage runs before act()'s try/except in nodes.py, so a raised
+    ValueError here would crash the whole graph run instead of producing a
+    normal blocked-call outcome."""
+    result = _stage().check(_call(target="10.0.0.5", extra='-H "unbalanced'))
+    assert result.allowed is False
