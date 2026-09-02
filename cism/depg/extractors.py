@@ -1,24 +1,27 @@
 """Real cause-class extractors: nmap open-port findings and hydra credential
-attempts. Both parse a tool's own default plain-text output — nmap's tabular
-port lines and hydra's "login:/password:" success line are regular enough
-that a regex beats requiring -oX/machine-readable flags the tool wrapper
-doesn't currently request.
+attempts (regex-based, parsing each tool's own default plain-text output),
+plus LLMExtractor — the LLM-backed fallback for any tool without a
+hand-written parser here, and EXTRACTORS, the small dict of tool-name ->
+extractor pairing the two regex-based ones to their tool names.
 """
 
 from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import Literal
 
-from langchain_core.messages import ToolMessage
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.messages.tool import ToolCall
+from pydantic import BaseModel
 
 from cism.depg.evidence import Evidence
-from cism.depg.extract import Extraction
+from cism.depg.extract import CauseExtractor, Extraction, GenericExtractor
 from cism.depg.graph import Graph
 from cism.depg.node import Node, derive_node_id
 
-__all__ = ["HydraExtractor", "NmapExtractor"]
+__all__ = ["EXTRACTORS", "ExtractedFinding", "ExtractedFindings", "HydraExtractor", "LLMExtractor", "NmapExtractor"]
 
 _OPEN_PORT_RE = re.compile(r"^(\d+)/(tcp|udp)\s+open\s+(\S+)", re.MULTILINE)
 _HYDRA_SUCCESS_RE = re.compile(r"login:\s*(\S+)\s+password:\s*(\S+)")
@@ -117,3 +120,87 @@ class HydraExtractor:
                 ],
             )
         return Extraction(nodes=[node])
+
+
+_PROMPT = (
+    "You are extracting security findings from a penetration-testing tool's "
+    "raw output.\n"
+    "For each distinct finding, report: cause_class (a short label, e.g. "
+    "'open-port', 'outdated-server-header'), signal (the specific fact, e.g. "
+    "'443/tcp'), tier (T1=confirmed exploit/credential, T2=strong structured "
+    "evidence like an open port or version string, T3=weak/unstructured "
+    "evidence), verdict ('alive' if this finding is still relevant, 'dead' if "
+    "the check failed or found nothing), evidence_quote (an exact substring "
+    "of the output below that backs this claim), and summary (one short "
+    "sentence).\n"
+    "If there is nothing worth reporting, return an empty findings list.\n\n"
+    "Tool output:\n{output}"
+)
+
+
+class ExtractedFinding(BaseModel):
+    cause_class: str
+    signal: str
+    tier: Literal["T1", "T2", "T3"]
+    verdict: Literal["alive", "dead"]
+    evidence_quote: str
+    summary: str
+
+
+class ExtractedFindings(BaseModel):
+    findings: list[ExtractedFinding]
+
+
+class LLMExtractor:
+    """Fallback CauseExtractor for any tool without a hand-written one.
+    Grounding is mechanical (a real substring check), never another LLM
+    call: a finding whose evidence_quote can't be found in the tool's own
+    output has its tier clamped to T3 rather than dropped. Any exception —
+    malformed structured output, the connector not supporting it, a network
+    error — falls back to GenericExtractor's exact behavior, the same
+    one-weak-T3-node result every tool already gets today.
+    """
+
+    def __init__(self, llm: BaseChatModel) -> None:
+        self._llm = llm
+        self._fallback = GenericExtractor()
+
+    def extract(
+        self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
+    ) -> Extraction:
+        try:
+            structured = self._llm.with_structured_output(ExtractedFindings)
+            result = structured.invoke([HumanMessage(content=_PROMPT.format(output=message.content))])
+        except Exception:
+            return self._fallback.extract(call, message, graph, target)
+
+        content = str(message.content)
+        call_id = call["id"] if call else message.tool_call_id
+        nodes = []
+        for finding in result.findings:
+            tier = finding.tier if finding.evidence_quote in content else "T3"
+            nodes.append(
+                Node(
+                    id=derive_node_id(finding.cause_class, target, finding.signal),
+                    cause_class=finding.cause_class,
+                    target=target,
+                    signal=finding.signal,
+                    evidence=[
+                        Evidence(
+                            timestamp=_now(),
+                            tool=message.name or "unknown-tool",
+                            exit_signal=finding.summary,
+                            tier=tier,
+                            verdict=finding.verdict,
+                            call_id=call_id,
+                        )
+                    ],
+                )
+            )
+        return Extraction(nodes=nodes) if nodes else self._fallback.extract(call, message, graph, target)
+
+
+EXTRACTORS: dict[str, CauseExtractor] = {
+    "nmap": NmapExtractor(),
+    "hydra": HydraExtractor(),
+}

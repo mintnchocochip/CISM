@@ -81,3 +81,20 @@ def test_hydra_extractor_treats_an_error_status_as_a_failed_attempt() -> None:
     (node,) = extraction.nodes
     assert node.cause_class == "credential-attempt"
     assert node.evidence[0].verdict == "dead"
+
+
+def test_extractors_dict_keys_are_known_tool_names() -> None:
+    """One cheap test catches a typo in EXTRACTORS at CI time instead of it
+    silently falling through to the default extractor at runtime — hydra
+    is included explicitly since it has no CATALOG row (design doc §5)."""
+    from cism.agent.tools.catalog import CATALOG
+    from cism.depg.extractors import EXTRACTORS
+
+    assert set(EXTRACTORS) <= set(CATALOG) | {"hydra"}
+
+
+def test_extractors_maps_nmap_and_hydra_to_their_real_extractors() -> None:
+    from cism.depg.extractors import EXTRACTORS
+
+    assert isinstance(EXTRACTORS["nmap"], NmapExtractor)
+    assert isinstance(EXTRACTORS["hydra"], HydraExtractor)

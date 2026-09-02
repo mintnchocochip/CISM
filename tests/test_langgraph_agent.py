@@ -16,9 +16,11 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 
 from cism.agent import LangGraphAgent
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam, PassThroughStage
+from cism.agent.llm import DummyChatModel
 from cism.agent.profiles import PhaseProfile, PhaseProfiles
 from cism.agent.state import Phase
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
+from cism.depg import GenericExtractor, LLMExtractor
 from cism.tui.events import (
     Agent,
     DEPGUpdated,
@@ -515,3 +517,17 @@ async def test_tool_binding_happens_per_phase_inside_think_not_at_construction(
 
     assert model.bound_tools  # bound once think actually ran
     await agent.aclose()
+
+
+async def test_the_bare_dummy_backed_agent_uses_generic_extractor(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()
+
+    assert isinstance(agent._extractors.get("some-tool-with-no-hand-written-extractor"), GenericExtractor)
+
+
+async def test_a_configured_real_endpoint_defaults_to_llm_extractor(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent(llm=DummyChatModel(), endpoint="http://example.invalid/v1", model_name="m")
+
+    assert isinstance(agent._extractors.get("some-tool-with-no-hand-written-extractor"), LLMExtractor)
