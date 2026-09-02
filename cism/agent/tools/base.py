@@ -14,9 +14,11 @@ from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import create_model
 
 from cism.agent.tools.catalog import Capability, ToolSpec
+from cism.agent.tools.registry import ToolRegistry
 from cism.agent.tools.sandbox import run_sandboxed, scratch_dir
+from cism.depg.extract import CauseExtractor
 
-__all__ = ["build_catalog", "render_argv", "sandboxed_tool", "write_lines"]
+__all__ = ["build_catalog", "build_toolkit", "render_argv", "sandboxed_tool", "write_lines"]
 
 _SCRATCH_PARAM = "scratch"
 
@@ -112,7 +114,57 @@ def sandboxed_tool(
             name=func.__name__,
             description=func.__doc__ or "",
             args_schema=_decorated_args_model(func),
-            metadata={"capability": capability},
+            metadata={"capability": capability, "binary": binary},
         )
 
     return decorator
+
+
+def _build_help_tool(catalog: dict[str, ToolSpec], extra_binaries: dict[str, str]) -> BaseTool:
+    """One generic tool, not one per catalog entry. Still routed through
+    run_sandboxed — timeout-protected even for "harmless" --help, since
+    some binaries hang on it waiting on stdin. Exempt from phase gating
+    (see make_think_node): knowing what a tool can do carries none of the
+    risk that using it does."""
+    binaries = {name: spec.binary for name, spec in catalog.items()} | extra_binaries
+
+    def _run(tool_name: str) -> str:
+        spec = catalog.get(tool_name)
+        help_flag = spec.help_flag if spec else "--help"
+        binary = binaries.get(tool_name)
+        if binary is None:
+            return f"unknown tool {tool_name!r}"
+        return run_sandboxed([binary, help_flag])
+
+    return StructuredTool.from_function(
+        func=_run,
+        name="tool_help",
+        description="Print a tool's own --help/-h usage text before deciding what flags to pass it.",
+        metadata={"capability": "reads"},
+    )
+
+
+def _binaries_of(tools: list[BaseTool]) -> dict[str, str]:
+    """A decorated tool's real binary name, read from the metadata
+    sandboxed_tool now attaches — not assumed to equal the tool's
+    registered name, even though that happens to be true for hydra today.
+    hydra itself is a plain @tool, not a sandboxed_tool, so its metadata is
+    None rather than a dict missing "binary" — `or {}` covers both "no
+    metadata at all" and "metadata without a binary key" the same way."""
+    return {tool.name: (tool.metadata or {}).get("binary", tool.name) for tool in tools}
+
+
+def build_toolkit(
+    catalog: dict[str, ToolSpec],
+    decorated_tools: list[BaseTool],
+    extractors: dict[str, CauseExtractor],
+) -> tuple[ToolRegistry, dict[str, str]]:
+    """Assembles one ToolRegistry from every tool source this codebase has
+    (catalog rows, hand-written decorated tools, plus the generic
+    tool_help), and hands back the extractors dict unchanged alongside it
+    so a caller building both together — as LangGraphAgent does — has one
+    call site instead of two independently-ordered ones."""
+    catalog_tools = build_catalog(catalog)
+    help_tool = _build_help_tool(catalog, extra_binaries=_binaries_of(decorated_tools))
+    registry = ToolRegistry([*catalog_tools, *decorated_tools, help_tool])
+    return registry, extractors

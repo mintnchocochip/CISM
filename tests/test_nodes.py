@@ -15,6 +15,7 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from langchain_core.tools import StructuredTool
 
 from cism.agent.llm import DummyChatModel
 from cism.agent.nodes import make_depg_update_node, make_think_node
@@ -410,3 +411,31 @@ async def test_think_prepends_the_phases_system_prompt_without_mutating_state() 
     await think(state)
 
     assert not any(isinstance(m, SystemMessage) for m in state["messages"])
+
+
+async def test_think_always_binds_tool_help_even_when_the_profile_declares_no_tools() -> None:
+    recorded: list = []
+
+    class _RecordsBoundTools(BaseChatModel):
+        @property
+        def _llm_type(self) -> str:
+            return "records-bound-tools"
+
+        def bind_tools(self, tools, **kwargs):
+            recorded.append(tools)
+            return self
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(content="done"))])
+
+    help_tool = StructuredTool.from_function(
+        func=lambda tool_name: "help text", name="tool_help", description="d"
+    )
+    profiles = PhaseProfiles(
+        {Phase.REPORTING: PhaseProfile(phase=Phase.REPORTING, system_prompt="p", tool_names=frozenset())}
+    )
+    think = make_think_node(_RecordsBoundTools(), ToolRegistry([help_tool]), profiles)
+
+    await think({"messages": [HumanMessage(content="go")], "phase": Phase.REPORTING})
+
+    assert [t.name for t in recorded[0]] == ["tool_help"]

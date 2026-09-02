@@ -11,7 +11,7 @@ the "not even exported" gap named in the unified-toolkit design doc.
 
 from __future__ import annotations
 
-from .base import build_catalog
+from .base import build_catalog, build_toolkit
 from .catalog import CATALOG
 from .credentials import hydra
 from .dummy import dummy_msfconsole, dummy_nmap
@@ -25,6 +25,7 @@ __all__ = [
     "CATALOG",
     "ToolRegistry",
     "build_catalog",
+    "build_toolkit",
     "curl",
     "dummy_msfconsole",
     "dummy_nmap",

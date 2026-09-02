@@ -75,7 +75,17 @@ def make_think_node(
 ) -> Callable[[AgentState], dict]:
     async def think(state: AgentState) -> dict:
         profile = profiles.get(state["phase"])
-        phase_tools = [tools.get(name) for name in profile.tool_names if name in tools]
+        # tool_help is exempt from phase gating (design doc §5): knowing
+        # what a tool can do carries none of the risk that using it does,
+        # so it's always offered when the registry has one, regardless of
+        # what this phase's profile declares. The `if name in tools` filter
+        # on profile.tool_names itself is unchanged from before — a profile
+        # can still name a tool the current registry doesn't have (e.g. the
+        # bare dummy-tools registry).
+        names = {name for name in profile.tool_names if name in tools}
+        if "tool_help" in tools:
+            names.add("tool_help")
+        phase_tools = [tools.get(name) for name in names]
         bound = _bind_tools_if_supported(llm, phase_tools)
         # The prompt is prepended for this invocation only — never appended
         # to state, or every loop iteration would stack another copy.
