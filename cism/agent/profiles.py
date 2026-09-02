@@ -2,6 +2,13 @@
 guardrail stages. One profile per phase; think/act consume this registry and
 never branch on phase themselves, so promoting a phase to a real subagent
 later is a hand-off at phase_router, not a graph change.
+
+tool_names is derived from cism.agent.tools.catalog.CATALOG via phases_for,
+not hand-authored per phase — adding a catalog row with the right
+capability (or an explicit `phases:` override) is what makes it reachable
+in a phase, not a second edit here. Decorated (non-catalog) tools like
+hydra, which have no CATALOG row (see the design doc §5), get their phase
+availability from _DECORATED_TOOL_PHASES instead.
 """
 
 from __future__ import annotations
@@ -11,6 +18,7 @@ from dataclasses import dataclass
 from cism.agent.guardrails import GuardrailStage
 from cism.agent.state import Phase
 from cism.agent.tools import ToolRegistry
+from cism.agent.tools.catalog import CATALOG, phases_for
 
 __all__ = ["PhaseProfile", "PhaseProfiles", "default_profiles"]
 
@@ -56,26 +64,36 @@ _PROMPTS: dict[Phase, str] = {
     Phase.REPORTING: "Summarize findings. Do not run further tools.",
 }
 
-_TOOLS: dict[Phase, frozenset[str]] = {
-    Phase.RECON: frozenset({"nmap", "curl"}),
-    Phase.ENUMERATION: frozenset({"nmap", "curl"}),
-    Phase.VULNERABILITY_DISCOVERY: frozenset({"nmap", "curl"}),
-    Phase.EXPLOITATION: frozenset({"nmap", "curl", "hydra"}),
-    Phase.POST_EXPLOITATION: frozenset({"nmap", "curl", "hydra"}),
-    Phase.REPORTING: frozenset(),
+#: Decorated tools (cism.agent.tools.credentials.hydra) have no CATALOG row
+#: — see the design doc §5's extra_binaries reasoning — so their phase
+#: availability can't come from phases_for(). This is the one place that
+#: gap is filled by hand.
+_DECORATED_TOOL_PHASES: dict[str, frozenset[Phase]] = {
+    "hydra": frozenset({Phase.EXPLOITATION, Phase.POST_EXPLOITATION}),
 }
 
 
 def default_profiles(tools: ToolRegistry) -> PhaseProfiles:
-    """The basic profile set. tool_names lists real tool names (nmap/curl/
-    hydra); a caller whose registry only has the dummy tools simply binds
-    nothing for a phase — see make_think_node, which filters tool_names
+    """The basic profile set. tool_names lists real tool names; a caller
+    whose registry only has the dummy tools simply binds nothing for a
+    phase — see make_think_node, which filters tool_names
     against what the registry actually contains."""
     del tools  # not needed to build the basic set; kept for callers' symmetry
+
+    tool_names_by_phase: dict[Phase, set[str]] = {phase: set() for phase in Phase}
+    for name, spec in CATALOG.items():
+        for phase in phases_for(spec):
+            tool_names_by_phase[phase].add(name)
+    for name, phases in _DECORATED_TOOL_PHASES.items():
+        for phase in phases:
+            tool_names_by_phase[phase].add(name)
+
     return PhaseProfiles(
         {
             phase: PhaseProfile(
-                phase=phase, system_prompt=_PROMPTS[phase], tool_names=_TOOLS[phase]
+                phase=phase,
+                system_prompt=_PROMPTS[phase],
+                tool_names=frozenset(tool_names_by_phase[phase]),
             )
             for phase in Phase
         }
