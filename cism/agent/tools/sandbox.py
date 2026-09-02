@@ -32,6 +32,7 @@ __all__ = [
     "ToolTimeoutError",
     "run_sandboxed",
     "scratch_dir",
+    "set_default_runner",
 ]
 
 _DEFAULT_TIMEOUT = 60.0
@@ -126,6 +127,20 @@ def scratch_dir() -> Iterator[Path]:
         yield Path(tmp)
 
 
+_default_runner: Runner = SubprocessRunner()
+
+
+def set_default_runner(runner: Runner) -> None:
+    """Swaps the runner every tool call uses when it doesn't pass one
+    explicitly. Meant to be called once at startup (LangGraphAgent.__init__
+    or run_agent.py, once real tools are opted into) — resolved at call
+    time inside run_sandboxed, not at tool-construction time, because
+    sandboxed_tool is an eager decorator with no later "assembly" moment to
+    inject a runner into."""
+    global _default_runner
+    _default_runner = runner
+
+
 def run_sandboxed(
     argv: list[str],
     *,
@@ -139,9 +154,13 @@ def run_sandboxed(
 
     ``cwd`` defaults to a fresh :func:`scratch_dir`; pass one explicitly
     for tools that need to pre-write files (a hydra wordlist, an msfconsole
-    resource script) before the process starts.
+    resource script) before the process starts. ``runner`` defaults to
+    whatever :func:`set_default_runner` last set (a plain
+    :class:`SubprocessRunner` until something calls it) — pass one
+    explicitly only for a test that wants to inject a fake runner without
+    touching global state.
     """
-    active_runner = runner or SubprocessRunner()
+    active_runner = runner or _default_runner
 
     if cwd is not None:
         output = active_runner.run(argv, timeout=timeout, cwd=cwd)
