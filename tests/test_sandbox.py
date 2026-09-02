@@ -91,3 +91,70 @@ def test_scratch_dir_is_removed_even_if_the_block_raises() -> None:
             holder.append(tmp)
             raise ValueError("boom")
     assert not holder[0].exists()
+
+
+class _FakeRunner:
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
+
+    def run(self, argv: list[str], *, timeout: float, cwd) -> str:
+        self.calls.append(argv)
+        return "fake-output"
+
+
+def test_set_default_runner_is_picked_up_by_run_sandboxed(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+
+    fake = _FakeRunner()
+    monkeypatch.setattr(sandbox_module, "_default_runner", fake)
+
+    output = run_sandboxed(["definitely-not-a-real-binary-xyz123"])
+
+    assert output == "fake-output"
+    assert fake.calls == [["definitely-not-a-real-binary-xyz123"]]
+
+
+def test_an_explicit_runner_argument_still_overrides_the_default(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+
+    default_fake = _FakeRunner()
+    explicit_fake = _FakeRunner()
+    monkeypatch.setattr(sandbox_module, "_default_runner", default_fake)
+
+    run_sandboxed(["x"], runner=explicit_fake)
+
+    assert explicit_fake.calls == [["x"]]
+    assert default_fake.calls == []
+
+
+def test_a_build_catalog_tool_picks_up_the_default_runner_without_being_told(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.base import build_catalog
+    from cism.agent.tools.catalog import ToolSpec
+
+    fake = _FakeRunner()
+    monkeypatch.setattr(sandbox_module, "_default_runner", fake)
+    (tool,) = build_catalog({"echo": ToolSpec(binary="echo", capability="reads", description="d")})
+
+    tool.invoke({"target": "hi"})
+
+    assert fake.calls == [["echo", "hi"]]
+
+
+def test_a_sandboxed_tool_decorated_function_picks_up_the_default_runner_without_being_told(
+    monkeypatch,
+) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.base import sandboxed_tool
+
+    fake = _FakeRunner()
+    monkeypatch.setattr(sandbox_module, "_default_runner", fake)
+
+    @sandboxed_tool(binary="echo-ish", capability="reads")
+    def probe(target: str) -> list[str]:
+        """Probe."""
+        return [target]
+
+    probe.invoke({"target": "hi"})
+
+    assert fake.calls == [["echo-ish", "hi"]]
