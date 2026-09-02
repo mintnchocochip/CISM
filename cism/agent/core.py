@@ -31,7 +31,7 @@ from cism.agent.logging import get_agent_logger
 from cism.agent.profiles import PhaseProfiles, default_profiles
 from cism.agent.state import Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
-from cism.depg import ExtractorRegistry, GenericExtractor
+from cism.depg import EXTRACTORS, ExtractorRegistry, GenericExtractor, LLMExtractor
 from cism.memory import DEFAULT_SALIENCE_TERMS
 from cism.tui.events import (
     AgentEvent,
@@ -94,7 +94,10 @@ class LangGraphAgent:
             self._key_env_var = key_env_var
         self._tools = tools or ToolRegistry([dummy_nmap, dummy_msfconsole])
         self._guardrails = guardrails or GuardrailSeam.no_op()
-        self._extractors = extractors or ExtractorRegistry({}, GenericExtractor())
+        default_extractor = (
+            GenericExtractor() if self._endpoint == "local (dummy)" else LLMExtractor(self._llm)
+        )
+        self._extractors = extractors or ExtractorRegistry(EXTRACTORS, default_extractor)
         self._profiles = profiles or default_profiles(self._tools)
         self._graph = build_graph(
             self._llm, self._tools, self._guardrails, self._extractors, self._profiles
