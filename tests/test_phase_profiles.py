@@ -32,10 +32,22 @@ def test_default_profiles_covers_every_phase() -> None:
         assert profile.system_prompt
 
 
-def test_default_profiles_gives_exploitation_more_tools_than_recon() -> None:
+def test_default_profiles_exploitation_includes_hydra_but_not_recon_only_tools() -> None:
+    """Adding tools with a real per-tool phase policy means phase tool sets
+    are no longer a monotonically growing superset (the old hand-written
+    _TOOLS table happened to make RECON <= EXPLOITATION true by omission,
+    not by design) — a recon-only scanner like nikto correctly disappears
+    from EXPLOITATION's tool set."""
     profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
 
-    assert profiles.get(Phase.RECON).tool_names <= profiles.get(Phase.EXPLOITATION).tool_names
+    assert "hydra" in profiles.get(Phase.EXPLOITATION).tool_names
+    assert "nikto" not in profiles.get(Phase.EXPLOITATION).tool_names
+
+
+def test_default_profiles_recon_includes_every_reads_capability_catalog_tool() -> None:
+    profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
+
+    assert {"nikto", "whatweb", "dnsenum", "nmap", "curl"} <= profiles.get(Phase.RECON).tool_names
 
 
 def test_default_profiles_reporting_phase_has_no_tools() -> None:
