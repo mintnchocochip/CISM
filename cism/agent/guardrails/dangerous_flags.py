@@ -34,7 +34,14 @@ class DangerousFlagGuardStage:
 
     def check(self, call: ToolCall) -> GuardrailResult[ToolCall]:
         extra = str((call.get("args") or {}).get("extra", ""))
-        tokens = set(shlex.split(extra)) if extra else set()
+        try:
+            tokens = set(shlex.split(extra)) if extra else set()
+        except ValueError:
+            return GuardrailResult(
+                allowed=False,
+                value=call,
+                reason="could not parse `extra` as shell-style tokens (unbalanced quote?)",
+            )
         hit = tokens & _DANGEROUS_FLAG_TOKENS
         if hit:
             return GuardrailResult(
