@@ -76,7 +76,18 @@ def _candidate_hosts(call: ToolCall) -> list[str]:
 
 `check()` already rejects on the *first* out-of-scope host found across whatever `_candidate_hosts` returns — no change needed there.
 
-**Known residual gap, worth one more line of defense:** `_extract_host` doesn't recognize a comma-separated multi-target token (`10.0.0.5,10.0.0.99` as one shlex token, valid nmap syntax) as host-shaped at all — it returns `None`, meaning it's silently *not checked*, not incorrectly allowed by a broken check. Cheap improvement: in `_extract_host`, before the existing checks, split on `,` and recurse on each part, requiring all parts to resolve to a host for the token to count (if any part isn't host-shaped, fall through to the existing logic unchanged — avoids misclassifying an unrelated comma-containing value).
+**In scope for this same fix, not deferred:** `_extract_host` doesn't recognize a comma-separated multi-target token (`10.0.0.5,10.0.0.99` as one shlex token, valid nmap syntax) as host-shaped at all — it returns `None` today, meaning it's silently *not checked*, not incorrectly allowed by a broken check. Since §4.1's whole point is closing gaps in what `_candidate_hosts` inspects, leaving this one open would be inconsistent with the finding it sits right next to. Fix, in `_extract_host`, before the existing checks:
+
+```python
+def _extract_host(value: str) -> str | None:
+    if "," in value:
+        parts = value.split(",")
+        hosts = [_extract_host(p) for p in parts]
+        return value if all(hosts) else None  # all comma-parts host-shaped, or don't treat this as one host
+    ...  # existing checks unchanged
+```
+
+Returning `value` (not one of the parts) signals "this token contains host(s)" back to `_candidate_hosts`, which then needs a small companion change: when a candidate contains a comma, split it into individual hosts for the scope check rather than checking the whole comma-joined string as one host literal (which would never match any single declared CIDR/domain). `_candidate_hosts` already appends whatever `_extract_host` returns to its `hosts` list — that list gets flattened: any entry containing `,` is split before being checked against scope, each part checked independently, same as if they'd arrived as separate tokens.
 
 ### 4.2 [Critical] Guardrail-block reason leaks to the LLM (fixes already-shipped behavior in `nodes.py`)
 
@@ -84,9 +95,62 @@ def _candidate_hosts(call: ToolCall) -> list[str]:
 
 **Fix, three parts:**
 
-1. `GuardrailResult` (`chain.py`) gains a `stage: str = ""` field. Not set by individual stages — `GuardrailChain.run()` stamps it from `stage.name` whenever a stage blocks (`dataclasses.replace(result, stage=stage.name)`), so it's structurally consistent for every stage, present and future, with no per-stage discipline required.
-2. `act()`'s LLM-facing content becomes a fixed, generic string with zero interpolation: `content="blocked by action guardrail"`. No host, no flag names, no capability, no phase, no stage name — nothing that differentiates *why*, which is exactly what would let a probing model map the ruleset.
-3. The rich detail isn't discarded — it moves to `ToolMessage.additional_kwargs["guardrail_detail"] = f"[{guard.stage}] {guard.reason}"`. Verified empirically against this repo's actual `ChatOpenAI` (`langchain_openai`, used by `build_chat_model` in `cism/agent/llm.py`): `additional_kwargs` is dropped entirely by the real OpenAI-wire message conversion — it never reaches the model, by construction, not by convention. `core.py`'s `_translate` (the `node == "act"` branch, where `ToolFailed(call_id=call_id, reason=str(message.content))` is built today) reads `message.additional_kwargs.get("guardrail_detail")` for `ToolFailed.reason` when present, falling back to `str(message.content)` for genuine (non-guardrail) tool-execution errors — so the operator/TUI still sees full detail, unchanged from today.
+1. `GuardrailResult` (`chain.py`) gains a `stage: str = ""` field. Not set by individual stages — `GuardrailChain.run()` stamps it from `stage.name` whenever a stage blocks:
+
+```python
+# cism/agent/guardrails/chain.py
+
+@dataclass(frozen=True, slots=True)
+class GuardrailResult(Generic[T]):
+    allowed: bool
+    value: T
+    reason: str = ""
+    stage: str = ""  # new — which stage produced this result, set by GuardrailChain.run(), never by a stage itself
+
+class GuardrailChain(Generic[T]):
+    def run(self, value: T) -> GuardrailResult[T]:
+        current = value
+        for stage in self._stages:
+            result = stage.check(current)
+            if not result.allowed:
+                return dataclasses.replace(result, stage=stage.name)  # changed: was `return result`
+            current = result.value
+        return GuardrailResult(allowed=True, value=current)
+```
+
+One place (`GuardrailChain.run`), so it's structurally consistent for every stage, present and future, with no per-stage discipline required. (`import dataclasses` added to `chain.py`.)
+
+2. `act()`'s LLM-facing content becomes a fixed, generic string with zero interpolation, and the rich detail moves to `additional_kwargs` instead of being discarded:
+
+```python
+# cism/agent/nodes.py — inside act(), the `if not guard.allowed:` branch
+
+if not guard.allowed:
+    results.append(
+        ToolMessage(
+            content="blocked by action guardrail",  # changed: was f"blocked by action guardrail: {guard.reason or ...}"
+            tool_call_id=call["id"],
+            name=call["name"],
+            status="error",
+            additional_kwargs={"guardrail_detail": f"[{guard.stage}] {guard.reason}"},  # new
+        )
+    )
+    continue
+```
+
+No host, no flag names, no capability, no phase, no stage name in `content` — nothing that differentiates *why*, which is exactly what would let a probing model map the ruleset. Verified empirically against this repo's actual `ChatOpenAI` (`langchain_openai`, used by `build_chat_model` in `cism/agent/llm.py`): `additional_kwargs` is dropped entirely by the real OpenAI-wire message conversion (confirmed via `langchain_core`'s `convert_to_openai_messages`) — it never reaches the model, by construction, not by convention.
+
+3. `core.py`'s `_translate` (the `node == "act"` branch) reads the new field instead of `message.content` when present:
+
+```python
+# cism/agent/core.py — inside _translate(), the `elif node == "act":` branch
+
+if getattr(message, "status", "success") == "error":
+    detail = message.additional_kwargs.get("guardrail_detail") or str(message.content)
+    await self.events.put(ToolFailed(call_id=call_id, reason=detail))
+```
+
+Falls back to `str(message.content)` for genuine (non-guardrail) tool-execution errors, whose `content` is still the real exception message today (§4.2 only changes the guardrail-block path in `act()`, not the `except Exception` path) — so the operator/TUI still sees full detail for every failure type, unchanged from today's behavior for non-guardrail errors and *richer* than today for guardrail ones (today's generic wrapper text is replaced by the actual stage name + reason).
 
 This applies uniformly to `ScopeGuardStage`, `DangerousFlagGuardStage`, and `PhaseToolGuardStage` (§4.4) — one fix point, not three.
 
@@ -222,7 +286,7 @@ Deliberately reuses the same reason text (no separate "metadata endpoint" messag
 
 Every finding gets an adversarial test proving the actual threat model, not just the happy path:
 
-- **§4.1:** `curl.invoke`/`nmap.invoke` with a benign `target` and a second, out-of-scope host smuggled into `extra` (bare positional, and via a flag argument) — both blocked. A comma-separated smuggled multi-target token, if the `_extract_host` enhancement is included.
+- **§4.1:** `curl.invoke`/`nmap.invoke` with a benign `target` and a second, out-of-scope host smuggled into `extra` (bare positional, and via a flag argument) — both blocked. A comma-separated smuggled multi-target token (`extra="10.0.0.5,10.0.0.99"`, one in scope and one not) — blocked, proving the split-and-check-each-part fix.
 - **§4.2:** for each of the three action-chain stages, trigger a block and assert `ToolMessage.content` is exactly the fixed generic string — contains none of: the rejected host, the specific flag tokens, the capability value, the phase name. Separately assert `message.additional_kwargs["guardrail_detail"]` *does* contain the rich detail, and that `core.py`'s `ToolFailed.reason` surfaces it unchanged from current behavior.
 - **§4.3:** `curl` calls with each newly-added flag (`-F`, `-d`, `-D`, `-c`, ...) individually blocked; an `nmap` call with `extra="-T 4"` (space-separated) is *not* blocked (the false-positive fix); a `curl` call with `-T` still *is* blocked (regression check that the fix didn't weaken curl's own coverage).
 - **§4.4:** happy path (bound tool passes); adversarial (a `ToolCall` naming a tool that exists in the registry but isn't offered in this phase, simulating a hallucinated/injected call); unknown tool name blocked; `tool_help` exempted in every phase; `default_profiles()`'s guard `allowed_tool_names` asserted equal to that phase's own `tool_names | {"tool_help"}` by construction.

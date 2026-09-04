@@ -64,14 +64,22 @@ class BubblewrapRunner:
         "/etc/ssl", "/etc/ld.so.cache", "/etc/alternatives",
     )
 
+    def __init__(self) -> None:
+        self._etc_binds_cache: dict[str, frozenset[str]] = {}  # binary -> dynamic /etc binds, §4.2b
+
     def run(self, argv: list[str], *, timeout: float, cwd: Path) -> str:
         if shutil.which(argv[0]) is None:
             raise ToolNotInstalledError(argv[0])
         if shutil.which("bwrap") is None:
             raise ToolNotInstalledError("bwrap")
 
+        binary = argv[0]
+        if binary not in self._etc_binds_cache:
+            self._etc_binds_cache[binary] = _dynamic_etc_binds(binary)  # §4.2b — computed once per binary, memoized
+        etc_binds = self._RO_BIND_ETC + tuple(self._etc_binds_cache[binary])
+
         bwrap_argv = ["bwrap"]
-        for path in self._RO_BIND_DIRS + self._RO_BIND_ETC:
+        for path in self._RO_BIND_DIRS + etc_binds:
             bwrap_argv += ["--ro-bind-try", path, path]
         bwrap_argv += [
             "--bind", str(cwd), "/work",
@@ -93,7 +101,9 @@ class BubblewrapRunner:
         # reusing that module's existing helpers rather than duplicating them.
 ```
 
-`--disable-userns` requires `--unshare-user` to be present explicitly on the command line — bwrap's own arg validation rejects it otherwise even though `--unshare-all` already implies unsharing the user namespace. Verified: omitting `--unshare-user` here fails with `bwrap: --disable-userns requires --unshare-user` before the sandboxed process even starts.
+`--disable-userns` requires `--unshare-user` to be present explicitly on the command line — bwrap's own arg validation rejects it otherwise even though `--unshare-all` already implies unsharing the user namespace. Verified: omitting `--unshare-user` here fails with `bwrap: --disable-userns requires --unshare-user` before the sandboxed process even starts. (Verified against `bubblewrap 0.9.0`; if a future bwrap version changes this validation, the unit test in §5 asserting `--unshare-user` is present in argv will catch a regression either way, independent of *why* it's required.)
+
+`_dynamic_etc_binds` (the function `__init__`'s cache and `run()` call above depend on) is defined in §4.2b — forward-referenced here because the memoization lives on the instance, but the discovery logic itself is a free function with no `BubblewrapRunner` state.
 
 ### 4.2 Two real bugs found by actually running this against installed tools
 
