@@ -208,10 +208,12 @@ class PhaseToolGuardStage:
             return GuardrailResult(
                 allowed=False,
                 value=call,
-                reason=f"{name!r} [capability={capability}] is not offered in phase {self._phase.value}",
+                reason=f"{name!r} [capability={capability}] is not offered in phase {self._phase.to_wire()}",
             )
         return GuardrailResult(allowed=True, value=call)
 ```
+
+Uses `Phase.to_wire()` (`self.name.lower().replace("_", "-")`, e.g. `Phase.RECON.to_wire() == "recon"`), not `self._phase.value` — `Phase` (`cism/agent/state.py`) is an `Enum` whose `.value` is a plain int (`Phase.RECON = 1`), which would have produced `"...phase 1"` instead of a readable name. `to_wire()` is the existing convention this codebase already uses everywhere else a `Phase` needs a string form (e.g. `PhaseChanged.phase`).
 
 Built inside `default_profiles()` (`profiles.py`), attached via each `PhaseProfile.action_stages`:
 
