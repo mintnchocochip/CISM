@@ -507,3 +507,35 @@ def test_a_comma_list_where_no_part_parses_is_still_allowed_through() -> None:
     task."""
     result = _stage().check(_call("nmap", target="10.0.0.5", extra="-p 80,443"))
     assert result.allowed is True
+
+
+def test_ipv4_mapped_ipv6_form_of_the_metadata_ip_is_hard_denied() -> None:
+    """9300eab canonicalized case/compression for a bare IPv6 address, but
+    Python renders "::ffff:169.254.169.254" as "::ffff:a9fe:a9fe" — a
+    string that isn't in _ALWAYS_DENIED_HOSTS on its own, so the embedded
+    IPv4 address was never being extracted for comparison. A v6-capable
+    declared scope is required for this to reach EngagementScope at all
+    (a v4-only scope already fails closed on a v6-family mismatch), so
+    this uses an empty scope — the hard-deny must fire regardless."""
+    from cism.agent.guardrails.scope import EngagementScope, ScopeGuardStage
+
+    stage = ScopeGuardStage(EngagementScope())
+
+    result = stage.check(_call("curl", target="http://[::ffff:169.254.169.254]/"))
+    assert result.allowed is False
+
+    result = stage.check(_call("curl", target="http://[::ffff:a9fe:a9fe]/"))
+    assert result.allowed is False
+
+
+def test_a_normal_ipv6_address_unrelated_to_the_denylist_is_unaffected() -> None:
+    """Regression guard: the ipv4_mapped check must only fire for an
+    actual IPv4-mapped address; an ordinary, unrelated IPv6 host must
+    still pass through the normal scope check unaffected."""
+    from cism.agent.guardrails.scope import EngagementScope, ScopeGuardStage
+
+    scope = EngagementScope(cidrs=(ipaddress.ip_network("2001:db8::/32"),))
+    stage = ScopeGuardStage(scope)
+
+    result = stage.check(_call("curl", target="http://[2001:db8::1]/"))
+    assert result.allowed is True
