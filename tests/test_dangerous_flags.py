@@ -1,8 +1,13 @@
 """cism/agent/guardrails/dangerous_flags.py: DangerousFlagGuardStage blocks
 a tool call whose free-form `extra` argument contains a flag that can read
-or write outside the sandbox's scratch directory. Token-level match
-against shlex.split(extra), not a substring scan — a target/URL value that
-happens to contain "-o" as a substring must not false-positive.
+or write outside the sandbox's scratch directory. Matching runs against
+shlex.split(extra) tokens, not a substring scan of the whole `extra`
+string — a target/URL value that happens to contain "-o" as a substring
+must not false-positive. Within a token, a short (-x) denylisted flag
+matches by prefix (curl/nmap accept an attached value with no separating
+space, e.g. "-o/tmp/pwn"); a long (--xxx) denylisted flag matches only by
+exact `=`-split head, never by prefix, so one long flag is never mistaken
+for another that merely shares its start.
 """
 
 from __future__ import annotations
@@ -112,6 +117,64 @@ def test_curl_still_blocks_its_own_dash_t_upload_flag() -> None:
 def test_nmap_reading_a_target_list_from_a_local_file_is_blocked() -> None:
     result = _stage().check(_call(name="nmap", target="10.0.0.5", extra="-iL /etc/passwd"))
     assert result.allowed is False
+
+
+def test_curl_output_flag_with_no_space_before_the_value_is_blocked() -> None:
+    """curl accepts an attached value with no separating space at all
+    (-o/tmp/pwn is equivalent to -o /tmp/pwn). Exact token-membership
+    against shlex.split(extra) missed this shape entirely — the token is
+    "-o/tmp/pwn", not "-o", so `tokens & denylist` never matched."""
+    result = _stage().check(_call(name="curl", target="https://x", extra="-o/tmp/pwn"))
+    assert result.allowed is False
+
+
+def test_curl_data_flag_with_attached_at_syntax_is_blocked() -> None:
+    result = _stage().check(_call(name="curl", target="https://x", extra="-d@/etc/passwd"))
+    assert result.allowed is False
+
+
+def test_curl_upload_file_flag_with_no_space_is_blocked() -> None:
+    result = _stage().check(_call(name="curl", target="https://x", extra="-T/etc/passwd"))
+    assert result.allowed is False
+
+
+def test_curl_config_flag_with_no_space_is_blocked() -> None:
+    """-K/--config is in the shared denylist, not just curl's own — this
+    confirms the prefix match applies there too."""
+    result = _stage().check(_call(name="curl", target="https://x", extra="-K/etc/curlrc"))
+    assert result.allowed is False
+
+
+def test_curl_cookie_jar_flag_with_no_space_is_blocked() -> None:
+    result = _stage().check(_call(name="curl", target="https://x", extra="-c/tmp/jar"))
+    assert result.allowed is False
+
+
+def test_a_long_flag_that_merely_shares_a_prefix_with_a_denylisted_long_flag_is_not_blocked() -> None:
+    """Long (--xxx) flags must only match by exact `=`-split head, never by
+    startswith — otherwise a distinct, safe long option that happens to
+    begin with a denylisted long flag's name would be falsely blocked.
+    "--output" is denylisted for curl; "--output-dir" is a different,
+    fictitious-but-plausible flag name that must NOT be caught by it."""
+    result = _stage().check(_call(name="curl", target="https://x", extra="--output-dir=/tmp"))
+    assert result.allowed is True
+
+
+def test_a_safe_short_flag_that_does_not_appear_in_the_denylist_is_not_blocked() -> None:
+    """Regression guard for the new prefix-matching path: an ordinary,
+    harmless curl flag must still be allowed through untouched."""
+    result = _stage().check(_call(name="curl", target="https://x", extra="-s -A MyAgent/1.0"))
+    assert result.allowed is True
+
+
+def test_nmap_os_detection_flag_is_not_confused_with_curls_denylisted_dash_o() -> None:
+    """-O is denylisted for curl (--remote-name) but is a completely
+    different, safe, and extremely common nmap flag (OS detection). The
+    per-tool denylist scoping must still hold with the new prefix logic —
+    nmap's denylist doesn't contain -O at all, so it must never trigger
+    here regardless of curl's rules."""
+    result = _stage().check(_call(name="nmap", target="10.0.0.5", extra="-O"))
+    assert result.allowed is True
 
 
 def test_an_unknown_tool_only_gets_the_shared_denylist() -> None:
