@@ -132,8 +132,8 @@ def _candidate_hosts(call: ToolCall) -> list[str]:
 def _extract_host(value: str) -> str | None:
     if "," in value:
         parts = value.split(",")
-        hosts = [_extract_host(p) for p in parts]
-        return value if all(hosts) else None
+        hosts = [h for p in parts if (h := _extract_host(p))]
+        return ",".join(hosts) if hosts else None
 
     try:
         ipaddress.ip_address(value)
