@@ -169,6 +169,101 @@ def test_a_normal_in_scope_host_is_unaffected_by_the_metadata_denylist() -> None
     assert result.allowed is True
 
 
+def test_a_cidr_target_fully_within_the_declared_scope_is_allowed() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.0/28"))
+    assert result.allowed is True
+
+
+def test_a_cidr_smuggled_into_extra_fully_within_scope_is_allowed() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="10.0.0.0/28 -sV"))
+    assert result.allowed is True
+
+
+def test_a_cidr_target_entirely_outside_the_declared_scope_is_blocked() -> None:
+    """Before the fix, _extract_host returned None for CIDR-shaped values
+    and _candidate_hosts silently dropped them — an out-of-scope /24 target
+    was never checked at all, not merely mismatched."""
+    result = _stage().check(_call("nmap", target="192.168.1.0/24"))
+    assert result.allowed is False
+
+
+def test_a_cidr_smuggled_into_extra_entirely_outside_scope_is_blocked() -> None:
+    """Task 1's exact threat model: render_argv places extra's tokens
+    before the positional target, so `nmap 10.0.0.5` with
+    extra="192.168.1.0/24" actually runs `nmap 192.168.1.0/24 10.0.0.5` —
+    a whole out-of-scope network scan smuggled through extra."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="192.168.1.0/24"))
+    assert result.allowed is False
+
+
+def test_a_cidr_that_only_partially_overlaps_the_declared_scope_is_blocked() -> None:
+    """Fail closed on partial overlap: a /23 straddling the declared
+    10.0.0.0/24 scope only half-overlaps it and must not be allowed to
+    scan the out-of-scope half."""
+    result = _stage().check(_call("nmap", target="10.0.0.0/23"))
+    assert result.allowed is False
+
+
+def test_metadata_endpoint_expressed_as_a_slash_32_cidr_is_still_hard_denied() -> None:
+    """169.254.169.254/32 is just another way to spell the bare address —
+    Task 6's hard-deny must not be bypassable by adding a /32 suffix."""
+    wide_scope = EngagementScope(cidrs=(ipaddress.ip_network("169.254.0.0/16"),))
+    stage = ScopeGuardStage(wide_scope)
+
+    result = stage.check(_call("nmap", target="169.254.169.254/32"))
+    assert result.allowed is False
+
+
+def test_metadata_endpoint_cidr_smuggled_into_extra_is_still_hard_denied() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="169.254.169.254/32"))
+    assert result.allowed is False
+
+
+def test_a_wide_cidr_that_merely_contains_the_metadata_address_is_not_hard_denied() -> None:
+    """The hard-deny only fires for a CIDR that reduces to exactly one
+    address matching the denylist, not any wider network that happens to
+    contain it. A /16 covering (among billions of other addresses)
+    169.254.169.254, when it IS the declared scope itself, is judged by
+    the normal in-scope network check — not incorrectly hard-denied just
+    because the metadata address falls somewhere inside it. Contrast with
+    the /32 case above, which stays hard-denied even in this same scope."""
+    wide_scope = EngagementScope(cidrs=(ipaddress.ip_network("169.254.0.0/16"),))
+    stage = ScopeGuardStage(wide_scope)
+
+    result = stage.check(_call("nmap", target="169.254.0.0/16"))
+    assert result.allowed is True
+
+
+def test_trailing_dot_fqdn_for_the_metadata_hostname_is_still_hard_denied() -> None:
+    """A trailing "." makes an absolute DNS name — semantically identical
+    to the name without it. Task 6's hard-deny on
+    "metadata.google.internal" must not be defeated by this one-character
+    difference."""
+    result = _stage().check(_call("curl", target="http://metadata.google.internal./x"))
+    assert result.allowed is False
+
+
+def test_trailing_dot_fqdn_smuggled_into_extra_is_still_hard_denied() -> None:
+    result = _stage().check(
+        _call("nmap", target="10.0.0.5", extra="metadata.google.internal.")
+    )
+    assert result.allowed is False
+
+
+def test_a_trailing_dot_in_scope_domain_is_still_allowed() -> None:
+    """The trailing-dot normalization must work both ways: it should not
+    turn an otherwise in-scope absolute domain name into a false block."""
+    result = _stage().check(_call("curl", target="https://example.com./report"))
+    assert result.allowed is True
+
+
+def test_a_normal_host_with_no_trailing_dot_and_no_cidr_is_unaffected() -> None:
+    """Regression guard: ordinary in-scope host targets, the overwhelming
+    common case, must behave exactly as before these fixes."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="-sV -T4"))
+    assert result.allowed is True
+
+
 def test_the_ipv6_metadata_endpoint_is_blocked_regardless_of_case_or_compression() -> None:
     """_ALWAYS_DENIED_HOSTS stores the canonical lowercase-compressed form —
     the check itself must canonicalize before comparing, or an attacker
