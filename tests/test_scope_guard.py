@@ -539,3 +539,50 @@ def test_a_normal_ipv6_address_unrelated_to_the_denylist_is_unaffected() -> None
 
     result = stage.check(_call("curl", target="http://[2001:db8::1]/"))
     assert result.allowed is True
+
+
+def test_nmap_hostname_slash_prefixlen_syntax_is_blocked() -> None:
+    """nmap's own documented target syntax ("hostname/prefixlen") resolves
+    the hostname and scans the surrounding network — before this fix,
+    _extract_host's CIDR branch only recognized numeric CIDR literals and
+    silently fell through to unrecognized (unchecked, not blocked) for
+    anything else containing a "/". Verified live: this reaches argv
+    unblocked, with the metadata hostname as the host half."""
+    result = _stage().check(_call("nmap", target="metadata.google.internal/24"))
+    assert result.allowed is False
+
+
+def test_a_malformed_leading_zero_cidr_is_blocked() -> None:
+    """A leading-zero octet is rejected by ipaddress.ip_network (Python
+    treats it as ambiguous/potentially-octal) but wasn't rejected by real
+    network tools historically — before this fix the ValueError caused a
+    silent fall-through to "unrecognized", not a block."""
+    result = _stage().check(_call("nmap", target="192.168.001.0/24"))
+    assert result.allowed is False
+
+
+def test_an_out_of_range_prefix_length_is_blocked() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.0/33"))
+    assert result.allowed is False
+
+
+def test_a_url_with_a_numeric_last_path_segment_is_not_misread_as_a_cidr() -> None:
+    """Regression guard: an ordinary URL whose last path segment happens
+    to be numeric (a REST resource id) must not be misread as
+    "hostname/prefixlen" and blocked as an unparseable network — real
+    CIDR/hostname-prefix target syntax is always a bare string, never
+    embedded in a URL, so anything containing "://" is excluded from the
+    CIDR-detection branch entirely."""
+    result = _stage().check(_call("curl", target="https://example.com/v1/users/24"))
+    assert result.allowed is True
+
+
+def test_existing_numeric_cidr_behavior_is_unaffected() -> None:
+    """Regression guard: the already-working numeric-CIDR happy paths
+    (in-scope, out-of-scope, partial-overlap, metadata /32 hard-deny)
+    must all still hold exactly as before this task."""
+    result = _stage().check(_call("nmap", target="10.0.0.0/28"))
+    assert result.allowed is True
+
+    result = _stage().check(_call("nmap", target="192.168.1.0/24"))
+    assert result.allowed is False

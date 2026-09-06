@@ -312,11 +312,27 @@ def _extract_host(value: str) -> str | None:
     # CIDR notation ("10.0.0.0/24") — recognized before the bare-IP check
     # below so a whole network isn't silently dropped as "not host-shaped"
     # and left completely unchecked by the scope guard.
-    if "/" in value:
-        try:
-            return str(ipaddress.ip_network(value, strict=False))
-        except ValueError:
-            pass
+    if "/" in value and "://" not in value:
+        host_part, _, suffix = value.rpartition("/")
+        if suffix.isdigit() and host_part:
+            try:
+                return str(ipaddress.ip_network(value, strict=False))
+            except ValueError:
+                pass
+            # Not a numeric CIDR literal — nmap's own "hostname/prefixlen"
+            # target syntax reaches here. This guard cannot itself
+            # resolve DNS to know what such a target expands to, so
+            # recognizing it as host-shaped (rather than dropping it) is
+            # what lets EngagementScope.contains_network fail closed on
+            # it below — a hostname/prefix combo is always out of scope,
+            # even for an otherwise-declared-in-scope domain, since
+            # prefix-expanding a hostname is exactly the kind of
+            # scope-widening this guard cannot safely verify.
+            host = _extract_host(host_part)
+            return f"{host}/{suffix}" if host is not None else "<unparseable-cidr>"
+        # Contains a "/" but doesn't end in a bare number (a file path,
+        # a Metasploit module path) — not CIDR notation. Fall through to
+        # the checks below, unchanged from before this task.
 
     numeric_ipv4 = _parse_numeric_ipv4(value)
     if numeric_ipv4 is not None:
