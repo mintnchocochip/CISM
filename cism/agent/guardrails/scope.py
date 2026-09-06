@@ -59,6 +59,17 @@ _BARE_DOMAIN_RE = re.compile(
     r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+"
 )
 
+#: Never a legitimate pentest target regardless of declared scope, unlike
+#: RFC1918 ranges generally (which ARE often the actual point of an
+#: internal-network engagement, so blocking those would break legitimate
+#: use) — the cloud metadata service is a classic SSRF pivot to steal
+#: instance credentials.
+_ALWAYS_DENIED_HOSTS: frozenset[str] = frozenset({
+    "169.254.169.254",  # AWS/GCP/Azure instance metadata
+    "metadata.google.internal",
+    "fd00:ec2::254",  # AWS IMDSv2 IPv6
+})
+
 
 @dataclass(frozen=True, slots=True)
 class EngagementScope:
@@ -85,7 +96,7 @@ class ScopeGuardStage:
 
     def check(self, call: ToolCall) -> GuardrailResult[ToolCall]:
         for host in _candidate_hosts(call):
-            if not self._scope.contains_host(host):
+            if host in _ALWAYS_DENIED_HOSTS or not self._scope.contains_host(host):
                 return GuardrailResult(
                     allowed=False,
                     value=call,
