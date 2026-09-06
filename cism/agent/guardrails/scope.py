@@ -237,7 +237,11 @@ def _candidate_hosts(call: ToolCall) -> list[str]:
         except ValueError:
             tokens = [extra]
         for i, token in enumerate(tokens):
-            if i > 0 and tokens[i - 1] in _NUMERIC_ARG_FLAGS:
+            if (
+                i > 0
+                and tokens[i - 1] in _NUMERIC_ARG_FLAGS
+                and re.fullmatch(r"[0-9]+", token)
+            ):
                 continue
             host = _extract_host(token)
             if host:

@@ -404,3 +404,24 @@ def test_a_bare_smuggled_encoded_ip_not_following_a_numeric_arg_flag_is_still_bl
 
     result = _stage().check(_call("nmap", target="10.0.0.5", extra="2130706433"))
     assert result.allowed is False
+
+
+def test_a_comma_glued_target_immediately_after_a_numeric_arg_flag_is_still_checked() -> None:
+    """The skip for _NUMERIC_ARG_FLAGS must not apply to a token that
+    isn't actually shaped like one of these flags' real numeric argument
+    — a real --min-rate value is always a bare number, never a
+    comma-list, so a comma-glued value placed right after the flag name
+    must still be checked normally rather than skipped outright."""
+    result = _stage().check(
+        _call("nmap", target="10.0.0.5", extra="--min-rate 2852039166,10.0.0.1")
+    )
+    assert result.allowed is False
+
+
+def test_a_genuinely_legitimate_rate_value_is_still_skipped_and_unaffected() -> None:
+    """Regression guard: the digit-shape addition must not break the
+    original fix — a real, bare numeric --min-rate value must still be
+    skipped (not misread as an encoded IP) exactly as before this
+    round."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="--min-rate 500000"))
+    assert result.allowed is True
