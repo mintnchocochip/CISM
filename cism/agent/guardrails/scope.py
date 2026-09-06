@@ -71,6 +71,22 @@ _ALWAYS_DENIED_HOSTS: frozenset[str] = frozenset({
 })
 
 
+def _is_always_denied(host: str) -> bool:
+    """Check if a host is in the hard-deny list, canonicalizing IP addresses.
+
+    IP-shaped hosts are parsed and compared via their canonical string form
+    to prevent bypasses via alternate case or expansion (e.g., FD00:EC2::254
+    vs fd00:ec2::254 vs fd00:ec2:0:0:0:0:0:254). Non-IP entries are checked
+    via exact string match.
+    """
+    if host in _ALWAYS_DENIED_HOSTS:
+        return True
+    try:
+        return str(ipaddress.ip_address(host)) in _ALWAYS_DENIED_HOSTS
+    except ValueError:
+        return False
+
+
 @dataclass(frozen=True, slots=True)
 class EngagementScope:
     cidrs: tuple[IPNetwork, ...] = ()
@@ -96,7 +112,7 @@ class ScopeGuardStage:
 
     def check(self, call: ToolCall) -> GuardrailResult[ToolCall]:
         for host in _candidate_hosts(call):
-            if host in _ALWAYS_DENIED_HOSTS or not self._scope.contains_host(host):
+            if _is_always_denied(host) or not self._scope.contains_host(host):
                 return GuardrailResult(
                     allowed=False,
                     value=call,

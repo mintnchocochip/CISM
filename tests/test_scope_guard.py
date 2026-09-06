@@ -167,3 +167,21 @@ def test_gcp_metadata_hostname_is_blocked() -> None:
 def test_a_normal_in_scope_host_is_unaffected_by_the_metadata_denylist() -> None:
     result = _stage().check(_call("nmap", target="10.0.0.5"))
     assert result.allowed is True
+
+
+def test_the_ipv6_metadata_endpoint_is_blocked_regardless_of_case_or_compression() -> None:
+    """_ALWAYS_DENIED_HOSTS stores the canonical lowercase-compressed form —
+    the check itself must canonicalize before comparing, or an attacker
+    can trivially bypass the hard-deny just by writing the same address
+    differently."""
+    from cism.agent.guardrails.scope import EngagementScope, ScopeGuardStage
+
+    stage = ScopeGuardStage(EngagementScope())
+
+    # Test uppercase variant
+    result = stage.check(_call("curl", target="http://[FD00:EC2::254]/"))
+    assert result.allowed is False, "IPv6 metadata endpoint in uppercase should be blocked"
+
+    # Test fully-expanded variant (all zeros written out)
+    result = stage.check(_call("curl", target="http://[fd00:ec2:0:0:0:0:0:254]/"))
+    assert result.allowed is False, "IPv6 metadata endpoint in expanded form should be blocked"
