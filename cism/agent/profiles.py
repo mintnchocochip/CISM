@@ -70,13 +70,19 @@ _PROMPTS: dict[Phase, str] = {
 #: gap is filled by hand.
 _DECORATED_TOOL_PHASES: dict[str, frozenset[Phase]] = {
     "hydra": frozenset({Phase.EXPLOITATION, Phase.POST_EXPLOITATION}),
+    "dummy_nmap": frozenset({Phase.RECON}),
+    "dummy_msfconsole": frozenset({Phase.ENUMERATION}),
 }
 
 #: Same gap as _DECORATED_TOOL_PHASES, for the capability axis instead of
 #: the phase axis: decorated tools have no CATALOG row to read a
 #: `capability:` value from. hydra's is now real (Task 4's conversion to
 #: sandboxed_tool), read here rather than hand-duplicated a third time.
-_DECORATED_TOOL_CAPABILITIES: dict[str, str] = {"hydra": "executes"}
+_DECORATED_TOOL_CAPABILITIES: dict[str, str] = {
+    "hydra": "executes",
+    "dummy_nmap": "reads",
+    "dummy_msfconsole": "executes",
+}
 
 
 def default_profiles(tools: ToolRegistry) -> PhaseProfiles:
