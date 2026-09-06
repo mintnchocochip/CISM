@@ -133,3 +133,37 @@ def test_a_valid_out_of_scope_host_smuggled_via_garbage_suffix_is_still_blocked(
         _call("nmap", target="10.0.0.5", extra="192.168.1.99,notahost")
     )
     assert result.allowed is False
+
+
+def test_the_cloud_metadata_endpoint_is_blocked_even_inside_a_wide_declared_cidr() -> None:
+    """169.254.169.254 (AWS/GCP/Azure instance metadata) must never be
+    reachable through this agent, regardless of what the operator declared
+    in scope — a classic SSRF pivot to steal instance credentials. Unlike
+    RFC1918 ranges generally (legitimate targets for internal pentests),
+    the metadata endpoint is never a legitimate target."""
+    from cism.agent.guardrails.scope import EngagementScope, ScopeGuardStage
+
+    wide_scope = EngagementScope(
+        cidrs=(ipaddress.ip_network("169.254.0.0/16"),),
+    )
+    stage = ScopeGuardStage(wide_scope)
+
+    result = stage.check(_call("curl", target="http://169.254.169.254/latest/meta-data/"))
+
+    assert result.allowed is False
+
+
+def test_gcp_metadata_hostname_is_blocked() -> None:
+    from cism.agent.guardrails.scope import EngagementScope, ScopeGuardStage
+
+    scope = EngagementScope(domains=("google.internal",))  # deliberately would match via subdomain rule
+    stage = ScopeGuardStage(scope)
+
+    result = stage.check(_call("curl", target="http://metadata.google.internal/computeMetadata/v1/"))
+
+    assert result.allowed is False
+
+
+def test_a_normal_in_scope_host_is_unaffected_by_the_metadata_denylist() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.5"))
+    assert result.allowed is True
