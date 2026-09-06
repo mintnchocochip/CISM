@@ -78,7 +78,24 @@ def _is_always_denied(host: str) -> bool:
     to prevent bypasses via alternate case or expansion (e.g., FD00:EC2::254
     vs fd00:ec2::254 vs fd00:ec2:0:0:0:0:0:254). Non-IP entries are checked
     via exact string match.
+
+    A CIDR that reduces to exactly one address (a /32 or /128) is treated
+    the same as that bare address — ``169.254.169.254/32`` is just another
+    way to spell ``169.254.169.254``, and must not slip past the hard-deny
+    by being written as a single-address network instead of a bare IP.
+    A wider CIDR that merely *contains* a denied host is NOT hard-denied
+    here (that would make huge swaths of address space unusable); it is
+    still subject to the normal in-scope/out-of-scope network check.
     """
+    if "/" in host:
+        try:
+            network = ipaddress.ip_network(host, strict=False)
+        except ValueError:
+            return False
+        if network.num_addresses != 1:
+            return False
+        return str(network.network_address) in _ALWAYS_DENIED_HOSTS
+
     if host in _ALWAYS_DENIED_HOSTS:
         return True
     try:
@@ -103,6 +120,29 @@ class EngagementScope:
         lowered = host.lower()
         return any(lowered == d or lowered.endswith(f".{d}") for d in self.domains)
 
+    def contains_network(self, network_str: str) -> bool:
+        """Check whether an entire network (CIDR notation) is a subnet of —
+        or exactly equal to — one of the declared scope CIDRs.
+
+        Fails closed: a network that can't be parsed, that mixes IP
+        versions against a declared CIDR, or that only *partially*
+        overlaps a declared CIDR (rather than being fully contained by
+        it) is NOT in scope. Scanning a network that's only partly
+        authorized is exactly the kind of over-broad action this guard
+        exists to stop.
+        """
+        try:
+            network = ipaddress.ip_network(network_str, strict=False)
+        except ValueError:
+            return False
+
+        for net in self.cidrs:
+            if network.version != net.version:
+                continue
+            if network.subnet_of(net):
+                return True
+        return False
+
 
 class ScopeGuardStage:
     name = "scope-guard"
@@ -112,7 +152,18 @@ class ScopeGuardStage:
 
     def check(self, call: ToolCall) -> GuardrailResult[ToolCall]:
         for host in _candidate_hosts(call):
-            if _is_always_denied(host) or not self._scope.contains_host(host):
+            if _is_always_denied(host):
+                return GuardrailResult(
+                    allowed=False,
+                    value=call,
+                    reason=f"{host!r} is outside the declared engagement scope",
+                )
+            in_scope = (
+                self._scope.contains_network(host)
+                if "/" in host
+                else self._scope.contains_host(host)
+            )
+            if not in_scope:
                 return GuardrailResult(
                     allowed=False,
                     value=call,
@@ -156,11 +207,39 @@ def _candidate_hosts(call: ToolCall) -> list[str]:
     return flattened
 
 
+def _strip_trailing_dot(value: str) -> str:
+    """A trailing "." is a valid, semantically-identical way to write an
+    absolute DNS name (e.g. "metadata.google.internal." names the exact
+    same host as "metadata.google.internal"). Normalize it away wherever a
+    hostname-shaped string is produced, so the bare-domain match and the
+    _is_always_denied/contains_host domain-suffix checks all see the same
+    form regardless of which way the model wrote it — whether the dot
+    showed up in a bare token, inside a URL's authority, or in a
+    user@host composite. Only ONE trailing dot is meaningful in DNS; a
+    value that is just "." is left alone rather than reduced to an empty
+    string.
+    """
+    if value.endswith(".") and value != ".":
+        return value[:-1]
+    return value
+
+
 def _extract_host(value: str) -> str | None:
+    value = _strip_trailing_dot(value)
+
     if "," in value:
         parts = value.split(",")
         hosts = [h for p in parts if (h := _extract_host(p))]
         return ",".join(hosts) if hosts else None
+
+    # CIDR notation ("10.0.0.0/24") — recognized before the bare-IP check
+    # below so a whole network isn't silently dropped as "not host-shaped"
+    # and left completely unchecked by the scope guard.
+    if "/" in value:
+        try:
+            return str(ipaddress.ip_network(value, strict=False))
+        except ValueError:
+            pass
 
     try:
         ipaddress.ip_address(value)
@@ -175,11 +254,11 @@ def _extract_host(value: str) -> str | None:
 
     if "://" in value:
         hostname = urlparse(value).hostname
-        return hostname
+        return _strip_trailing_dot(hostname) if hostname else None
 
     match = _USER_HOST_RE.search(value)
     if match:
-        return match.group(1)
+        return _strip_trailing_dot(match.group(1))
 
     if _BARE_DOMAIN_RE.fullmatch(value):
         return value.lower()
