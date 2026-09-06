@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+import shlex
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -95,25 +96,45 @@ class ScopeGuardStage:
 
 def _candidate_hosts(call: ToolCall) -> list[str]:
     args = call.get("args") or {}
+    hosts: list[str] = []
 
     key = _TARGET_ARG_BY_TOOL.get(call.get("name", ""))
     if key is not None:
         value = args.get(key)
         if isinstance(value, str):
             host = _extract_host(value)
-            return [host] if host else []
-        return []
-
-    hosts: list[str] = []
-    for value in args.values():
-        if isinstance(value, str):
-            host = _extract_host(value)
             if host:
                 hosts.append(host)
-    return hosts
+    else:
+        for value in args.values():
+            if isinstance(value, str):
+                host = _extract_host(value)
+                if host:
+                    hosts.append(host)
+
+    extra = args.get("extra")
+    if isinstance(extra, str):
+        try:
+            tokens = shlex.split(extra)
+        except ValueError:
+            tokens = [extra]
+        for token in tokens:
+            host = _extract_host(token)
+            if host:
+                hosts.append(host)
+
+    flattened: list[str] = []
+    for host in hosts:
+        flattened.extend(host.split(",") if "," in host else [host])
+    return flattened
 
 
 def _extract_host(value: str) -> str | None:
+    if "," in value:
+        parts = value.split(",")
+        hosts = [_extract_host(p) for p in parts]
+        return value if all(hosts) else None
+
     try:
         ipaddress.ip_address(value)
         return value

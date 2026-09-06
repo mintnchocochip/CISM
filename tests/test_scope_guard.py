@@ -67,3 +67,49 @@ def test_an_unregistered_tool_falls_back_to_scanning_every_string_arg() -> None:
 def test_an_unregistered_tool_with_no_host_shaped_values_is_allowed() -> None:
     result = _stage().check(_call("john", mode="wordlist", format="raw-md5"))
     assert result.allowed is True
+
+
+def test_a_second_target_smuggled_into_extra_as_a_bare_positional_is_blocked() -> None:
+    """render_argv (base.py) places extra's tokens BEFORE target in argv
+    — for curl this means a bare URL in extra becomes a second URL curl
+    will actually fetch, completely unvetted by the scope check that only
+    ever looked at "target". This is a real, currently-exploitable bypass
+    in shipped code, not a hypothetical."""
+    result = _stage().check(
+        _call("curl", target="https://example.com", extra="https://evil-target.com")
+    )
+    assert result.allowed is False
+
+
+def test_a_second_target_smuggled_into_extra_via_nmap_is_blocked() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="192.168.1.99"))
+    assert result.allowed is False
+
+
+def test_an_in_scope_target_with_only_flags_in_extra_is_still_allowed() -> None:
+    """The fix must not make every allow_raw call fail just because extra
+    is non-empty — only an actual out-of-scope host inside extra should
+    block."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="-p 80,443 -sV"))
+    assert result.allowed is True
+
+
+def test_a_comma_separated_multi_target_token_with_one_out_of_scope_host_is_blocked() -> None:
+    """nmap accepts 'host1,host2' as one token. Before this fix,
+    _extract_host doesn't recognize this shape at all and silently drops
+    it — not incorrectly allowed by a broken check, just never checked."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="10.0.0.5,192.168.1.5"))
+    assert result.allowed is False
+
+
+def test_a_comma_separated_multi_target_token_with_all_in_scope_hosts_is_allowed() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="10.0.0.5,10.0.0.6"))
+    assert result.allowed is True
+
+
+def test_a_comma_containing_value_that_is_not_actually_a_host_list_is_unaffected() -> None:
+    """A guard against over-fixing: something that merely contains a comma
+    but isn't a clean multi-host list (e.g. a port list) must not be
+    misclassified as a host token and must not break existing behavior."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="-p 80,443"))
+    assert result.allowed is True
