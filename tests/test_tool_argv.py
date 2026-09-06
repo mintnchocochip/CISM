@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from cism.agent.tools import credentials
+from cism.agent.tools import base as base_module, credentials
 
 
 def test_hydra_materializes_explicit_credential_lists_to_scratch_files(monkeypatch) -> None:
@@ -29,7 +29,7 @@ def test_hydra_materializes_explicit_credential_lists_to_scratch_files(monkeypat
         captured["passwords"] = Path(passfile).read_text().splitlines()
         return "ok"
 
-    monkeypatch.setattr(credentials, "run_sandboxed", fake)
+    monkeypatch.setattr(base_module, "run_sandboxed", fake)
 
     credentials.hydra.invoke(
         {
@@ -51,7 +51,7 @@ def test_hydra_materializes_explicit_credential_lists_to_scratch_files(monkeypat
 def test_hydra_caps_threads_at_the_documented_maximum(monkeypatch) -> None:
     captured: dict = {}
     monkeypatch.setattr(
-        credentials, "run_sandboxed", lambda argv, **kw: captured.setdefault("argv", argv) or "ok"
+        base_module, "run_sandboxed", lambda argv, **kw: captured.setdefault("argv", argv) or "ok"
     )
 
     credentials.hydra.invoke(
@@ -83,3 +83,10 @@ def test_hydra_rejects_giving_both_an_explicit_list_and_a_named_wordlist() -> No
 def test_hydra_rejects_giving_neither_an_explicit_list_nor_a_wordlist() -> None:
     with pytest.raises(ValueError):
         credentials.hydra.invoke({"target": "10.0.0.5", "service": "ssh", "passwords": ["toor"]})
+
+
+def test_hydra_carries_capability_and_binary_metadata() -> None:
+    """This is what closes the gap _binaries_of's defensive `(tool.metadata
+    or {})` guard existed for — hydra now has real metadata like every
+    other tool in the registry."""
+    assert credentials.hydra.metadata == {"capability": "executes", "binary": "hydra"}
