@@ -280,3 +280,57 @@ def test_the_ipv6_metadata_endpoint_is_blocked_regardless_of_case_or_compression
     # Test fully-expanded variant (all zeros written out)
     result = stage.check(_call("curl", target="http://[fd00:ec2:0:0:0:0:0:254]/"))
     assert result.allowed is False, "IPv6 metadata endpoint in expanded form should be blocked"
+
+
+def test_a_decimal_encoded_metadata_ip_is_blocked() -> None:
+    """curl/getaddrinfo resolve a bare decimal integer as an IPv4 address
+    (2852039166 == 169.254.169.254) — ipaddress.ip_address rejects this
+    spelling outright, which is exactly the gap that let it slip past the
+    scope guard unchecked before this fix."""
+    result = _stage().check(_call("curl", target="http://2852039166/"))
+    assert result.allowed is False
+
+
+def test_a_hex_encoded_metadata_ip_is_blocked() -> None:
+    result = _stage().check(_call("curl", target="http://0xA9FEA9FE/"))
+    assert result.allowed is False
+
+
+def test_a_decimal_encoded_out_of_scope_host_smuggled_into_extra_is_blocked() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="2130706433"))  # 127.0.0.1
+    assert result.allowed is False
+
+
+def test_a_small_decimal_flag_value_is_not_misread_as_an_encoded_ip() -> None:
+    """The numeric-IPv4 recognition must not swallow ordinary small
+    integers this agent's own tools actually take as arguments (a port,
+    a thread count, an nmap timing level) — only a value large enough
+    that it could plausibly BE an encoded address is treated as one."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="-T 4"))
+    assert result.allowed is True
+
+    result = _stage().check(_call("curl", target="https://example.com", extra="80"))
+    assert result.allowed is True
+
+
+def test_the_bare_metadata_short_hostname_is_blocked() -> None:
+    """GCP's instance metadata service is also reachable via the bare
+    single-label hostname "metadata" (resolved through the VM's default
+    DNS search domain) — no dot at all, so _BARE_DOMAIN_RE never
+    recognized it as host-shaped before this fix."""
+    result = _stage().check(_call("curl", target="http://metadata/computeMetadata/v1/"))
+    assert result.allowed is False
+
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="metadata"))
+    assert result.allowed is False
+
+
+def test_an_unrelated_bare_word_is_still_allowed_through() -> None:
+    """Regression guard: the bare-word hard-deny check is narrow — it only
+    recognizes strings already in _ALWAYS_DENIED_HOSTS, so an ordinary
+    service name or module path must still pass through unaffected."""
+    result = _stage().check(_call("ss", options="-tulpn"))
+    assert result.allowed is True
+
+    result = _stage().check(_call("some-new-tool", note="responder"))
+    assert result.allowed is True
