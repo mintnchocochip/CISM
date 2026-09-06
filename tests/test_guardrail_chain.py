@@ -79,3 +79,20 @@ def test_stages_exposes_the_chains_stage_list() -> None:
     chain = GuardrailChain([stage])
 
     assert chain.stages == [stage]
+
+
+def test_a_blocking_stage_result_is_stamped_with_the_stage_that_blocked_it() -> None:
+    blocker = _BlockingStage(reason="nope")
+    chain = GuardrailChain([blocker])
+
+    result = chain.run("hello")
+
+    assert result.stage == "blocker"
+
+
+def test_a_passing_result_has_no_stage_stamped() -> None:
+    chain = GuardrailChain([PassThroughStage()])
+
+    result = chain.run("hello")
+
+    assert result.stage == ""

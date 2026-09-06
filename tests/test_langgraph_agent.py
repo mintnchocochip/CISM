@@ -267,6 +267,36 @@ async def test_a_blocked_action_never_reaches_the_tool(tmp_path, monkeypatch) ->
     await agent.aclose()
 
 
+async def test_a_blocked_action_surfaces_its_rich_reason_via_toolfailed_not_the_llm(
+    tmp_path, monkeypatch
+) -> None:
+    """ToolFailed is what the TUI/operator sees — it should keep getting
+    the full detail even though the LLM (via ToolMessage.content) no
+    longer does."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    class _RichBlock:
+        name = "scope-guard"
+
+        def check(self, value) -> GuardrailResult:
+            return GuardrailResult(allowed=False, value=value, reason="10.0.0.99 is outside scope")
+
+    guardrails = GuardrailSeam(
+        input=GuardrailChain([PassThroughStage()]),
+        action=GuardrailChain([_RichBlock()]),
+        output=GuardrailChain([PassThroughStage()]),
+    )
+    agent = LangGraphAgent(guardrails=guardrails)
+
+    events = await _run_to_completion(agent, "scan 10.0.0.5")
+
+    failures = [e for e in events if isinstance(e, ToolFailed)]
+    assert failures, "expected at least one ToolFailed event"
+    assert "10.0.0.99" in failures[0].reason
+    assert "scope-guard" in failures[0].reason
+    await agent.aclose()
+
+
 async def test_a_live_run_emits_memory_updated(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     agent = LangGraphAgent(target="10.0.0.5")

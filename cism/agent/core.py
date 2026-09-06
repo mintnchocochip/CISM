@@ -299,9 +299,8 @@ class LangGraphAgent:
                 args = str(call["args"]) if call else ""
                 await self.events.put(ToolStarted(call_id=call_id, tool=tool_name, args=args))
                 if getattr(message, "status", "success") == "error":
-                    await self.events.put(
-                        ToolFailed(call_id=call_id, reason=str(message.content))
-                    )
+                    detail = message.additional_kwargs.get("guardrail_detail") or str(message.content)
+                    await self.events.put(ToolFailed(call_id=call_id, reason=detail))
                 else:
                     await self.events.put(
                         ToolFinished(call_id=call_id, summary=str(message.content))
