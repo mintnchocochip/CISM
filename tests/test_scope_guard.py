@@ -476,3 +476,34 @@ def test_the_existing_registered_tools_are_unaffected_by_the_fallback_change() -
 
     result = _stage().check(_call("curl", target="192.168.1.5"))
     assert result.allowed is False
+
+
+def test_a_comma_list_with_one_real_host_and_one_permanently_unparseable_part_is_blocked() -> None:
+    """A comma-joined token where SOME parts are host-shaped and others
+    genuinely aren't recognized by this parser (not "clearly a port
+    list" — nothing would parse; not "clearly a clean multi-host list" —
+    everything parses) must be blocked outright rather than silently
+    keeping just the parts this parser happened to recognize. An
+    unrecognized comma-part might be host-shaped in an encoding this
+    parser doesn't know about yet — defense in depth for the next
+    encoding, on top of Task 1's specific fixes."""
+    result = _stage().check(
+        _call("nmap", target="10.0.0.5", extra="10.0.0.5,this-has-a-space in it")
+    )
+    assert result.allowed is False
+
+
+def test_a_comma_list_where_every_part_parses_is_still_checked_normally() -> None:
+    """Regression guard: the "all parts recognized" case must be
+    unaffected — still checked host-by-host, not treated as a blanket
+    block just because it's a comma list."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="10.0.0.5,10.0.0.6"))
+    assert result.allowed is True
+
+
+def test_a_comma_list_where_no_part_parses_is_still_allowed_through() -> None:
+    """Regression guard: "nothing here looks like a target list at all"
+    (e.g. a port range) must remain allowed, unchanged from before this
+    task."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="-p 80,443"))
+    assert result.allowed is True

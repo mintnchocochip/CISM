@@ -289,7 +289,20 @@ def _extract_host(value: str) -> str | None:
     if "," in value:
         parts = value.split(",")
         hosts = [h for p in parts if (h := _extract_host(p))]
-        return ",".join(hosts) if hosts else None
+        if not hosts:
+            return None
+        if len(hosts) < len(parts):
+            # Some, but not all, comma-separated parts are host-shaped —
+            # not "clearly a port list" (nothing would parse) and not
+            # "clearly a clean multi-host list" (everything parses).
+            # Block outright rather than silently keeping just the
+            # parts we recognize: an unrecognized part might be
+            # host-shaped in an encoding this parser doesn't know about
+            # yet. The sentinel has no comma in it, so it survives
+            # _candidate_hosts's comma-flattening step untouched, and it
+            # never matches any declared scope/hard-deny entry.
+            return "<unparseable-multi-target>"
+        return ",".join(hosts)
 
     # CIDR notation ("10.0.0.0/24") — recognized before the bare-IP check
     # below so a whole network isn't silently dropped as "not host-shaped"
