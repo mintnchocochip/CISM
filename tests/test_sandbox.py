@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -301,3 +302,160 @@ def test_dynamic_etc_binds_against_a_real_installed_binary_with_no_etc_dependenc
     result = _dynamic_etc_binds("true")
 
     assert isinstance(result, frozenset)
+
+
+class _FakeCompletedPopen:
+    """Enough of subprocess.Popen's interface for BubblewrapRunner's argv-
+    construction tests: captures what argv it was launched with, returns
+    canned output, never actually runs anything."""
+
+    captured_argv: list[str] | None = None
+
+    def __init__(self, argv, **kwargs) -> None:
+        type(self).captured_argv = argv
+        self._kwargs = kwargs
+
+    def communicate(self, timeout=None):
+        return (b"fake bwrap output", None)
+
+
+def test_bubblewrap_runner_binds_every_ro_bind_dir_and_etc_path(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(sandbox_module, "_dynamic_etc_binds", lambda binary: frozenset())
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", _FakeCompletedPopen)
+
+    BubblewrapRunner().run(["nmap", "10.0.0.5"], timeout=5.0, cwd=Path("/tmp/scratch"))
+
+    argv = _FakeCompletedPopen.captured_argv
+    assert argv[0] == "bwrap"
+    for path in BubblewrapRunner._RO_BIND_DIRS + BubblewrapRunner._RO_BIND_ETC:
+        idx = argv.index(path)
+        assert argv[idx - 1] == "--ro-bind-try"
+        assert argv[idx + 1] == path  # SRC and DEST are the same path
+
+
+def test_bubblewrap_runner_includes_dynamically_discovered_etc_binds(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        sandbox_module, "_dynamic_etc_binds", lambda binary: frozenset({"/etc/alternatives"})
+    )
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", _FakeCompletedPopen)
+
+    BubblewrapRunner().run(["nmap", "10.0.0.5"], timeout=5.0, cwd=Path("/tmp/scratch"))
+
+    argv = _FakeCompletedPopen.captured_argv
+    idx = argv.index("/etc/alternatives")
+    assert argv[idx - 1] == "--ro-bind-try"
+
+
+def test_bubblewrap_runner_memoizes_dynamic_etc_binds_per_binary(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    calls: list[str] = []
+
+    def fake_dynamic(binary: str) -> frozenset[str]:
+        calls.append(binary)
+        return frozenset()
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(sandbox_module, "_dynamic_etc_binds", fake_dynamic)
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", _FakeCompletedPopen)
+
+    runner = BubblewrapRunner()
+    runner.run(["nmap", "10.0.0.5"], timeout=5.0, cwd=Path("/tmp/scratch"))
+    runner.run(["nmap", "10.0.0.6"], timeout=5.0, cwd=Path("/tmp/scratch2"))
+
+    assert calls == ["nmap"]  # second call for the same binary hits the cache
+
+
+def test_bubblewrap_runner_clears_and_reallowlists_the_environment(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(sandbox_module, "_dynamic_etc_binds", lambda binary: frozenset())
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", _FakeCompletedPopen)
+
+    BubblewrapRunner().run(["curl", "https://x"], timeout=5.0, cwd=Path("/tmp/scratch"))
+
+    argv = _FakeCompletedPopen.captured_argv
+    assert "--clearenv" in argv
+    assert argv[argv.index("--setenv") : argv.index("--setenv") + 3] == ["--setenv", "PATH", "/usr/bin:/bin"]
+    assert "HOME" in argv and "/work" in argv
+    assert "LANG" in argv and "C.UTF-8" in argv
+
+
+def test_bubblewrap_runner_sets_security_hardening_flags(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(sandbox_module, "_dynamic_etc_binds", lambda binary: frozenset())
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", _FakeCompletedPopen)
+
+    BubblewrapRunner().run(["curl", "https://x"], timeout=5.0, cwd=Path("/tmp/scratch"))
+
+    argv = _FakeCompletedPopen.captured_argv
+    for flag in ("--new-session", "--disable-userns", "--die-with-parent", "--unshare-all", "--unshare-user", "--share-net"):
+        assert flag in argv
+
+
+def test_bubblewrap_runner_binds_cwd_as_work_and_chdirs_into_it(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(sandbox_module, "_dynamic_etc_binds", lambda binary: frozenset())
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", _FakeCompletedPopen)
+
+    BubblewrapRunner().run(["curl", "https://x"], timeout=5.0, cwd=Path("/tmp/my-scratch"))
+
+    argv = _FakeCompletedPopen.captured_argv
+    bind_idx = argv.index("--bind")
+    assert argv[bind_idx + 1 : bind_idx + 3] == ["/tmp/my-scratch", "/work"]
+    assert argv[argv.index("--chdir") + 1] == "/work"
+
+
+def test_bubblewrap_runner_appends_the_real_argv_last(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(sandbox_module, "_dynamic_etc_binds", lambda binary: frozenset())
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", _FakeCompletedPopen)
+
+    BubblewrapRunner().run(["curl", "-sS", "https://x"], timeout=5.0, cwd=Path("/tmp/scratch"))
+
+    assert _FakeCompletedPopen.captured_argv[-3:] == ["curl", "-sS", "https://x"]
+
+
+def test_bubblewrap_runner_raises_tool_not_installed_for_a_missing_binary(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner, ToolNotInstalledError
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: None)
+
+    with pytest.raises(ToolNotInstalledError):
+        BubblewrapRunner().run(["not-a-real-binary"], timeout=5.0, cwd=Path("/tmp/scratch"))
+
+
+def test_bubblewrap_runner_raises_tool_not_installed_when_bwrap_itself_is_missing(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner, ToolNotInstalledError
+
+    def fake_which(name):
+        return None if name == "bwrap" else f"/usr/bin/{name}"
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", fake_which)
+
+    with pytest.raises(ToolNotInstalledError) as exc_info:
+        BubblewrapRunner().run(["curl", "https://x"], timeout=5.0, cwd=Path("/tmp/scratch"))
+    assert "bwrap" in str(exc_info.value)
+
