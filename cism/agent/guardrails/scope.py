@@ -305,7 +305,7 @@ def _extract_host(value: str) -> str | None:
     if "://" in value:
         hostname = urlparse(value).hostname
         if not hostname:
-            return None
+            return value
         hostname = _strip_trailing_dot(hostname)
         return _extract_host(hostname) or hostname
 
