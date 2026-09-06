@@ -18,15 +18,19 @@ from cism.agent.guardrails.chain import GuardrailResult
 
 __all__ = ["DangerousFlagGuardStage"]
 
-_DANGEROUS_FLAG_TOKENS: frozenset[str] = frozenset(
-    {
-        "--script",  # nmap: arbitrary NSE Lua execution
-        "-oN", "-oX", "-oG", "-oA",  # nmap: write scan report to an attacker-influenced path
-        "-o", "-O", "--output", "--remote-name",  # curl/nikto/etc: write response to an arbitrary local path
-        "-T", "--upload-file",  # curl: read an arbitrary local file, send its contents
-        "-K", "--config",  # curl: treat a local file's contents as more curl flags
-    }
-)
+_SHARED_DANGEROUS_TOKENS: frozenset[str] = frozenset({"-K", "--config"})
+
+_PER_TOOL_DANGEROUS_TOKENS: dict[str, frozenset[str]] = {
+    "nmap": frozenset({
+        "--script", "-oN", "-oX", "-oG", "-oA", "-iL", "--excludefile",
+    }),
+    "curl": frozenset({
+        "-o", "-O", "--output", "--remote-name",
+        "-T", "--upload-file",
+        "-F", "--form", "-d", "--data", "--data-binary", "--data-urlencode", "--data-raw",
+        "-D", "--dump-header", "-c", "--cookie-jar",
+    }),
+}
 
 
 class DangerousFlagGuardStage:
@@ -42,7 +46,8 @@ class DangerousFlagGuardStage:
                 value=call,
                 reason="could not parse `extra` as shell-style tokens (unbalanced quote?)",
             )
-        hit = tokens & _DANGEROUS_FLAG_TOKENS
+        denylist = _SHARED_DANGEROUS_TOKENS | _PER_TOOL_DANGEROUS_TOKENS.get(call.get("name", ""), frozenset())
+        hit = tokens & denylist
         if hit:
             return GuardrailResult(
                 allowed=False,
