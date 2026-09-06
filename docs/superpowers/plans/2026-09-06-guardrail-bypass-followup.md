@@ -10,16 +10,21 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-06-guardrail-bypass-followup-design.md` — read it in full before starting; every code block below is drawn directly from it, including the reasoning for tradeoffs (e.g. why `_MIN_NUMERIC_IPV4` is set where it is, why the CIDR fix excludes URLs).
 
-## Progress (handoff note — read this before resuming)
+## Progress (handoff note)
 
-Tasks 1–5 are complete, committed, and each passed its own task review (Task 1 needed two small fix rounds along the way — see its commits below; the rest were clean on the first pass). Test count is currently 501 passing (baseline 470 + 31 net new across Tasks 1–5). Tasks 6, 7, 8, 9 are NOT started — resume there.
+All nine tasks are complete, committed, and each passed its own task review (Task 1 needed two small fix rounds along the way; the rest were clean on the first pass). The final whole-branch review (below) is the only remaining step. Test count is 514 passing (baseline 470 + 44 net new across Tasks 1–9).
 
-Commits so far on this branch for Tasks 1–5, oldest first (all plain messages, no attribution trailers):
-`55bce14`, `35b14ce`, `64d0d9f` (Task 1, incl. 2 fix rounds), `9de4028` (Task 2), `f0a760d` (Task 3), `262c63e` (Task 4), `c64cbfa` (Task 5).
+Commits on this branch, oldest first (all plain messages, no attribution trailers):
+`55bce14`, `35b14ce`, `64d0d9f` (Task 1, incl. 2 fix rounds), `9de4028` (Task 2), `f0a760d` (Task 3), `262c63e` (Task 4), `c64cbfa` (Task 5), `3fa7c22` (Task 6), `5bda5da` (Task 7), `a051d71` (Task 8), `906178c` (Task 9).
 
-The SDD workspace/ledger this session used (`.superpowers/sdd/2026-09-06-guardrail-bypass-followup/`) is git-ignored scratch local to the machine that ran Tasks 1–5 — it does not travel with the branch. A new session resuming this plan (via `superpowers:subagent-driven-development`) will not find it and will correctly treat this as a fresh start for ledger purposes; that's fine — this checkbox state plus the git log above is the durable record of what's actually done. Do not re-run Tasks 1–5.
+Deferred minor findings from task review, parked for a future task (none load-bearing, none block this plan's completion):
+- Task 6: `test_a_comma_list_where_every_part_parses_is_still_checked_normally` is byte-identical in body to a pre-existing test — brief-mandated, not an implementer choice, informational only.
+- Task 7: `_is_always_denied`'s `ipv4_mapped` fix only catches the RFC-4291 `::ffff:0:0/96` form — NAT64 (`64:ff9b::/96`), IPv4-translated (`::ffff:0:x.x.x.x`), and deprecated IPv4-compatible (`::x.x.x.x`) encodings of the metadata IP still bypass; out of Task 7's specified scope.
+- Task 8: a multi-slash adversarial input (e.g. `"a/1/2"`) produces a compound sentinel `"<unparseable-cidr>/2"` instead of a clean sentinel — cosmetic only, verified still fails closed.
 
-**Known gap to flag to whoever resumes:** the Global Constraints section below references a separate wiring plan (`docs/superpowers/plans/2026-09-06-wire-real-guardrails-and-toolkit.md`) that had not been written as of this handoff — it covers wiring a real `GuardrailSeam` and toolkit into `LangGraphAgent`/`run_agent.py`, deliberately deferred out of *this* plan's scope (see design doc §3, Finding 8). Check whether it exists before assuming it does.
+The SDD workspace/ledger for this plan lives at `.superpowers/sdd/2026-09-06-guardrail-bypass-followup/` (git-ignored scratch, not present in a fresh clone) — the checkbox state above plus the git log is the durable record.
+
+**Wiring plan status:** the separate plan `docs/superpowers/plans/2026-09-06-wire-real-guardrails-and-toolkit.md` (real `GuardrailSeam`/toolkit into `LangGraphAgent`/`run_agent.py`, deliberately out of this plan's scope — see design doc §3, Finding 8) is intentionally deferred until after this plan lands, per explicit direction. It still does not exist as of this handoff.
 
 ## Global Constraints
 
@@ -848,7 +853,7 @@ git commit -m "fix: ScopeGuardStage falls back to scanning every argument when a
         return ",".join(hosts) if hosts else None
 ```
 
-- [ ] **Step 1: Write the failing test — append to `tests/test_scope_guard.py`**
+- [x] **Step 1: Write the failing test — append to `tests/test_scope_guard.py`**
 
 Note: after Task 1's fix, a decimal-encoded IP is now recognized, so a synthetic value that's guaranteed to remain unrecognized by every current check is needed to actually exercise the partial-parse path (rather than accidentally passing because Task 1 already closed the specific decimal-IP example from the design doc).
 
@@ -884,7 +889,7 @@ def test_a_comma_list_where_no_part_parses_is_still_allowed_through() -> None:
     assert result.allowed is True
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 ```bash
 .venv/bin/pytest tests/test_scope_guard.py -v -k "permanently_unparseable"
@@ -892,7 +897,7 @@ def test_a_comma_list_where_no_part_parses_is_still_allowed_through() -> None:
 
 Expected: FAIL — today's code returns `",".join(["10.0.0.5"])` (silently dropping the unparseable part), which is in-scope, so the call is allowed.
 
-- [ ] **Step 3: Implement — modify `_extract_host` in `cism/agent/guardrails/scope.py`**
+- [x] **Step 3: Implement — modify `_extract_host` in `cism/agent/guardrails/scope.py`**
 
 ```python
     if "," in value:
@@ -914,7 +919,7 @@ Expected: FAIL — today's code returns `",".join(["10.0.0.5"])` (silently dropp
         return ",".join(hosts)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 ```bash
 .venv/bin/pytest tests/test_scope_guard.py -v
@@ -922,7 +927,7 @@ Expected: FAIL — today's code returns `",".join(["10.0.0.5"])` (silently dropp
 
 Expected: all pass, including every pre-existing comma-related test (`test_a_comma_separated_multi_target_token_with_one_out_of_scope_host_is_blocked`, `test_a_comma_separated_multi_target_token_with_all_in_scope_hosts_is_allowed`, `test_a_comma_containing_value_that_is_not_actually_a_host_list_is_unaffected`, `test_a_valid_out_of_scope_host_smuggled_via_a_trailing_comma_is_still_blocked`, `test_a_valid_out_of_scope_host_smuggled_via_garbage_suffix_is_still_blocked` — all must still pass, now via the new partial-parse path rather than the old "keep only recognized parts, check them" path, but the observable outcome — blocked or allowed — is unchanged for all of them).
 
-- [ ] **Step 5: Run the full suite to check for regressions**
+- [x] **Step 5: Run the full suite to check for regressions**
 
 ```bash
 .venv/bin/pytest -q
@@ -930,7 +935,7 @@ Expected: all pass, including every pre-existing comma-related test (`test_a_com
 
 Expected: 0 failed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cism/agent/guardrails/scope.py tests/test_scope_guard.py
@@ -960,7 +965,7 @@ git commit -m "fix: a comma-list with some but not all parts host-shaped now blo
         return False
 ```
 
-- [ ] **Step 1: Write the failing test — append to `tests/test_scope_guard.py`**
+- [x] **Step 1: Write the failing test — append to `tests/test_scope_guard.py`**
 
 ```python
 def test_ipv4_mapped_ipv6_form_of_the_metadata_ip_is_hard_denied() -> None:
@@ -995,7 +1000,7 @@ def test_a_normal_ipv6_address_unrelated_to_the_denylist_is_unaffected() -> None
     assert result.allowed is True
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 ```bash
 .venv/bin/pytest tests/test_scope_guard.py -v -k "ipv4_mapped"
@@ -1003,7 +1008,7 @@ def test_a_normal_ipv6_address_unrelated_to_the_denylist_is_unaffected() -> None
 
 Expected: `test_ipv4_mapped_ipv6_form_of_the_metadata_ip_is_hard_denied` FAILS (currently allowed — `str(ipaddress.ip_address("::ffff:169.254.169.254"))` is `"::ffff:a9fe:a9fe"`, not a member of `_ALWAYS_DENIED_HOSTS`).
 
-- [ ] **Step 3: Implement — modify `_is_always_denied` in `cism/agent/guardrails/scope.py`**
+- [x] **Step 3: Implement — modify `_is_always_denied` in `cism/agent/guardrails/scope.py`**
 
 ```python
     if host in _ALWAYS_DENIED_HOSTS:
@@ -1019,7 +1024,7 @@ Expected: `test_ipv4_mapped_ipv6_form_of_the_metadata_ip_is_hard_denied` FAILS (
     return False
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 ```bash
 .venv/bin/pytest tests/test_scope_guard.py -v
@@ -1027,7 +1032,7 @@ Expected: `test_ipv4_mapped_ipv6_form_of_the_metadata_ip_is_hard_denied` FAILS (
 
 Expected: all pass, including every pre-existing IPv6/canonicalization test (`test_the_ipv6_metadata_endpoint_is_blocked_regardless_of_case_or_compression`).
 
-- [ ] **Step 5: Run the full suite to check for regressions**
+- [x] **Step 5: Run the full suite to check for regressions**
 
 ```bash
 .venv/bin/pytest -q
@@ -1035,7 +1040,7 @@ Expected: all pass, including every pre-existing IPv6/canonicalization test (`te
 
 Expected: 0 failed.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cism/agent/guardrails/scope.py tests/test_scope_guard.py
@@ -1064,7 +1069,7 @@ git commit -m "fix: hard-deny check canonicalizes IPv4-mapped IPv6 addresses aga
             pass
 ```
 
-- [ ] **Step 1: Write the failing tests — append to `tests/test_scope_guard.py`**
+- [x] **Step 1: Write the failing tests — append to `tests/test_scope_guard.py`**
 
 ```python
 def test_nmap_hostname_slash_prefixlen_syntax_is_blocked() -> None:
@@ -1114,7 +1119,7 @@ def test_existing_numeric_cidr_behavior_is_unaffected() -> None:
     assert result.allowed is False
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 ```bash
 .venv/bin/pytest tests/test_scope_guard.py -v -k "hostname_slash_prefixlen or malformed_leading_zero or out_of_range_prefix"
@@ -1122,7 +1127,7 @@ def test_existing_numeric_cidr_behavior_is_unaffected() -> None:
 
 Expected: all three new bypass-proving tests FAIL (currently allowed — each raises/is silently dropped by the current CIDR branch's bare `except ValueError: pass`).
 
-- [ ] **Step 3: Implement — replace the CIDR branch of `_extract_host` in `cism/agent/guardrails/scope.py`**
+- [x] **Step 3: Implement — replace the CIDR branch of `_extract_host` in `cism/agent/guardrails/scope.py`**
 
 ```python
     if "/" in value and "://" not in value:
@@ -1150,7 +1155,7 @@ Expected: all three new bypass-proving tests FAIL (currently allowed — each ra
 
 Place this where the current `if "/" in value: try: ... except ValueError: pass` block already is — replace it entirely with the above.
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 ```bash
 .venv/bin/pytest tests/test_scope_guard.py -v
@@ -1158,7 +1163,7 @@ Place this where the current `if "/" in value: try: ... except ValueError: pass`
 
 Expected: all pass, including every pre-existing CIDR test (`test_a_cidr_target_fully_within_the_declared_scope_is_allowed`, `test_a_cidr_target_entirely_outside_the_declared_scope_is_blocked`, `test_a_cidr_that_only_partially_overlaps_the_declared_scope_is_blocked`, `test_metadata_endpoint_expressed_as_a_slash_32_cidr_is_still_hard_denied`, `test_a_wide_cidr_that_merely_contains_the_metadata_address_is_not_hard_denied`).
 
-- [ ] **Step 5: Run the full suite to check for regressions**
+- [x] **Step 5: Run the full suite to check for regressions**
 
 ```bash
 .venv/bin/pytest -q
@@ -1166,7 +1171,7 @@ Expected: all pass, including every pre-existing CIDR test (`test_a_cidr_target_
 
 Expected: 0 failed. `ScopeGuardStage` is exercised by several integration tests — check specifically if anything fails: `.venv/bin/pytest tests/test_tool_catalog_integration.py tests/test_toolkit_integration.py -v`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cism/agent/guardrails/scope.py tests/test_scope_guard.py
@@ -1198,7 +1203,7 @@ git commit -m "fix: ScopeGuardStage fails closed on malformed CIDR notation and 
         return GuardrailResult(allowed=True, value=current)
 ```
 
-- [ ] **Step 1: Write the failing tests — append to `tests/test_guardrail_chain.py`**
+- [x] **Step 1: Write the failing tests — append to `tests/test_guardrail_chain.py`**
 
 ```python
 class _RaisingStage:
@@ -1236,7 +1241,7 @@ def test_a_stage_that_raises_short_circuits_later_stages_the_same_way_a_block_do
     assert never_called.calls == 0
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 ```bash
 .venv/bin/pytest tests/test_guardrail_chain.py -v -k "raises"
@@ -1244,7 +1249,7 @@ def test_a_stage_that_raises_short_circuits_later_stages_the_same_way_a_block_do
 
 Expected: both tests FAIL — `chain.run("hello")` currently raises `ValueError` instead of returning a `GuardrailResult`, so `pytest` reports an error (uncaught exception), not an assertion failure.
 
-- [ ] **Step 3: Implement — modify `GuardrailChain.run` in `cism/agent/guardrails/chain.py`**
+- [x] **Step 3: Implement — modify `GuardrailChain.run` in `cism/agent/guardrails/chain.py`**
 
 ```python
     def run(self, value: T) -> GuardrailResult[T]:
@@ -1270,7 +1275,7 @@ Expected: both tests FAIL — `chain.run("hello")` currently raises `ValueError`
         return GuardrailResult(allowed=True, value=current)
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [x] **Step 4: Run to verify it passes**
 
 ```bash
 .venv/bin/pytest tests/test_guardrail_chain.py -v
@@ -1278,7 +1283,7 @@ Expected: both tests FAIL — `chain.run("hello")` currently raises `ValueError`
 
 Expected: all pass, including every pre-existing test (`test_a_blocking_stage_short_circuits_later_stages`, `test_a_blocking_stage_result_is_stamped_with_the_stage_that_blocked_it`, `test_a_passing_result_has_no_stage_stamped` — none of these involve a raising stage, so none should change behavior).
 
-- [ ] **Step 5: Write the integration-level regression test — append to `tests/test_scope_guard.py`**
+- [x] **Step 5: Write the integration-level regression test — append to `tests/test_scope_guard.py`**
 
 ```python
 def test_a_malformed_bracketed_url_is_blocked_not_raised() -> None:
@@ -1295,7 +1300,7 @@ def test_a_malformed_bracketed_url_is_blocked_not_raised() -> None:
     assert result.allowed is False
 ```
 
-- [ ] **Step 6: Run to verify it passes**
+- [x] **Step 6: Run to verify it passes**
 
 ```bash
 .venv/bin/pytest tests/test_scope_guard.py -v -k "malformed_bracketed_url"
@@ -1303,7 +1308,7 @@ def test_a_malformed_bracketed_url_is_blocked_not_raised() -> None:
 
 Expected: PASS (this exercises the Task 9 fix from the scope-guard test file's perspective, proving the two changes compose correctly).
 
-- [ ] **Step 7: Run the full suite to check for regressions**
+- [x] **Step 7: Run the full suite to check for regressions**
 
 ```bash
 .venv/bin/pytest -q
@@ -1311,7 +1316,7 @@ Expected: PASS (this exercises the Task 9 fix from the scope-guard test file's p
 
 Expected: 0 failed.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add cism/agent/guardrails/chain.py tests/test_guardrail_chain.py tests/test_scope_guard.py
@@ -1322,7 +1327,7 @@ git commit -m "fix: GuardrailChain.run converts a stage's internal exception int
 
 ## Final check: whole-plan verification
 
-- [ ] Run the full suite one more time:
+- [x] Run the full suite one more time:
 
 ```bash
 .venv/bin/pytest -q
@@ -1330,7 +1335,7 @@ git commit -m "fix: GuardrailChain.run converts a stage's internal exception int
 
 Expected: baseline 470 plus every test added across Tasks 1–9, 0 failed.
 
-- [ ] Confirm no test anywhere still asserts on the old, now-outdated "not blocked" premise for `--output-dir` (Task 3 changed this test's expected outcome):
+- [x] Confirm no test anywhere still asserts on the old, now-outdated "not blocked" premise for `--output-dir` (Task 3 changed this test's expected outcome):
 
 ```bash
 grep -n "output-dir" tests/test_dangerous_flags.py
@@ -1338,7 +1343,7 @@ grep -n "output-dir" tests/test_dangerous_flags.py
 
 Expected: the surviving test (`test_output_dir_is_now_denylisted_in_its_own_right`) asserts `allowed is False`; no test anywhere still asserts `allowed is True` for `--output-dir`.
 
-- [ ] Confirm every action-chain stage still has a real, non-empty `name` (unaffected by this plan, but cheap to re-verify given `chain.py` changed):
+- [x] Confirm every action-chain stage still has a real, non-empty `name` (unaffected by this plan, but cheap to re-verify given `chain.py` changed):
 
 ```bash
 .venv/bin/python -c "
