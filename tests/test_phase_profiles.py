@@ -54,3 +54,39 @@ def test_default_profiles_reporting_phase_has_no_tools() -> None:
     profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
 
     assert profiles.get(Phase.REPORTING).tool_names == frozenset()
+
+
+def test_default_profiles_attaches_a_phase_tool_guard_matching_its_own_tool_names() -> None:
+    """The guard's allowed set must be exactly this phase's own tool_names
+    plus tool_help — proving it can't drift from binding by construction,
+    not just by convention."""
+    from cism.agent.guardrails import PhaseToolGuardStage
+
+    profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
+
+    for phase in Phase:
+        profile = profiles.get(phase)
+        assert len(profile.action_stages) == 1
+        stage = profile.action_stages[0]
+        assert isinstance(stage, PhaseToolGuardStage)
+        assert stage._allowed == profile.tool_names | {"tool_help"}
+
+
+def test_default_profiles_phase_tool_guard_knows_hydras_real_capability() -> None:
+    from cism.agent.guardrails import PhaseToolGuardStage
+
+    profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
+
+    stage = profiles.get(Phase.RECON).action_stages[0]
+    assert isinstance(stage, PhaseToolGuardStage)
+    assert stage._capabilities.get("hydra") == "executes"
+
+
+def test_default_profiles_phase_tool_guard_blocks_hydra_outside_its_phases() -> None:
+    from cism.agent.guardrails import PhaseToolGuardStage
+
+    profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
+
+    stage = profiles.get(Phase.RECON).action_stages[0]
+    result = stage.check({"id": "c1", "name": "hydra", "args": {}, "type": "tool_call"})
+    assert result.allowed is False
