@@ -139,9 +139,14 @@ def _is_always_denied(host: str) -> bool:
     if host in _ALWAYS_DENIED_HOSTS:
         return True
     try:
-        return str(ipaddress.ip_address(host)) in _ALWAYS_DENIED_HOSTS
+        addr = ipaddress.ip_address(host)
     except ValueError:
         return False
+    if str(addr) in _ALWAYS_DENIED_HOSTS:
+        return True
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return str(addr.ipv4_mapped) in _ALWAYS_DENIED_HOSTS
+    return False
 
 
 @dataclass(frozen=True, slots=True)
