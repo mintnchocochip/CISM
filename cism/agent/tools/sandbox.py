@@ -180,3 +180,25 @@ def _cap(text: str, limit: int) -> str:
     half = limit // 2
     omitted = len(text) - limit
     return f"{text[:half]}\n... [{omitted} chars omitted] ...\n{text[-half:]}"
+
+
+def _etc_symlink_hops(path: Path) -> set[Path]:
+    """Every /etc-rooted directory in path's full symlink chain, not just
+    its final target — pathlib's own .resolve() would skip straight past
+    an intermediate hop like /etc/alternatives/foo, which is exactly the
+    case that broke nmap under BubblewrapRunner (see the design doc §4.2):
+    /usr/lib/.../libblas.so.3 -> /etc/alternatives/... -> the real file.
+    Binding /usr wholesale doesn't help if the *middle* of the chain lives
+    somewhere else entirely."""
+    hops: set[Path] = set()
+    current = path
+    seen: set[Path] = set()
+    while current not in seen and current.is_symlink():
+        seen.add(current)
+        target = current.readlink()
+        if not target.is_absolute():
+            target = (current.parent / target).resolve()
+        if target.is_relative_to("/etc"):
+            hops.add(target.parent)  # bind the containing dir, not one file
+        current = target
+    return hops
