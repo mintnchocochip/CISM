@@ -451,3 +451,28 @@ def test_a_normal_url_with_a_real_hostname_is_unaffected() -> None:
     real hostname and be checked against scope exactly as before."""
     result = _stage().check(_call("curl", target="https://example.com/report"))
     assert result.allowed is True
+
+
+def test_a_tool_mapped_to_a_target_arg_name_the_catalog_never_emits_still_gets_scope_checked() -> None:
+    """_TARGET_ARG_BY_TOOL maps wget/gobuster/ffuf to "url" and ssh/scp to
+    "host" — but build_catalog (base.py) always names the target field
+    "target", never these. Before this fix, a tool call under one of
+    these five names took the registered-tool branch, looked up a key
+    that's never present, found nothing, and checked NOTHING — not the
+    fallback scan, silence. This test simulates exactly that shape
+    (a real ToolCall args dict for a hypothetical catalog-built "wget")
+    to prove the fallback now kicks in."""
+    result = _stage().check(_call("wget", target="http://169.254.169.254/"))
+    assert result.allowed is False
+
+
+def test_the_existing_registered_tools_are_unaffected_by_the_fallback_change() -> None:
+    """Regression guard: every currently-real registered tool (nmap,
+    curl, hydra, medusa, masscan) really is mapped to "target", which
+    build_catalog really does emit — the fallback path must never trigger
+    for these, so behavior must be identical to before this task."""
+    result = _stage().check(_call("nmap", target="10.0.0.5"))
+    assert result.allowed is True
+
+    result = _stage().check(_call("curl", target="192.168.1.5"))
+    assert result.allowed is False
