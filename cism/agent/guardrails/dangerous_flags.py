@@ -33,13 +33,32 @@ _PER_TOOL_DANGEROUS_TOKENS: dict[str, frozenset[str]] = {
 }
 
 
+def _hits(token: str, denylist: frozenset[str]) -> set[str]:
+    """Return the denylisted flags that `token` matches.
+
+    Exact match always counts (``head == f``). For short (single-dash)
+    flags we also match when the token merely *starts with* the flag, since
+    curl/nmap accept an attached value with no separating space or ``=``
+    (``-o/tmp/pwn``, ``-d@/etc/passwd``, ``-K/etc/curlrc``). Long
+    (``--xxx``) flags are never matched via ``startswith`` here — only via
+    the ``=``-split exact match on `head` — so a long option name is never
+    mistaken for a short flag's attached-value form, and one long flag is
+    never mistaken as a prefix of another (`--form` vs `--format`, say).
+    """
+    head = token.split("=", 1)[0]
+    return {
+        f for f in denylist
+        if head == f or (not f.startswith("--") and token.startswith(f))
+    }
+
+
 class DangerousFlagGuardStage:
     name = "dangerous-flag-guard"
 
     def check(self, call: ToolCall) -> GuardrailResult[ToolCall]:
         extra = str((call.get("args") or {}).get("extra", ""))
         try:
-            tokens = set(shlex.split(extra)) if extra else set()
+            tokens = shlex.split(extra) if extra else []
         except ValueError:
             return GuardrailResult(
                 allowed=False,
@@ -47,7 +66,9 @@ class DangerousFlagGuardStage:
                 reason="could not parse `extra` as shell-style tokens (unbalanced quote?)",
             )
         denylist = _SHARED_DANGEROUS_TOKENS | _PER_TOOL_DANGEROUS_TOKENS.get(call.get("name", ""), frozenset())
-        hit = tokens & denylist
+        hit: set[str] = set()
+        for token in tokens:
+            hit |= _hits(token, denylist)
         if hit:
             return GuardrailResult(
                 allowed=False,
