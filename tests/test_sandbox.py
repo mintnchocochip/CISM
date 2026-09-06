@@ -238,3 +238,66 @@ def test_etc_symlink_hops_does_not_loop_forever_on_a_circular_symlink(tmp_path) 
     # Must return (not hang) even though this chain never resolves to a
     # real file — the `seen` set breaks the cycle.
     assert _etc_symlink_hops(a) == set()
+
+
+def test_dynamic_etc_binds_walks_real_symlink_chains_to_find_etc_hops(monkeypatch) -> None:
+    """ldd output is stubbed (no installed binary on a typical host has a
+    library-closure that routes through /etc), but the chain walk and the
+    /etc detection run against real host paths — the fix in §4.2 is about
+    an *intermediate* real /etc/alternatives hop, so a faked /etc tree
+    wouldn't exercise the branch that matters. Skipped where no probe path
+    routes through /etc/alternatives."""
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import _dynamic_etc_binds
+
+    routed = _first_path_routing_through_etc_alternatives()
+    if routed is None:
+        pytest.skip("no host path routes through /etc/alternatives")
+
+    fake_ldd_output = (
+        "\tlinux-vdso.so.1 (0x00007fff00000000)\n"
+        f"\tlibrouted.so => {routed} (0x00007f0000000000)\n"
+        "\t/lib64/ld-linux-x86-64.so.2 (0x00007f0000000000)\n"
+    )
+
+    class _FakeCompletedProcess:
+        stdout = fake_ldd_output
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: "/usr/bin/fake-binary")
+    monkeypatch.setattr(
+        sandbox_module.subprocess, "run", lambda *a, **kw: _FakeCompletedProcess()
+    )
+
+    result = _dynamic_etc_binds("fake-binary")
+
+    assert result == frozenset({"/etc/alternatives"})
+
+
+def test_dynamic_etc_binds_returns_empty_set_when_ldd_fails(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import _dynamic_etc_binds
+
+    def raise_not_found(*a, **kw):
+        raise FileNotFoundError("no ldd")
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: "/usr/bin/fake-binary")
+    monkeypatch.setattr(sandbox_module.subprocess, "run", raise_not_found)
+
+    assert _dynamic_etc_binds("fake-binary") == frozenset()
+
+
+def test_dynamic_etc_binds_against_a_real_installed_binary_with_no_etc_dependencies() -> None:
+    """Real, non-mocked check: /bin/true has essentially no library
+    dependencies, so this must return an empty set without erroring —
+    proving the function survives a real ldd invocation, not just the
+    mocked-output path above."""
+    import shutil
+
+    from cism.agent.tools.sandbox import _dynamic_etc_binds
+
+    if shutil.which("true") is None:
+        pytest.skip("`true` not installed")
+
+    result = _dynamic_etc_binds("true")
+
+    assert isinstance(result, frozenset)
