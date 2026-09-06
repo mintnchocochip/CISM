@@ -212,23 +212,36 @@ class ScopeGuardStage:
         return GuardrailResult(allowed=True, value=call)
 
 
+def _scan_all_args(args: dict) -> list[str]:
+    hosts: list[str] = []
+    for value in args.values():
+        if isinstance(value, str):
+            host = _extract_host(value)
+            if host:
+                hosts.append(host)
+    return hosts
+
+
 def _candidate_hosts(call: ToolCall) -> list[str]:
     args = call.get("args") or {}
     hosts: list[str] = []
 
     key = _TARGET_ARG_BY_TOOL.get(call.get("name", ""))
-    if key is not None:
-        value = args.get(key)
-        if isinstance(value, str):
-            host = _extract_host(value)
-            if host:
-                hosts.append(host)
+    value = args.get(key) if key is not None else None
+    if key is not None and isinstance(value, str):
+        host = _extract_host(value)
+        if host:
+            hosts.append(host)
     else:
-        for value in args.values():
-            if isinstance(value, str):
-                host = _extract_host(value)
-                if host:
-                    hosts.append(host)
+        # Either no per-tool target-arg mapping exists for this tool
+        # (the original fallback case), OR one does but the mapped key
+        # isn't actually present as a string on this call — e.g. a tool
+        # declared in _TARGET_ARG_BY_TOOL under a name build_catalog
+        # never emits (build_catalog always names the target field
+        # "target", never "url"/"host"). Falling back to scanning every
+        # arg here, rather than checking nothing, means a future catalog
+        # addition can't accidentally switch scope-checking off entirely.
+        hosts.extend(_scan_all_args(args))
 
     extra = args.get("extra")
     if isinstance(extra, str):
