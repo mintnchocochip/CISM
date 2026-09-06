@@ -17,8 +17,9 @@ from langchain_core.messages import (
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langchain_core.tools import StructuredTool
 
+from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam
 from cism.agent.llm import DummyChatModel
-from cism.agent.nodes import make_depg_update_node, make_think_node
+from cism.agent.nodes import make_act_node, make_depg_update_node, make_think_node
 from cism.agent.profiles import PhaseProfile, PhaseProfiles
 from cism.agent.state import Phase
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
@@ -439,3 +440,49 @@ async def test_think_always_binds_tool_help_even_when_the_profile_declares_no_to
     await think({"messages": [HumanMessage(content="go")], "phase": Phase.REPORTING})
 
     assert [t.name for t in recorded[0]] == ["tool_help"]
+
+
+class _AlwaysBlockStage:
+    name = "always-block"
+
+    def __init__(self, reason: str) -> None:
+        self._reason = reason
+
+    def check(self, call):
+        return GuardrailResult(allowed=False, value=call, reason=self._reason)
+
+
+def test_act_reports_a_blocked_call_with_a_generic_message_not_the_rich_reason() -> None:
+    """The actual security property: an adversarial or injected model must
+    not be able to read back exactly which host/flag/capability tripped
+    the guard, or it has a live oracle to map the ruleset and find an
+    unlisted equivalent."""
+    action_chain = GuardrailChain([_AlwaysBlockStage("10.0.0.99 is outside scope")])
+    profiles = PhaseProfiles(
+        {Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="", tool_names=frozenset({"dummy_nmap"}))}
+    )
+    act = make_act_node(ToolRegistry([dummy_nmap]), action_chain, profiles)
+    call = {"id": "c1", "name": "dummy_nmap", "args": {"target": "10.0.0.99"}, "type": "tool_call"}
+    state = _state([AIMessage(content="", tool_calls=[call])])
+
+    result = act(state)
+
+    message = result["messages"][0]
+    assert message.content == "blocked by action guardrail"
+    assert "10.0.0.99" not in message.content
+    assert "outside scope" not in message.content
+
+
+def test_act_preserves_the_rich_guardrail_reason_in_additional_kwargs() -> None:
+    action_chain = GuardrailChain([_AlwaysBlockStage("10.0.0.99 is outside scope")])
+    profiles = PhaseProfiles(
+        {Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="", tool_names=frozenset({"dummy_nmap"}))}
+    )
+    act = make_act_node(ToolRegistry([dummy_nmap]), action_chain, profiles)
+    call = {"id": "c1", "name": "dummy_nmap", "args": {"target": "10.0.0.99"}, "type": "tool_call"}
+    state = _state([AIMessage(content="", tool_calls=[call])])
+
+    result = act(state)
+
+    message = result["messages"][0]
+    assert message.additional_kwargs["guardrail_detail"] == "[always-block] 10.0.0.99 is outside scope"
