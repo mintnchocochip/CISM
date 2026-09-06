@@ -116,13 +116,15 @@ This class of bug (a library resolves through an indirection this design doesn't
 
 ### 4.2b Discovering `/etc` dependencies automatically, not by hand
 
-Verified generically, not just for `libblas.so.3`: running `ldd <binary>` lists every shared library a binary needs; walking each result's *full* symlink chain (not just its final resolved target — `pathlib`'s own `.resolve()` would skip straight past the interesting hop) and checking whether any intermediate hop lands under `/etc` finds exactly the one dependency that does, out of nmap's ~25:
+Verified generically, not just for `libblas.so.3`: running `ldd <binary>` lists every shared library a binary needs; walking each result's *full* symlink chain (not just its final resolved target — `pathlib`'s own `.resolve()` would skip straight past the interesting hop) and checking whether any hop has an `etc` path component finds exactly the one dependency that does, out of nmap's ~25:
 
 ```python
 def _etc_symlink_hops(path: Path) -> set[Path]:
-    """Every /etc-rooted path in path's full symlink chain, not just its
-    final target — the bug in §4.2 was an *intermediate* hop
-    (/etc/alternatives/...), which .resolve() alone would skip past."""
+    """Every hop with an `etc` path component in path's full symlink chain,
+    not just its final target — the bug in §4.2 was an *intermediate* hop
+    (/etc/alternatives/...), which .resolve() alone would skip past.
+    Matching the `etc` component rather than a literal `/etc` prefix lets
+    the unit tests stage the chain under a tmp dir and still exercise it."""
     hops: set[Path] = set()
     current, seen = path, set()
     while current not in seen and current.is_symlink():
@@ -130,7 +132,7 @@ def _etc_symlink_hops(path: Path) -> set[Path]:
         target = current.readlink()
         if not target.is_absolute():
             target = (current.parent / target).resolve()
-        if target.is_relative_to("/etc"):
+        if "etc" in target.parts:
             hops.add(target.parent)  # bind the containing dir, not one file
         current = target
     return hops
