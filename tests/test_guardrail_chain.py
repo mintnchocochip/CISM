@@ -96,3 +96,38 @@ def test_a_passing_result_has_no_stage_stamped() -> None:
     result = chain.run("hello")
 
     assert result.stage == ""
+
+
+class _RaisingStage:
+    name = "raising-stage"
+
+    def check(self, value):
+        raise ValueError("could not parse this call")
+
+
+def test_a_stage_that_raises_produces_a_blocked_result_instead_of_propagating() -> None:
+    """A malformed/adversarial call can make a stage's internal parsing
+    logic raise (e.g. scope.py's _extract_host on a malformed bracketed
+    URL, or a non-dict `args` from a malformed ToolCall langchain_core can
+    actually produce). Before this fix that exception escapes run(),
+    propagates out of act(), and is caught by core.py's broad top-level
+    except — ending the ENTIRE agent run rather than blocking the ONE
+    call. A single hallucinated or malformed tool call must not have the
+    power to kill the run."""
+    chain = GuardrailChain([_RaisingStage()])
+
+    result = chain.run("hello")
+
+    assert result.allowed is False
+    assert result.stage == "raising-stage"
+    assert "could not parse this call" in result.reason
+
+
+def test_a_stage_that_raises_short_circuits_later_stages_the_same_way_a_block_does() -> None:
+    never_called = _NeverCalledStage()
+    chain = GuardrailChain([_RaisingStage(), never_called])
+
+    result = chain.run("hello")
+
+    assert result.allowed is False
+    assert never_called.calls == 0
