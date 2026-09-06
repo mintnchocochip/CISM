@@ -9,6 +9,7 @@ tools involved.
 
 from __future__ import annotations
 
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -459,3 +460,139 @@ def test_bubblewrap_runner_raises_tool_not_installed_when_bwrap_itself_is_missin
         BubblewrapRunner().run(["curl", "https://x"], timeout=5.0, cwd=Path("/tmp/scratch"))
     assert "bwrap" in str(exc_info.value)
 
+
+requires_bwrap = pytest.mark.skipif(shutil.which("bwrap") is None, reason="bwrap not installed")
+requires_nmap = pytest.mark.skipif(shutil.which("nmap") is None, reason="nmap not installed")
+requires_curl = pytest.mark.skipif(shutil.which("curl") is None, reason="curl not installed")
+
+
+@requires_bwrap
+def test_bubblewrap_runner_blocks_writes_outside_the_scratch_bind(tmp_path) -> None:
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    outside = tmp_path / "outside-scratch"
+    outside.mkdir()
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    # Attempt to write to a path that exists on the host but is never
+    # bound into the sandbox — must fail because the path doesn't exist
+    # from the sandboxed process's point of view, not because of
+    # permissions (nothing outside declared binds is even visible).
+    output = BubblewrapRunner().run(
+        ["sh", "-c", f"touch {outside}/should-not-exist 2>&1; echo exit=$?"],
+        timeout=5.0,
+        cwd=scratch,
+    )
+
+    assert "exit=0" not in output
+    assert not (outside / "should-not-exist").exists()
+
+
+@requires_bwrap
+def test_bubblewrap_runner_allows_writes_inside_the_scratch_bind(tmp_path) -> None:
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    BubblewrapRunner().run(["sh", "-c", "touch /work/marker"], timeout=5.0, cwd=scratch)
+
+    assert (scratch / "marker").exists()
+
+
+@requires_bwrap
+@requires_curl
+def test_bubblewrap_runner_resolves_dns_and_completes_a_real_https_call(tmp_path) -> None:
+    """Proves /etc/resolv.conf and the CA trust store binds are both
+    actually working, not just present in argv — a raw-IP request
+    wouldn't exercise DNS at all."""
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    output = BubblewrapRunner().run(
+        ["curl", "-s", "-m", "10", "-o", "/dev/null", "-w", "http_code=%{http_code}", "https://example.com"],
+        timeout=15.0,
+        cwd=scratch,
+    )
+
+    assert "http_code=200" in output
+
+
+@requires_bwrap
+@requires_nmap
+def test_bubblewrap_runner_runs_a_real_nmap_scan(tmp_path) -> None:
+    """This is the exact case that broke during design (libblas.so.3
+    routing through /etc/alternatives) — a real nmap invocation is the
+    regression test for that fix, not a mock."""
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    output = BubblewrapRunner().run(
+        ["nmap", "-sn", "--host-timeout", "5s", "127.0.0.1"],
+        timeout=15.0,
+        cwd=scratch,
+    )
+
+    assert "error while loading shared libraries" not in output
+    assert "Nmap done" in output
+
+
+@requires_bwrap
+def test_dynamic_etc_binds_finds_alternatives_for_nmap_specifically() -> None:
+    """Pinned regression test for the exact bug found during design:
+    nmap's libblas.so.3 dependency routes through /etc/alternatives.
+    Skipped (not failed) if nmap isn't installed or this distro doesn't
+    happen to route it through alternatives — the point is proving the
+    discovery mechanism works generically, and this is its one confirmed
+    real-world case."""
+    if shutil.which("nmap") is None:
+        pytest.skip("nmap not installed")
+
+    from cism.agent.tools.sandbox import _dynamic_etc_binds
+
+    result = _dynamic_etc_binds("nmap")
+
+    if not result:
+        pytest.skip("this nmap build doesn't route any dependency through /etc (fine — distro-specific)")
+    assert "/etc/alternatives" in result
+
+
+@requires_bwrap
+def test_bubblewrap_runner_does_not_leak_secret_environment_variables(tmp_path, monkeypatch) -> None:
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    monkeypatch.setenv("CISM_API_KEY", "super-secret-test-value")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    output = BubblewrapRunner().run(["env"], timeout=5.0, cwd=scratch)
+
+    assert "super-secret-test-value" not in output
+    assert "CISM_API_KEY" not in output
+
+
+@requires_bwrap
+def test_bubblewrap_runner_kill_on_timeout_also_kills_a_detached_child(tmp_path) -> None:
+    """Proves the PID-namespace-teardown claim (design doc §4.4): a
+    process that forks a child specifically to survive its parent's death
+    still dies, because the whole PID namespace tears down when bwrap's
+    own init-equivalent process is killed — not just because os.killpg
+    happened to catch it."""
+    from cism.agent.tools.sandbox import BubblewrapRunner, ToolTimeoutError
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    marker = scratch / "child-still-alive"
+
+    script = "(sleep 0.5 && touch /work/child-still-alive) & sleep 5"
+
+    with pytest.raises(ToolTimeoutError):
+        BubblewrapRunner().run(["sh", "-c", script], timeout=0.2, cwd=scratch)
+
+    time.sleep(1)  # longer than the detached child's own 0.5s delay
+    assert not marker.exists()
