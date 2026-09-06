@@ -150,14 +150,16 @@ def test_curl_cookie_jar_flag_with_no_space_is_blocked() -> None:
     assert result.allowed is False
 
 
-def test_a_long_flag_that_merely_shares_a_prefix_with_a_denylisted_long_flag_is_not_blocked() -> None:
-    """Long (--xxx) flags must only match by exact `=`-split head, never by
-    startswith — otherwise a distinct, safe long option that happens to
-    begin with a denylisted long flag's name would be falsely blocked.
-    "--output" is denylisted for curl; "--output-dir" is a different,
-    fictitious-but-plausible flag name that must NOT be caught by it."""
+def test_output_dir_is_now_denylisted_in_its_own_right() -> None:
+    """--output-dir turned out not to be fictitious — it's a real curl
+    flag (Finding 5) that redirects where -o/-O/-J write, and is now
+    denylisted directly rather than merely "not accidentally caught by
+    --output's prefix". This test's old name/premise (that it must NOT be
+    blocked) no longer holds; --outputXYZfictitious above is the new
+    regression guard for the "shares a prefix but isn't --output-dir
+    either" case."""
     result = _stage().check(_call(name="curl", target="https://x", extra="--output-dir=/tmp"))
-    assert result.allowed is True
+    assert result.allowed is False
 
 
 def test_a_safe_short_flag_that_does_not_appear_in_the_denylist_is_not_blocked() -> None:
@@ -186,4 +188,97 @@ def test_an_unknown_tool_only_gets_the_shared_denylist() -> None:
     assert result.allowed is False
 
     result = _stage().check(_call(name="some-future-tool", target="x", extra="-F file=@x"))
+    assert result.allowed is True
+
+
+def test_curl_long_flag_abbreviation_is_blocked() -> None:
+    """curl's own parser accepts any unambiguous prefix of a long option
+    (--conf for --config). Verified against real curl: a curlrc reached
+    via --conf gives unrestricted file write, identical to the
+    already-blocked -K/--config."""
+    for abbrev in ("--conf", "--dump-h", "--cookie-j", "--data-r", "--data-u", "--data-b", "--upload-f"):
+        result = _stage().check(_call(name="curl", target="https://x", extra=f"{abbrev} /tmp/x"))
+        assert result.allowed is False, abbrev
+
+
+def test_curl_short_flag_bundling_is_blocked() -> None:
+    """curl accepts single-dash short options bundled into one cluster,
+    with a value-taking flag consuming the remainder as its value
+    (-sSo/tmp/pwn == -s -S -o /tmp/pwn). Verified against real curl: this
+    writes the file exactly like the already-blocked -o /tmp/pwn."""
+    for bundled in ("-sSo/tmp/pwn", "-sO", "-fsSLo/tmp/pwn", "-sST/etc/passwd"):
+        result = _stage().check(_call(name="curl", target="https://x", extra=bundled))
+        assert result.allowed is False, bundled
+
+
+def test_a_safe_boolean_short_flag_cluster_is_not_blocked() -> None:
+    """Regression guard: bundling detection must not turn every bundled
+    cluster into a block — only one that actually contains a denylisted
+    flag's letter."""
+    result = _stage().check(_call(name="curl", target="https://x", extra="-sSL"))
+    assert result.allowed is True
+
+
+def test_curl_connection_redirection_flags_are_blocked() -> None:
+    """--resolve/--connect-to redirect the connection to an arbitrary
+    address while the *visible* URL (the only thing ScopeGuardStage sees)
+    stays in-scope — verified live via a real listener that the
+    connection really goes where --resolve points, not where the
+    hostname would otherwise resolve."""
+    for flag_and_value in (
+        "--resolve a.example.com:80:169.254.169.254",
+        "--connect-to a.example.com:80:169.254.169.254:80",
+        "-x http://169.254.169.254:80",
+        "--proxy http://169.254.169.254:80",
+        "--unix-socket /var/run/docker.sock",
+        "--abstract-unix-socket x",
+    ):
+        result = _stage().check(_call(name="curl", target="https://a.example.com/", extra=flag_and_value))
+        assert result.allowed is False, flag_and_value
+
+
+def test_curl_file_touching_flags_are_blocked() -> None:
+    """-w/@file and -b/<file> are arbitrary-file-read-and-exfiltrate
+    primitives; --trace*/--stderr/--output-dir/--netrc-file/--etag-save
+    are arbitrary-file-write primitives — verified live against real
+    curl for each class."""
+    for flag_and_value in (
+        "-w @/etc/passwd",
+        "--write-out @/etc/passwd",
+        "-b /etc/passwd",
+        "--cookie /etc/passwd",
+        "--trace /tmp/t",
+        "--trace-ascii /tmp/t",
+        "--stderr /tmp/t",
+        "--output-dir /etc",
+        "--netrc-file /etc/passwd",
+        "--etag-save /tmp/e",
+        "--etag-compare /etc/passwd",
+        "-J",
+        "--remote-header-name",
+        "--remote-name-all",
+        "--cert /etc/passwd",
+        "--key /etc/passwd",
+        "--cacert /etc/passwd",
+    ):
+        result = _stage().check(_call(name="curl", target="https://x", extra=flag_and_value))
+        assert result.allowed is False, flag_and_value
+
+
+def test_a_long_flag_abbreviation_still_requires_a_real_prefix_match() -> None:
+    """Regression guard: an abbreviation must actually be a prefix of a
+    real denylisted flag — a long flag that merely starts with the same
+    letter as a denylisted one, but isn't a prefix relationship, must not
+    be caught."""
+    result = _stage().check(_call(name="curl", target="https://x", extra="--http1.1"))
+    assert result.allowed is True
+
+
+def test_the_existing_long_flag_prefix_regression_guard_still_holds() -> None:
+    """--output-dir is now itself denylisted (Finding 5), so this
+    existing regression test's premise changed — --output-dir must be
+    blocked now, but confirm --output itself (the shorter, already
+    denylisted flag) still isn't confused with a DIFFERENT, unrelated
+    long flag that happens to share a prefix."""
+    result = _stage().check(_call(name="curl", target="https://x", extra="--outputXYZfictitious=1"))
     assert result.allowed is True
