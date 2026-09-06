@@ -59,6 +59,30 @@ _BARE_DOMAIN_RE = re.compile(
     r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+"
 )
 
+#: Above this, a bare digit string is far more likely to be an encoded
+#: IPv4 address than a legitimate small numeric argument this agent's
+#: tools actually take (ports 0-65535, nmap timing 0-5, thread counts
+#: capped at 16 — see credentials.py's _MAX_THREADS) — 169.254.169.254
+#: encodes to 2852039166, far above it.
+_MIN_NUMERIC_IPV4 = 0xFFFF  # 65535
+
+
+def _parse_numeric_ipv4(value: str) -> str | None:
+    """curl/getaddrinfo resolve a bare decimal or hex integer as an IPv4
+    address (``http://2852039166/`` == ``http://169.254.169.254/``) —
+    ``ipaddress.ip_address`` rejects this spelling outright, which is
+    exactly the gap that let this encoding slip past the scope guard
+    unchecked. Returns the canonical dotted-quad form, or None."""
+    if re.fullmatch(r"[0-9]+", value):
+        n = int(value)
+    elif re.fullmatch(r"0[xX][0-9a-fA-F]+", value):
+        n = int(value, 16)
+    else:
+        return None
+    if not (_MIN_NUMERIC_IPV4 < n <= 0xFFFFFFFF):
+        return None
+    return str(ipaddress.IPv4Address(n))
+
 #: Never a legitimate pentest target regardless of declared scope, unlike
 #: RFC1918 ranges generally (which ARE often the actual point of an
 #: internal-network engagement, so blocking those would break legitimate
@@ -67,6 +91,7 @@ _BARE_DOMAIN_RE = re.compile(
 _ALWAYS_DENIED_HOSTS: frozenset[str] = frozenset({
     "169.254.169.254",  # AWS/GCP/Azure instance metadata
     "metadata.google.internal",
+    "metadata",  # GCP's own short-form metadata hostname, resolvable via the VM's default DNS search domain with no dot at all
     "fd00:ec2::254",  # AWS IMDSv2 IPv6
 })
 
@@ -241,6 +266,10 @@ def _extract_host(value: str) -> str | None:
         except ValueError:
             pass
 
+    numeric_ipv4 = _parse_numeric_ipv4(value)
+    if numeric_ipv4 is not None:
+        return numeric_ipv4
+
     try:
         ipaddress.ip_address(value)
         return value
@@ -261,6 +290,9 @@ def _extract_host(value: str) -> str | None:
         return _strip_trailing_dot(match.group(1))
 
     if _BARE_DOMAIN_RE.fullmatch(value):
+        return value.lower()
+
+    if value.lower() in _ALWAYS_DENIED_HOSTS:
         return value.lower()
 
     return None
