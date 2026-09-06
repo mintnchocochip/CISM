@@ -8,9 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from langchain_core.tools import tool
-
-from cism.agent.tools.sandbox import run_sandboxed, scratch_dir
+from cism.agent.tools.base import sandboxed_tool
 
 __all__ = ["CREDENTIAL_TOOLS", "hydra"]
 
@@ -43,8 +41,9 @@ def _cred_flag(flag: str, values: list[str] | None, listname: str | None, path: 
     return [flag, str(wordlist)]
 
 
-@tool
+@sandboxed_tool(binary="hydra", capability="executes", timeout=120.0)
 def hydra(
+    scratch: Path,
     target: str,
     service: str,
     usernames: list[str] | None = None,
@@ -52,18 +51,17 @@ def hydra(
     passwords: list[str] | None = None,
     passwordlist: str | None = None,
     threads: int = 4,
-) -> str:
+) -> list[str]:
     """Run hydra against one target/service with explicit credential lists
     or a named wordlist. Exactly one of usernames/userlist and one of
     passwords/passwordlist must be given; threads is capped at 16 —
     real safety here is the scope guardrail and the run timeout, not
     argv tricks."""
-    with scratch_dir() as tmp:
-        argv = ["hydra", "-t", str(min(threads, _MAX_THREADS))]
-        argv += _cred_flag("-L", usernames, userlist, tmp / "users.txt")
-        argv += _cred_flag("-P", passwords, passwordlist, tmp / "pass.txt")
-        argv += [target, service]
-        return run_sandboxed(argv, cwd=tmp, timeout=120.0)
+    argv = ["-t", str(min(threads, _MAX_THREADS))]
+    argv += _cred_flag("-L", usernames, userlist, scratch / "users.txt")
+    argv += _cred_flag("-P", passwords, passwordlist, scratch / "pass.txt")
+    argv += [target, service]
+    return argv
 
 
 CREDENTIAL_TOOLS = [hydra]
