@@ -282,3 +282,37 @@ def test_the_existing_long_flag_prefix_regression_guard_still_holds() -> None:
     long flag that happens to share a prefix."""
     result = _stage().check(_call(name="curl", target="https://x", extra="--outputXYZfictitious=1"))
     assert result.allowed is True
+
+
+def test_nmap_random_internet_targets_flag_is_blocked() -> None:
+    """-iR <n> tells nmap to generate and scan random Internet hosts,
+    ignoring the target argument entirely — a complete engagement-scope
+    escape that ScopeGuardStage cannot see, since the only host-shaped
+    argument on the call is the legitimate in-scope target."""
+    result = _stage().check(_call(name="nmap", target="10.0.0.5", extra="-iR 1000"))
+    assert result.allowed is False
+
+
+def test_nmap_datadir_and_related_flags_are_blocked() -> None:
+    for flag_and_value in (
+        "--datadir /tmp/evil",
+        "--script-args-file /etc/passwd",
+        "--resume /tmp/x",
+        "--stylesheet /etc/passwd",
+        "-oS /tmp/x",
+        "--proxies http://169.254.169.254:80",
+        "--servicedb /etc/passwd",
+        "--versiondb /etc/passwd",
+        "--webxml",
+        "--script-help",
+        "--append-output",
+    ):
+        result = _stage().check(_call(name="nmap", target="10.0.0.5", extra=flag_and_value))
+        assert result.allowed is False, flag_and_value
+
+
+def test_a_safe_nmap_flag_is_still_unaffected_by_the_new_entries() -> None:
+    """Regression guard: the new nmap entries must not catch anything
+    beyond what they explicitly name."""
+    result = _stage().check(_call(name="nmap", target="10.0.0.5", extra="-sV -A -T4"))
+    assert result.allowed is True
