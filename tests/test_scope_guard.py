@@ -113,3 +113,23 @@ def test_a_comma_containing_value_that_is_not_actually_a_host_list_is_unaffected
     misclassified as a host token and must not break existing behavior."""
     result = _stage().check(_call("nmap", target="10.0.0.5", extra="-p 80,443"))
     assert result.allowed is True
+
+
+def test_a_valid_out_of_scope_host_smuggled_via_a_trailing_comma_is_still_blocked() -> None:
+    """A comma-joined token where only SOME parts are host-shaped must not
+    let the whole token slip past detection — otherwise appending a trailing
+    comma is a trivial bypass for the comma-list check itself."""
+    result = _stage().check(
+        _call("nmap", target="10.0.0.5", extra="192.168.1.99,")
+    )
+    assert result.allowed is False
+
+
+def test_a_valid_out_of_scope_host_smuggled_via_garbage_suffix_is_still_blocked() -> None:
+    """A comma-joined token where only SOME parts are host-shaped must not
+    let the whole token slip past detection — otherwise appending garbage
+    after a comma is a trivial bypass for the comma-list check itself."""
+    result = _stage().check(
+        _call("nmap", target="10.0.0.5", extra="192.168.1.99,notahost")
+    )
+    assert result.allowed is False
