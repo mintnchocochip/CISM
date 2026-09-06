@@ -334,3 +334,73 @@ def test_an_unrelated_bare_word_is_still_allowed_through() -> None:
 
     result = _stage().check(_call("some-new-tool", note="responder"))
     assert result.allowed is True
+
+
+def test_url_wrapped_decimal_encoded_metadata_ip_is_blocked_via_hard_deny() -> None:
+    """Fix-round regression for Finding 1: the URL branch of _extract_host
+    must recurse back through _extract_host so a numeric-encoded hostname
+    embedded in a URL's authority gets canonicalized, not returned as the
+    raw undecoded digit string. Proven here with a scope wide enough
+    (0.0.0.0/0) that the raw string "2852039166" would ALSO be considered
+    "in scope" if _is_always_denied's canonicalization never ran — so this
+    test only passes if the hard-deny mechanism itself actually fired on
+    the canonicalized "169.254.169.254", not incidentally via a narrow
+    declared-scope mismatch."""
+    wide_scope = EngagementScope(cidrs=(ipaddress.ip_network("0.0.0.0/0"),))
+    stage = ScopeGuardStage(wide_scope)
+
+    result = stage.check(_call("curl", target="http://2852039166/"))
+    assert result.allowed is False
+
+
+def test_url_wrapped_ordinary_domain_is_unaffected_by_the_recursion_fix() -> None:
+    """The recursive _extract_host call in the URL branch must not change
+    behavior for a plain domain that was already handled correctly."""
+    result = _stage().check(_call("curl", target="http://example.com/"))
+    assert result.allowed is True
+
+
+def test_url_wrapped_bare_ip_authority_is_unaffected_by_the_recursion_fix() -> None:
+    wide_scope = EngagementScope(cidrs=(ipaddress.ip_network("169.254.0.0/16"),))
+    stage = ScopeGuardStage(wide_scope)
+
+    result = stage.check(_call("curl", target="http://169.254.169.254/"))
+    assert result.allowed is False  # still hard-denied, same as before the fix
+
+
+def test_url_wrapped_nondenied_bare_word_is_unaffected_by_the_recursion_fix() -> None:
+    """A single-label hostname that isn't in _ALWAYS_DENIED_HOSTS (so the
+    recursive _extract_host call returns None) must fall back to the raw
+    hostname via the ``or hostname`` clause, exactly as the un-recursed
+    branch returned it before this fix."""
+    scope = EngagementScope(domains=("localhost",))
+    stage = ScopeGuardStage(scope)
+
+    result = stage.check(_call("curl", target="http://localhost/"))
+    assert result.allowed is True
+
+
+def test_nmap_min_rate_value_is_not_misread_as_an_encoded_ip() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="--min-rate 100000"))
+    assert result.allowed is True
+
+
+def test_nmap_max_rate_value_is_not_misread_as_an_encoded_ip() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="--max-rate 500000"))
+    assert result.allowed is True
+
+
+def test_nmap_host_timeout_value_is_not_misread_as_an_encoded_ip() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="--host-timeout 900000"))
+    assert result.allowed is True
+
+
+def test_a_bare_smuggled_encoded_ip_not_following_a_numeric_arg_flag_is_still_blocked() -> None:
+    """Regression guard for the _NUMERIC_ARG_FLAGS skip-list: it must only
+    skip the token immediately after one of those specific flags, not
+    weaken detection of an encoded IP smuggled anywhere else in extra."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="--min-rate 100000 2130706433"))
+    assert result.allowed is False  # 2130706433 == 127.0.0.1, a bare (non-skipped) token
+
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="2130706433"))
+    assert result.allowed is False
