@@ -158,3 +158,83 @@ def test_a_sandboxed_tool_decorated_function_picks_up_the_default_runner_without
     probe.invoke({"target": "hi"})
 
     assert fake.calls == [["echo-ish", "hi"]]
+
+
+#: Host paths that Debian/Ubuntu route through /etc/alternatives — the same
+#: symlink indirection that broke nmap's libblas.so.3 during design (§4.2).
+#: Real, not faked: _etc_symlink_hops checks the literal /etc, so a fake
+#: tmp_path tree would never exercise the branch that actually matters.
+_ETC_ALTERNATIVES_CANDIDATES = (
+    "/usr/bin/awk",
+    "/usr/lib/cpp",
+    "/usr/bin/pager",
+    "/usr/bin/editor",
+    "/usr/bin/c++",
+    "/usr/bin/cc",
+)
+
+
+def _first_path_routing_through_etc_alternatives():
+    from pathlib import Path
+
+    for candidate in _ETC_ALTERNATIVES_CANDIDATES:
+        p = Path(candidate)
+        if not p.is_symlink():
+            continue
+        target = p.readlink()
+        if not target.is_absolute():
+            target = (p.parent / target)
+        if str(target).startswith("/etc/alternatives/"):
+            return p
+    return None
+
+
+def test_etc_symlink_hops_finds_a_real_intermediate_etc_alternatives_hop() -> None:
+    """Real, non-mocked: on Debian/Ubuntu many binaries and shared
+    libraries reach their target through an /etc/alternatives symlink hop
+    (e.g. /usr/bin/awk -> /etc/alternatives/awk -> /usr/bin/mawk) — the
+    exact indirection class that broke nmap under BubblewrapRunner (design
+    doc §4.2). Skipped, not failed, on a host that doesn't use the
+    alternatives system for any of the probe paths."""
+    from pathlib import Path
+
+    from cism.agent.tools.sandbox import _etc_symlink_hops
+
+    routed = _first_path_routing_through_etc_alternatives()
+    if routed is None:
+        pytest.skip("no host path routes through /etc/alternatives")
+
+    assert _etc_symlink_hops(routed) == {Path("/etc/alternatives")}
+
+
+def test_etc_symlink_hops_returns_empty_for_a_non_symlink(tmp_path) -> None:
+    from cism.agent.tools.sandbox import _etc_symlink_hops
+
+    real_file = tmp_path / "real.so"
+    real_file.write_text("not a real library")
+
+    assert _etc_symlink_hops(real_file) == set()
+
+
+def test_etc_symlink_hops_returns_empty_when_the_chain_never_touches_etc(tmp_path) -> None:
+    from cism.agent.tools.sandbox import _etc_symlink_hops
+
+    real_file = tmp_path / "real.so"
+    real_file.write_text("not a real library")
+    link = tmp_path / "link.so"
+    link.symlink_to(real_file)
+
+    assert _etc_symlink_hops(link) == set()
+
+
+def test_etc_symlink_hops_does_not_loop_forever_on_a_circular_symlink(tmp_path) -> None:
+    from cism.agent.tools.sandbox import _etc_symlink_hops
+
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    a.symlink_to(b)
+    b.symlink_to(a)
+
+    # Must return (not hang) even though this chain never resolves to a
+    # real file — the `seen` set breaks the cycle.
+    assert _etc_symlink_hops(a) == set()
