@@ -23,6 +23,9 @@ _SHARED_DANGEROUS_TOKENS: frozenset[str] = frozenset({"-K", "--config"})
 _PER_TOOL_DANGEROUS_TOKENS: dict[str, frozenset[str]] = {
     "nmap": frozenset({
         "--script", "-oN", "-oX", "-oG", "-oA", "-iL", "--excludefile",
+        "-iR", "-oS", "--datadir", "--resume", "--stylesheet", "--webxml",
+        "--script-args-file", "--script-help", "--servicedb", "--versiondb",
+        "--proxies", "--append-output",
     }),
     "curl": frozenset({
         "-o", "-O", "--output", "--remote-name",
