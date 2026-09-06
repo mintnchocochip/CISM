@@ -83,6 +83,21 @@ def _parse_numeric_ipv4(value: str) -> str | None:
         return None
     return str(ipaddress.IPv4Address(n))
 
+#: nmap flags whose own argument is a plain number that nmap itself never
+#: treats as a target to scan (a rate, a timeout in ms, a retry count, a
+#: port-count) — the value immediately following one of these in a
+#: shlex-split `extra` string must never be treated as a host candidate,
+#: no matter how large it is. Real, legitimate values here (e.g.
+#: --max-rate 500000, --host-timeout 900000) are routinely well above
+#: _MIN_NUMERIC_IPV4, and skipping detection here is safe specifically
+#: because nmap never uses one of these flags' argument as a scan
+#: target, not because the value itself is assumed harmless.
+_NUMERIC_ARG_FLAGS: frozenset[str] = frozenset({
+    "--min-rate", "--max-rate", "--max-retries", "--host-timeout",
+    "--scan-delay", "--max-scan-delay", "--min-hostgroup", "--max-hostgroup",
+    "--min-parallelism", "--max-parallelism", "--top-ports",
+})
+
 #: Never a legitimate pentest target regardless of declared scope, unlike
 #: RFC1918 ranges generally (which ARE often the actual point of an
 #: internal-network engagement, so blocking those would break legitimate
@@ -221,7 +236,9 @@ def _candidate_hosts(call: ToolCall) -> list[str]:
             tokens = shlex.split(extra)
         except ValueError:
             tokens = [extra]
-        for token in tokens:
+        for i, token in enumerate(tokens):
+            if i > 0 and tokens[i - 1] in _NUMERIC_ARG_FLAGS:
+                continue
             host = _extract_host(token)
             if host:
                 hosts.append(host)
@@ -283,7 +300,10 @@ def _extract_host(value: str) -> str | None:
 
     if "://" in value:
         hostname = urlparse(value).hostname
-        return _strip_trailing_dot(hostname) if hostname else None
+        if not hostname:
+            return None
+        hostname = _strip_trailing_dot(hostname)
+        return _extract_host(hostname) or hostname
 
     match = _USER_HOST_RE.search(value)
     if match:
