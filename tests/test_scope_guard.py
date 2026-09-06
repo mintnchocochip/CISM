@@ -425,3 +425,29 @@ def test_a_genuinely_legitimate_rate_value_is_still_skipped_and_unaffected() -> 
     round."""
     result = _stage().check(_call("nmap", target="10.0.0.5", extra="--min-rate 500000"))
     assert result.allowed is True
+
+
+def test_a_file_url_target_with_no_host_at_all_is_blocked() -> None:
+    """file:///etc/shadow has an empty authority — urlparse's .hostname is
+    "" (falsy), so before this fix _extract_host returned None and
+    _candidate_hosts treated it as "nothing to check" rather than "block
+    this". curl supports file:// natively and returns the file's own
+    contents as tool output — this is an arbitrary local file read, not a
+    hypothetical."""
+    result = _stage().check(_call("curl", target="file:///etc/shadow"))
+    assert result.allowed is False
+
+
+def test_a_file_url_smuggled_into_extra_is_blocked() -> None:
+    result = _stage().check(
+        _call("curl", target="https://example.com", extra="file:///etc/shadow")
+    )
+    assert result.allowed is False
+
+
+def test_a_normal_url_with_a_real_hostname_is_unaffected() -> None:
+    """Regression guard: the fix only changes behavior for a URL that
+    parses to no host at all — an ordinary URL must still resolve its
+    real hostname and be checked against scope exactly as before."""
+    result = _stage().check(_call("curl", target="https://example.com/report"))
+    assert result.allowed is True
