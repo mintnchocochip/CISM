@@ -162,51 +162,26 @@ def test_a_sandboxed_tool_decorated_function_picks_up_the_default_runner_without
     assert fake.calls == [["echo-ish", "hi"]]
 
 
-#: Host paths that Debian/Ubuntu route through /etc/alternatives — the same
-#: symlink indirection that broke nmap's libblas.so.3 during design (§4.2).
-#: Real, not faked: _etc_symlink_hops checks the literal /etc, so a fake
-#: tmp_path tree would never exercise the branch that actually matters.
-_ETC_ALTERNATIVES_CANDIDATES = (
-    "/usr/bin/awk",
-    "/usr/lib/cpp",
-    "/usr/bin/pager",
-    "/usr/bin/editor",
-    "/usr/bin/c++",
-    "/usr/bin/cc",
-)
-
-
-def _first_path_routing_through_etc_alternatives():
-    from pathlib import Path
-
-    for candidate in _ETC_ALTERNATIVES_CANDIDATES:
-        p = Path(candidate)
-        if not p.is_symlink():
-            continue
-        target = p.readlink()
-        if not target.is_absolute():
-            target = (p.parent / target)
-        if str(target).startswith("/etc/alternatives/"):
-            return p
-    return None
-
-
-def test_etc_symlink_hops_finds_a_real_intermediate_etc_alternatives_hop() -> None:
-    """Real, non-mocked: on Debian/Ubuntu many binaries and shared
-    libraries reach their target through an /etc/alternatives symlink hop
-    (e.g. /usr/bin/awk -> /etc/alternatives/awk -> /usr/bin/mawk) — the
-    exact indirection class that broke nmap under BubblewrapRunner (design
-    doc §4.2). Skipped, not failed, on a host that doesn't use the
-    alternatives system for any of the probe paths."""
-    from pathlib import Path
-
+def test_etc_symlink_hops_finds_an_intermediate_etc_hop(tmp_path) -> None:
     from cism.agent.tools.sandbox import _etc_symlink_hops
 
-    routed = _first_path_routing_through_etc_alternatives()
-    if routed is None:
-        pytest.skip("no host path routes through /etc/alternatives")
+    # real_lib <- /etc/alternatives/thing <- /lib/thing, mirroring the
+    # actual libblas.so.3 -> /etc/alternatives/... -> real file chain.
+    etc_dir = tmp_path / "etc" / "alternatives"
+    etc_dir.mkdir(parents=True)
+    real_lib = tmp_path / "usr" / "lib" / "real.so"
+    real_lib.parent.mkdir(parents=True)
+    real_lib.write_text("not a real library")
 
-    assert _etc_symlink_hops(routed) == {Path("/etc/alternatives")}
+    etc_link = etc_dir / "thing"
+    etc_link.symlink_to(real_lib)
+    lib_link = tmp_path / "lib" / "thing"
+    lib_link.parent.mkdir(parents=True)
+    lib_link.symlink_to(etc_link)
+
+    hops = _etc_symlink_hops(lib_link)
+
+    assert hops == {etc_dir}
 
 
 def test_etc_symlink_hops_returns_empty_for_a_non_symlink(tmp_path) -> None:
@@ -242,24 +217,31 @@ def test_etc_symlink_hops_does_not_loop_forever_on_a_circular_symlink(tmp_path) 
     assert _etc_symlink_hops(a) == set()
 
 
-def test_dynamic_etc_binds_walks_real_symlink_chains_to_find_etc_hops(monkeypatch) -> None:
-    """ldd output is stubbed (no installed binary on a typical host has a
-    library-closure that routes through /etc), but the chain walk and the
-    /etc detection run against real host paths — the fix in §4.2 is about
-    an *intermediate* real /etc/alternatives hop, so a faked /etc tree
-    wouldn't exercise the branch that matters. Skipped where no probe path
-    routes through /etc/alternatives."""
+def test_dynamic_etc_binds_parses_ldd_output_and_finds_etc_hops(tmp_path, monkeypatch) -> None:
     from cism.agent.tools import sandbox as sandbox_module
     from cism.agent.tools.sandbox import _dynamic_etc_binds
 
-    routed = _first_path_routing_through_etc_alternatives()
-    if routed is None:
-        pytest.skip("no host path routes through /etc/alternatives")
+    # Build a tiny fake dependency chain: one lib resolves cleanly, one
+    # routes through /etc — same shape as the real libblas.so.3 case.
+    etc_dir = tmp_path / "etc" / "alternatives"
+    etc_dir.mkdir(parents=True)
+    real_lib = tmp_path / "usr" / "lib" / "real.so"
+    real_lib.parent.mkdir(parents=True)
+    real_lib.write_text("x")
+    etc_link = etc_dir / "picked"
+    etc_link.symlink_to(real_lib)
+    routed_lib = tmp_path / "lib" / "routed.so"
+    routed_lib.parent.mkdir(parents=True)
+    routed_lib.symlink_to(etc_link)
+
+    plain_lib = tmp_path / "lib" / "plain.so"
+    plain_lib.write_text("y")
 
     fake_ldd_output = (
-        "\tlinux-vdso.so.1 (0x00007fff00000000)\n"
-        f"\tlibrouted.so => {routed} (0x00007f0000000000)\n"
-        "\t/lib64/ld-linux-x86-64.so.2 (0x00007f0000000000)\n"
+        f"\tlinux-vdso.so.1 (0x00007fff00000000)\n"
+        f"\tplain.so => {plain_lib} (0x00007f0000000000)\n"
+        f"\trouted.so => {routed_lib} (0x00007f0000000000)\n"
+        f"\t/lib64/ld-linux-x86-64.so.2 (0x00007f0000000000)\n"
     )
 
     class _FakeCompletedProcess:
@@ -272,7 +254,7 @@ def test_dynamic_etc_binds_walks_real_symlink_chains_to_find_etc_hops(monkeypatc
 
     result = _dynamic_etc_binds("fake-binary")
 
-    assert result == frozenset({"/etc/alternatives"})
+    assert result == frozenset({str(etc_dir)})
 
 
 def test_dynamic_etc_binds_returns_empty_set_when_ldd_fails(monkeypatch) -> None:
@@ -298,6 +280,8 @@ def test_dynamic_etc_binds_against_a_real_installed_binary_with_no_etc_dependenc
     from cism.agent.tools.sandbox import _dynamic_etc_binds
 
     if shutil.which("true") is None:
+        import pytest
+
         pytest.skip("`true` not installed")
 
     result = _dynamic_etc_binds("true")

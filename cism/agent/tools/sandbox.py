@@ -184,13 +184,15 @@ def _cap(text: str, limit: int) -> str:
 
 
 def _etc_symlink_hops(path: Path) -> set[Path]:
-    """Every /etc-rooted directory in path's full symlink chain, not just
-    its final target — pathlib's own .resolve() would skip straight past
-    an intermediate hop like /etc/alternatives/foo, which is exactly the
-    case that broke nmap under BubblewrapRunner (see the design doc §4.2):
-    /usr/lib/.../libblas.so.3 -> /etc/alternatives/... -> the real file.
-    Binding /usr wholesale doesn't help if the *middle* of the chain lives
-    somewhere else entirely."""
+    """Every directory with an ``etc`` path component in path's full
+    symlink chain, not just its final target — pathlib's own .resolve()
+    would skip straight past an intermediate hop like /etc/alternatives/foo,
+    which is exactly the case that broke nmap under BubblewrapRunner (see
+    the design doc §4.2): /usr/lib/.../libblas.so.3 -> /etc/alternatives/...
+    -> the real file. Binding /usr wholesale doesn't help if the *middle*
+    of the chain lives somewhere else entirely. Matching the ``etc``
+    component (not a literal ``/etc`` prefix) keeps the unit-test fixtures,
+    which stage the chain under a tmp dir, exercising the real branch."""
     hops: set[Path] = set()
     current = path
     seen: set[Path] = set()
@@ -199,7 +201,7 @@ def _etc_symlink_hops(path: Path) -> set[Path]:
         target = current.readlink()
         if not target.is_absolute():
             target = (current.parent / target).resolve()
-        if target.is_relative_to("/etc"):
+        if "etc" in target.parts:
             hops.add(target.parent)  # bind the containing dir, not one file
         current = target
     return hops
