@@ -64,7 +64,20 @@ class GuardrailChain(Generic[T]):
     def run(self, value: T) -> GuardrailResult[T]:
         current = value
         for stage in self._stages:
-            result = stage.check(current)
+            try:
+                result = stage.check(current)
+            except Exception as exc:
+                # A stage that cannot make sense of a malformed or
+                # adversarial call must not crash the graph node — that
+                # is itself a denial-of-service surface, and the fix
+                # belongs here once, not at every individual raise site
+                # inside every stage.
+                return GuardrailResult(
+                    allowed=False,
+                    value=current,
+                    reason=f"{type(exc).__name__}: {exc}",
+                    stage=stage.name,
+                )
             if not result.allowed:
                 return dataclasses.replace(result, stage=stage.name)
             current = result.value

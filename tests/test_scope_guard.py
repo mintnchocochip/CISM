@@ -586,3 +586,17 @@ def test_existing_numeric_cidr_behavior_is_unaffected() -> None:
 
     result = _stage().check(_call("nmap", target="192.168.1.0/24"))
     assert result.allowed is False
+
+
+def test_a_malformed_bracketed_url_is_blocked_not_raised() -> None:
+    """_extract_host's urlparse(value).hostname access can raise
+    ValueError on a malformed bracketed URL (a plausible model
+    hallucination, e.g. an unterminated IPv6 bracket) — this must now
+    produce a blocked GuardrailResult via GuardrailChain.run's exception
+    handling, not propagate out of ScopeGuardStage.check() directly (the
+    stage itself doesn't catch it; the chain does, per Task 9)."""
+    from cism.agent.guardrails.chain import GuardrailChain
+
+    chain = GuardrailChain([_stage()])
+    result = chain.run(_call("curl", target="http://[::1"))
+    assert result.allowed is False
