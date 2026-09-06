@@ -202,3 +202,34 @@ def _etc_symlink_hops(path: Path) -> set[Path]:
             hops.add(target.parent)  # bind the containing dir, not one file
         current = target
     return hops
+
+
+def _dynamic_etc_binds(binary: str) -> frozenset[str]:
+    """Every /etc path binary's shared-library dependency closure routes
+    through, discovered by running `ldd` on the host (not inside any
+    sandbox) and walking each resolved library's full symlink chain via
+    _etc_symlink_hops. Runs once per distinct binary — BubblewrapRunner
+    memoizes the result per instance (Task 3), since a binary's library
+    dependencies don't change at runtime.
+
+    `binary` always comes from this codebase's own fixed tool catalog,
+    never from LLM-supplied input — this carries no more trust than the
+    shutil.which(argv[0]) check already next to every call site."""
+    resolved = shutil.which(binary)
+    if resolved is None:
+        return frozenset()
+
+    try:
+        result = subprocess.run(["ldd", resolved], capture_output=True, text=True, timeout=5)
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        return frozenset()  # static binary, or ldd unavailable — static _RO_BIND_ETC baseline still applies
+
+    hops: set[Path] = set()
+    for line in result.stdout.splitlines():
+        parts = line.split("=>")
+        raw = parts[1] if len(parts) > 1 else parts[0]
+        candidate = raw.split(" (")[0].strip()
+        if candidate and Path(candidate).is_absolute() and Path(candidate).exists():
+            hops |= _etc_symlink_hops(Path(candidate))
+
+    return frozenset(str(p) for p in hops)
