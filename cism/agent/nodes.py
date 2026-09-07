@@ -142,10 +142,29 @@ def make_act_node(
                 continue
 
             call = guard.value
-            # An unregistered tool name is a programming error inside the
-            # graph — the model should only ever be offered tools that
-            # exist in the registry — so this is allowed to raise and fail
-            # the run loudly rather than being treated as guardrail content.
+            # PhaseToolGuardStage's allowed set is catalog-derived, not
+            # registry-filtered (cism/agent/profiles.py) — a registry that
+            # is a strict subset of the catalog (e.g. a dummy-tools-only
+            # registry) can pass a call for a catalog tool the guard
+            # allows but this registry never actually bound. That is a
+            # hallucinated/unbound call getting past a guard whose set
+            # doesn't match binding for this particular registry — the
+            # same "one bad call must not kill the whole run" case the
+            # guardrail chain itself exists to handle, so it is treated as
+            # guardrail content rather than left to raise.
+            if call["name"] not in tools:
+                results.append(
+                    ToolMessage(
+                        content="blocked by action guardrail",
+                        tool_call_id=call["id"],
+                        name=call["name"],
+                        status="error",
+                        additional_kwargs={
+                            "guardrail_detail": f"[act] {call['name']!r} is not a registered tool"
+                        },
+                    )
+                )
+                continue
             tool = tools.get(call["name"])
 
             try:
