@@ -20,6 +20,7 @@ Commits on this branch, oldest first (all plain messages, no attribution trailer
 Deferred minor findings from task review, parked for a future task (none load-bearing, none block this plan's completion):
 - Task 6: `test_a_comma_list_where_every_part_parses_is_still_checked_normally` is byte-identical in body to a pre-existing test — brief-mandated, not an implementer choice, informational only.
 - Task 7: `_is_always_denied`'s `ipv4_mapped` fix only catches the RFC-4291 `::ffff:0:0/96` form — NAT64 (`64:ff9b::/96`), IPv4-translated (`::ffff:0:x.x.x.x`), and deprecated IPv4-compatible (`::x.x.x.x`) encodings of the metadata IP still bypass; out of Task 7's specified scope.
+  - Consequence for a future reader, so the hard-deny's headline claim is not over-trusted: "denied regardless of declared scope" holds only for the IPv4-mapped (`::ffff:`) and `fd00:ec2::254` forms. Under a v6-permissive declared scope, `http://[::169.254.169.254]/` (IPv4-compatible) and `http://[64:ff9b::a9fe:a9fe]/` (NAT64) are still **allowed** — they are blocked today only because a v4-only scope already fails closed on the v6 family mismatch, not by the hard-deny itself.
 - Task 8: a multi-slash adversarial input (e.g. `"a/1/2"`) produces a compound sentinel `"<unparseable-cidr>/2"` instead of a clean sentinel — cosmetic only, verified still fails closed.
 
 The SDD workspace/ledger for this plan lives at `.superpowers/sdd/2026-09-06-guardrail-bypass-followup/` (git-ignored scratch, not present in a fresh clone) — the checkbox state above plus the git log is the durable record.
