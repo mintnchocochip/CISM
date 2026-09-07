@@ -32,9 +32,12 @@ __all__ = ["EngagementScope", "ScopeGuardStage"]
 
 IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
-#: Tools with an unambiguous, single "this is the target" argument. Only
-#: that argument is checked for these — an options/service/module string on
-#: the same call is never mistaken for a target.
+#: Tools with an unambiguous, single "this is the target" argument. When
+#: that argument is actually present as a string, it is the only one
+#: checked for these — an options/service/module string on the same call
+#: is never mistaken for a target. If the mapped key is absent,
+#: _candidate_hosts falls back to scanning every string arg rather than
+#: checking nothing. `extra` is always checked as well, for either path.
 _TARGET_ARG_BY_TOOL: dict[str, str] = {
     "nmap": "target",
     "masscan": "target",
@@ -83,20 +86,32 @@ def _parse_numeric_ipv4(value: str) -> str | None:
         return None
     return str(ipaddress.IPv4Address(n))
 
-#: nmap flags whose own argument is a plain number that nmap itself never
-#: treats as a target to scan (a rate, a timeout in ms, a retry count, a
-#: port-count) — the value immediately following one of these in a
-#: shlex-split `extra` string must never be treated as a host candidate,
-#: no matter how large it is. Real, legitimate values here (e.g.
-#: --max-rate 500000, --host-timeout 900000) are routinely well above
-#: _MIN_NUMERIC_IPV4, and skipping detection here is safe specifically
-#: because nmap never uses one of these flags' argument as a scan
-#: target, not because the value itself is assumed harmless.
-_NUMERIC_ARG_FLAGS: frozenset[str] = frozenset({
-    "--min-rate", "--max-rate", "--max-retries", "--host-timeout",
-    "--scan-delay", "--max-scan-delay", "--min-hostgroup", "--max-hostgroup",
-    "--min-parallelism", "--max-parallelism", "--top-ports",
-})
+
+def _is_long_flag_numeric_argument(tokens: list[str], i: int) -> bool:
+    """True when ``tokens[i]`` is a bare number that is some ``--long-flag``'s
+    own argument rather than a positional target.
+
+    render_argv only ever turns a *positional* token into a target, and a
+    bare number immediately after a ``--`` long flag is that flag's value
+    (a rate, a timeout in ms, a payload length, a max file size) — values
+    that routinely exceed _MIN_NUMERIC_IPV4 for entirely legitimate calls
+    (``--limit-rate 100000``, ``--max-rate 500000``, ``--host-timeout
+    900000``, ``--data-length 100000``). Decoding those as encoded IPv4
+    addresses is a pure false positive, and one no hand-written table of
+    flag names can durably close — new numeric flags keep appearing.
+
+    Deliberately restricted to ``--``-prefixed predecessors: a single-dash
+    predecessor is very often an argument-LESS short flag, where the
+    following number really is a positional target
+    (``nmap -sV 2852039166`` scans 169.254.169.254), so accepting single
+    dashes here would trade a fail-closed false positive for a live
+    fail-open bypass.
+    """
+    return (
+        i > 0
+        and tokens[i - 1].startswith("--")
+        and re.fullmatch(r"[0-9]+", tokens[i]) is not None
+    )
 
 #: Never a legitimate pentest target regardless of declared scope, unlike
 #: RFC1918 ranges generally (which ARE often the actual point of an
@@ -139,9 +154,14 @@ def _is_always_denied(host: str) -> bool:
     if host in _ALWAYS_DENIED_HOSTS:
         return True
     try:
-        return str(ipaddress.ip_address(host)) in _ALWAYS_DENIED_HOSTS
+        addr = ipaddress.ip_address(host)
     except ValueError:
         return False
+    if str(addr) in _ALWAYS_DENIED_HOSTS:
+        return True
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        return str(addr.ipv4_mapped) in _ALWAYS_DENIED_HOSTS
+    return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,7 +216,7 @@ class ScopeGuardStage:
                 return GuardrailResult(
                     allowed=False,
                     value=call,
-                    reason=f"{host!r} is outside the declared engagement scope",
+                    reason=f"{host!r} is hard-denied regardless of declared engagement scope",
                 )
             in_scope = (
                 self._scope.contains_network(host)
@@ -214,8 +234,12 @@ class ScopeGuardStage:
 
 def _scan_all_args(args: dict) -> list[str]:
     hosts: list[str] = []
-    for value in args.values():
-        if isinstance(value, str):
+    for key, value in args.items():
+        # `extra` is excluded here because _candidate_hosts always gives it
+        # its own dedicated, token-by-token pass with its own rules — one
+        # rule per input, rather than also running the whole un-shlex'd
+        # string through _extract_host on this path only.
+        if key != "extra" and isinstance(value, str):
             host = _extract_host(value)
             if host:
                 hosts.append(host)
@@ -250,12 +274,14 @@ def _candidate_hosts(call: ToolCall) -> list[str]:
         except ValueError:
             tokens = [extra]
         for i, token in enumerate(tokens):
-            if (
-                i > 0
-                and tokens[i - 1] in _NUMERIC_ARG_FLAGS
-                and re.fullmatch(r"[0-9]+", token)
-            ):
-                continue
+            if _is_long_flag_numeric_argument(tokens, i):
+                # ...with one exception that keeps the hard-deny absolute:
+                # no legitimate rate/timeout/length is ever the cloud
+                # metadata address, so a "flag argument" that decodes to
+                # one is smuggling, not a rate.
+                decoded = _parse_numeric_ipv4(token)
+                if decoded is None or not _is_always_denied(decoded):
+                    continue
             host = _extract_host(token)
             if host:
                 hosts.append(host)
@@ -289,16 +315,59 @@ def _extract_host(value: str) -> str | None:
     if "," in value:
         parts = value.split(",")
         hosts = [h for p in parts if (h := _extract_host(p))]
-        return ",".join(hosts) if hosts else None
+        if not hosts:
+            return None
+        if len(hosts) < len(parts):
+            # Some, but not all, comma-separated parts are host-shaped —
+            # not "clearly a port list" (nothing would parse) and not
+            # "clearly a clean multi-host list" (everything parses).
+            # Block outright rather than silently keeping just the
+            # parts we recognize: an unrecognized part might be
+            # host-shaped in an encoding this parser doesn't know about
+            # yet. The sentinel has no comma in it, so it survives
+            # _candidate_hosts's comma-flattening step untouched, and it
+            # never matches any declared scope/hard-deny entry.
+            return "<unparseable-multi-target>"
+        return ",".join(hosts)
 
     # CIDR notation ("10.0.0.0/24") — recognized before the bare-IP check
     # below so a whole network isn't silently dropped as "not host-shaped"
     # and left completely unchecked by the scope guard.
-    if "/" in value:
-        try:
-            return str(ipaddress.ip_network(value, strict=False))
-        except ValueError:
-            pass
+    if "/" in value and "://" not in value:
+        host_part, _, suffix = value.rpartition("/")
+        # A real CIDR or nmap "hostname/prefixlen" target has EXACTLY one
+        # "/" — anything with more is a path, never a network. Without
+        # this count check, "example.com/v1/users/24" (a legitimate
+        # schemeless REST URL) is misread as a network whose host half is
+        # "example.com/v1/users" and blocked as <unparseable-cidr>.
+        if suffix.isdigit() and host_part and value.count("/") == 1:
+            try:
+                return str(ipaddress.ip_network(value, strict=False))
+            except ValueError:
+                pass
+            # Not a numeric CIDR literal — nmap's own "hostname/prefixlen"
+            # target syntax reaches here. This guard cannot itself
+            # resolve DNS to know what such a target expands to, so
+            # recognizing it as host-shaped (rather than dropping it) is
+            # what lets EngagementScope.contains_network fail closed on
+            # it below — a hostname/prefix combo is always out of scope,
+            # even for an otherwise-declared-in-scope domain, since
+            # prefix-expanding a hostname is exactly the kind of
+            # scope-widening this guard cannot safely verify.
+            host = _extract_host(host_part)
+            return f"{host}/{suffix}" if host is not None else "<unparseable-cidr>"
+        # Not CIDR notation: either a schemeless "host/path" URL or a
+        # plain filesystem/module path. curl accepts a schemeless URL and
+        # defaults it to http:// ("curl 169.254.169.254/latest/meta-data/"
+        # really fetches the cloud metadata service), and base.py appends
+        # `target` to argv verbatim — so the host half must be recognized
+        # and checked. Recurse on the first path segment: a real host
+        # resolves and gets scope-checked (or hard-denied), while a bare
+        # path segment ("/etc/passwd" -> "", "exploit/windows/smb/..." ->
+        # "exploit") isn't host-shaped and still yields None, leaving
+        # non-URL paths behaving exactly as before.
+        first_segment = value.split("/", 1)[0]
+        return _extract_host(first_segment) if first_segment else None
 
     numeric_ipv4 = _parse_numeric_ipv4(value)
     if numeric_ipv4 is not None:

@@ -1,10 +1,15 @@
-"""The guardrail seam: chain of responsibility, no real checks yet.
+"""The guardrail seam: chain of responsibility.
 
 Three chains are threaded through the graph — input, action, output — each a
-``GuardrailChain`` over its own payload type. All three default to a single
-:class:`PassThroughStage`, so today nothing is actually checked. Adding a
-real guardrail later means appending a stage to the relevant chain; the
+``GuardrailChain`` over its own payload type. :meth:`GuardrailSeam.no_op`
+still builds all three from a single :class:`PassThroughStage`, but a real
+check is live: ``default_profiles`` (cism/agent/profiles.py) builds each
+phase's action chain around a :class:`PhaseToolGuardStage`. Adding a
+further guardrail means appending a stage to the relevant chain; the
 runner and the graph shape it is wired into never change.
+
+Note this says nothing about the separate, still-deferred work of wiring
+a ``GuardrailSeam`` into ``LangGraphAgent`` itself — that remains open.
 """
 
 from __future__ import annotations
@@ -64,7 +69,24 @@ class GuardrailChain(Generic[T]):
     def run(self, value: T) -> GuardrailResult[T]:
         current = value
         for stage in self._stages:
-            result = stage.check(current)
+            try:
+                result = stage.check(current)
+            except Exception as exc:
+                # A stage that cannot make sense of a malformed or
+                # adversarial call must not crash the graph node — that
+                # is itself a denial-of-service surface, and the fix
+                # belongs here once, not at every individual raise site
+                # inside every stage.
+                return GuardrailResult(
+                    allowed=False,
+                    value=current,
+                    reason=f"{type(exc).__name__}: {exc}",
+                    # getattr, not stage.name: a malformed stage object
+                    # missing .name would raise AttributeError inside the
+                    # handler that exists precisely to stop stages from
+                    # raising.
+                    stage=getattr(stage, "name", "unknown"),
+                )
             if not result.allowed:
                 return dataclasses.replace(result, stage=stage.name)
             current = result.value

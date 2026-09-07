@@ -476,3 +476,268 @@ def test_the_existing_registered_tools_are_unaffected_by_the_fallback_change() -
 
     result = _stage().check(_call("curl", target="192.168.1.5"))
     assert result.allowed is False
+
+
+def test_a_comma_list_with_one_real_host_and_one_permanently_unparseable_part_is_blocked() -> None:
+    """A comma-joined token where SOME parts are host-shaped and others
+    genuinely aren't recognized by this parser (not "clearly a port
+    list" — nothing would parse; not "clearly a clean multi-host list" —
+    everything parses) must be blocked outright rather than silently
+    keeping just the parts this parser happened to recognize. An
+    unrecognized comma-part might be host-shaped in an encoding this
+    parser doesn't know about yet — defense in depth for the next
+    encoding, on top of Task 1's specific fixes."""
+    result = _stage().check(
+        _call("nmap", target="10.0.0.5", extra="10.0.0.5,this-has-a-space in it")
+    )
+    assert result.allowed is False
+
+
+def test_a_comma_list_where_every_part_parses_is_still_checked_normally() -> None:
+    """Regression guard: the "all parts recognized" case must be
+    unaffected — still checked host-by-host, not treated as a blanket
+    block just because it's a comma list."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="10.0.0.5,10.0.0.6"))
+    assert result.allowed is True
+
+
+def test_a_comma_list_where_no_part_parses_is_still_allowed_through() -> None:
+    """Regression guard: "nothing here looks like a target list at all"
+    (e.g. a port range) must remain allowed, unchanged from before this
+    task."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="-p 80,443"))
+    assert result.allowed is True
+
+
+def test_ipv4_mapped_ipv6_form_of_the_metadata_ip_is_hard_denied() -> None:
+    """9300eab canonicalized case/compression for a bare IPv6 address, but
+    Python renders "::ffff:169.254.169.254" as "::ffff:a9fe:a9fe" — a
+    string that isn't in _ALWAYS_DENIED_HOSTS on its own, so the embedded
+    IPv4 address was never being extracted for comparison. A v6-capable
+    declared scope is required for this to reach EngagementScope at all
+    (a v4-only scope already fails closed on a v6-family mismatch), so
+    this uses an empty scope — the hard-deny must fire regardless."""
+    from cism.agent.guardrails.scope import EngagementScope, ScopeGuardStage
+
+    stage = ScopeGuardStage(EngagementScope())
+
+    result = stage.check(_call("curl", target="http://[::ffff:169.254.169.254]/"))
+    assert result.allowed is False
+
+    result = stage.check(_call("curl", target="http://[::ffff:a9fe:a9fe]/"))
+    assert result.allowed is False
+
+
+def test_a_normal_ipv6_address_unrelated_to_the_denylist_is_unaffected() -> None:
+    """Regression guard: the ipv4_mapped check must only fire for an
+    actual IPv4-mapped address; an ordinary, unrelated IPv6 host must
+    still pass through the normal scope check unaffected."""
+    from cism.agent.guardrails.scope import EngagementScope, ScopeGuardStage
+
+    scope = EngagementScope(cidrs=(ipaddress.ip_network("2001:db8::/32"),))
+    stage = ScopeGuardStage(scope)
+
+    result = stage.check(_call("curl", target="http://[2001:db8::1]/"))
+    assert result.allowed is True
+
+
+def test_nmap_hostname_slash_prefixlen_syntax_is_blocked() -> None:
+    """nmap's own documented target syntax ("hostname/prefixlen") resolves
+    the hostname and scans the surrounding network — before this fix,
+    _extract_host's CIDR branch only recognized numeric CIDR literals and
+    silently fell through to unrecognized (unchecked, not blocked) for
+    anything else containing a "/". Verified live: this reaches argv
+    unblocked, with the metadata hostname as the host half."""
+    result = _stage().check(_call("nmap", target="metadata.google.internal/24"))
+    assert result.allowed is False
+
+
+def test_a_malformed_leading_zero_cidr_is_blocked() -> None:
+    """A leading-zero octet is rejected by ipaddress.ip_network (Python
+    treats it as ambiguous/potentially-octal) but wasn't rejected by real
+    network tools historically — before this fix the ValueError caused a
+    silent fall-through to "unrecognized", not a block."""
+    result = _stage().check(_call("nmap", target="192.168.001.0/24"))
+    assert result.allowed is False
+
+
+def test_an_out_of_range_prefix_length_is_blocked() -> None:
+    result = _stage().check(_call("nmap", target="10.0.0.0/33"))
+    assert result.allowed is False
+
+
+def test_a_url_with_a_numeric_last_path_segment_is_not_misread_as_a_cidr() -> None:
+    """Regression guard: an ordinary URL whose last path segment happens
+    to be numeric (a REST resource id) must not be misread as
+    "hostname/prefixlen" and blocked as an unparseable network — real
+    CIDR/hostname-prefix target syntax is always a bare string, never
+    embedded in a URL, so anything containing "://" is excluded from the
+    CIDR-detection branch entirely."""
+    result = _stage().check(_call("curl", target="https://example.com/v1/users/24"))
+    assert result.allowed is True
+
+
+def test_existing_numeric_cidr_behavior_is_unaffected() -> None:
+    """Regression guard: the already-working numeric-CIDR happy paths
+    (in-scope, out-of-scope, partial-overlap, metadata /32 hard-deny)
+    must all still hold exactly as before this task."""
+    result = _stage().check(_call("nmap", target="10.0.0.0/28"))
+    assert result.allowed is True
+
+    result = _stage().check(_call("nmap", target="192.168.1.0/24"))
+    assert result.allowed is False
+
+
+def test_a_schemeless_url_with_a_path_is_still_hard_denied() -> None:
+    """curl accepts a schemeless "host/path" and defaults it to http://
+    (verified against real curl: `curl '127.0.0.1/foo/bar'` connects to
+    127.0.0.1:80), and base.py appends `target` to argv verbatim — so
+    `curl 169.254.169.254/latest/meta-data/` really does fetch the cloud
+    metadata service. Before this fix _extract_host returned None for
+    every one of these (a "/" whose suffix isn't a bare digit run fell
+    through into checks that all structurally reject a "/"), so the
+    plainest spelling an LLM would actually emit was completely
+    unchecked. An EMPTY scope is used deliberately: this must be the
+    hard-deny firing, not a declared-scope mismatch."""
+    stage = ScopeGuardStage(EngagementScope())
+
+    for target in (
+        "169.254.169.254/latest/meta-data/",
+        "169.254.169.254/latest/meta-data/iam/security-credentials/",
+        "metadata/computeMetadata/v1/",
+        "metadata.google.internal/computeMetadata/v1/",
+        "2852039166/computeMetadata/",
+        "0xA9FEA9FE/latest/meta-data/",
+    ):
+        result = stage.check(_call("curl", target=target))
+        assert result.allowed is False, target
+
+
+def test_a_schemeless_metadata_url_smuggled_into_extra_is_hard_denied() -> None:
+    """Same bypass reached through `extra` rather than `target` —
+    render_argv places extra's tokens before the positional target, so
+    this is a second, fully-fetched curl URL."""
+    result = _stage().check(
+        _call("nmap", target="10.0.0.5", extra="169.254.169.254/latest/")
+    )
+    assert result.allowed is False
+
+    result = _stage().check(
+        _call("curl", target="https://example.com", extra="169.254.169.254/latest/meta-data/")
+    )
+    assert result.allowed is False
+
+
+def test_a_schemeless_out_of_scope_host_with_a_path_is_blocked() -> None:
+    """Not only the hard-denied hosts: an ordinary out-of-scope host
+    written schemelessly with a path must go through the normal scope
+    check rather than being dropped as unrecognized."""
+    result = _stage().check(_call("curl", target="evil.com/v1/users"))
+    assert result.allowed is False
+    assert "evil.com" in result.reason
+
+
+def test_a_schemeless_in_scope_url_with_a_numeric_last_path_segment_is_allowed() -> None:
+    """False-positive regression guard for the same fix, and for the
+    asymmetry it closes: `example.com/v1/users/24` is a legitimate
+    schemeless REST URL for an in-scope host, but was BLOCKED as
+    '<unparseable-cidr>' because the CIDR branch read everything before
+    the last "/" as the host half. A real CIDR / hostname-prefixlen
+    target never has more than one "/", so a multi-slash value is a path,
+    not a network."""
+    result = _stage().check(_call("curl", target="example.com/v1/users/24"))
+    assert result.allowed is True
+
+    result = _stage().check(_call("curl", target="api.example.com/v1/users/24"))
+    assert result.allowed is True
+
+    result = _stage().check(_call("curl", target="example.com/report"))
+    assert result.allowed is True
+
+
+def test_non_url_slash_values_are_still_not_mistaken_for_hosts() -> None:
+    """Regression guard: the "first path segment is the host" recognition
+    must not turn ordinary slash-containing arguments — a filesystem
+    path, a Metasploit module path, a MIME type, a User-Agent product
+    token — into host candidates and block legitimate calls."""
+    for extra in (
+        "-w /tmp/scratch/out.txt",
+        "-H text/html",
+        "-A Mozilla/5.0",
+        "--user-agent curl/7.68.0",
+    ):
+        result = _stage().check(_call("nmap", target="10.0.0.5", extra=extra))
+        assert result.allowed is True, extra
+
+    result = _stage().check(
+        _call("msfconsole", module="exploit/windows/smb/ms17_010_eternalblue")
+    )
+    assert result.allowed is True
+
+
+def test_a_legitimate_large_numeric_long_flag_value_is_not_misread_as_an_encoded_ip() -> None:
+    """_parse_numeric_ipv4 treats any bare integer above 65535 as an
+    encoded IPv4 address, which false-positived on every legitimate
+    numeric flag value above that — a rate, a max file size, a payload
+    length, a timeout in ms. The old mitigation hand-enumerated 11 nmap
+    flags and zero curl flags, so each new flag resurfaced the same
+    class. Now the rule is structural: a bare number that is some
+    `--long-flag`'s own argument is that flag's value, never a
+    positional target."""
+    for extra in (
+        "--limit-rate 100000",
+        "--max-filesize 1000000",
+        "--max-time 100000",
+        "--retry-delay 100000",
+    ):
+        result = _stage().check(_call("curl", target="https://example.com", extra=extra))
+        assert result.allowed is True, extra
+
+    for extra in (
+        "--data-length 100000",
+        "--script-timeout 100000",
+        "--max-rtt-timeout 100000",
+        "--min-rate 100000",
+        "--max-rate 500000",
+        "--host-timeout 900000",
+    ):
+        result = _stage().check(_call("nmap", target="10.0.0.5", extra=extra))
+        assert result.allowed is True, extra
+
+
+def test_a_numeric_target_after_an_argument_less_short_flag_is_still_blocked() -> None:
+    """The skip is deliberately narrower than "preceded by any flag":
+    single-dash short flags are very often argument-LESS, so the number
+    after one really is a positional target. `nmap -sV 2852039166` scans
+    169.254.169.254 — accepting single dashes here would have traded a
+    fail-closed false positive for a live fail-open bypass."""
+    for extra in ("-sV 2852039166", "-Pn 2130706433", "-sS -A 2852039166"):
+        result = _stage().check(_call("nmap", target="10.0.0.5", extra=extra))
+        assert result.allowed is False, extra
+
+
+def test_a_metadata_address_disguised_as_a_long_flag_argument_is_still_hard_denied() -> None:
+    """The long-flag skip must not become a hard-deny bypass of its own:
+    no legitimate rate/timeout/length is ever the cloud metadata address,
+    so a "flag argument" that decodes to one is smuggling. `--open` is a
+    real, argument-LESS nmap flag, which makes the following number a
+    positional target despite the `--` predecessor."""
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="--open 2852039166"))
+    assert result.allowed is False
+
+    result = _stage().check(_call("nmap", target="10.0.0.5", extra="--min-rate 2852039166"))
+    assert result.allowed is False
+
+
+def test_a_malformed_bracketed_url_is_blocked_not_raised() -> None:
+    """_extract_host's urlparse(value).hostname access can raise
+    ValueError on a malformed bracketed URL (a plausible model
+    hallucination, e.g. an unterminated IPv6 bracket) — this must now
+    produce a blocked GuardrailResult via GuardrailChain.run's exception
+    handling, not propagate out of ScopeGuardStage.check() directly (the
+    stage itself doesn't catch it; the chain does, per Task 9)."""
+    from cism.agent.guardrails.chain import GuardrailChain
+
+    chain = GuardrailChain([_stage()])
+    result = chain.run(_call("curl", target="http://[::1"))
+    assert result.allowed is False
