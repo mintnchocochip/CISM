@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Iterator, Protocol
 
 __all__ = [
+    "BubblewrapRunner",
     "Runner",
     "SubprocessRunner",
     "ToolNotInstalledError",
@@ -180,3 +181,141 @@ def _cap(text: str, limit: int) -> str:
     half = limit // 2
     omitted = len(text) - limit
     return f"{text[:half]}\n... [{omitted} chars omitted] ...\n{text[-half:]}"
+
+
+def _etc_symlink_hops(path: Path) -> set[Path]:
+    """Every directory with an ``etc`` path component in path's full
+    symlink chain, not just its final target — pathlib's own .resolve()
+    would skip straight past an intermediate hop like /etc/alternatives/foo,
+    which is exactly the case that broke nmap under BubblewrapRunner (see
+    the design doc §4.2): /usr/lib/.../libblas.so.3 -> /etc/alternatives/...
+    -> the real file. Binding /usr wholesale doesn't help if the *middle*
+    of the chain lives somewhere else entirely. Matching the ``etc``
+    component (not a literal ``/etc`` prefix) keeps the unit-test fixtures,
+    which stage the chain under a tmp dir, exercising the real branch."""
+    hops: set[Path] = set()
+    current = path
+    seen: set[Path] = set()
+    while current not in seen and current.is_symlink():
+        seen.add(current)
+        target = current.readlink()
+        if not target.is_absolute():
+            target = (current.parent / target).resolve()
+        if "etc" in target.parts:
+            hops.add(target.parent)  # bind the containing dir, not one file
+        current = target
+    return hops
+
+
+def _dynamic_etc_binds(binary: str) -> frozenset[str]:
+    """Every /etc path binary's shared-library dependency closure routes
+    through, discovered by running `ldd` on the host (not inside any
+    sandbox) and walking each resolved library's full symlink chain via
+    _etc_symlink_hops. Runs once per distinct binary — BubblewrapRunner
+    memoizes the result per instance (Task 3), since a binary's library
+    dependencies don't change at runtime.
+
+    `binary` always comes from this codebase's own fixed tool catalog,
+    never from LLM-supplied input — this carries no more trust than the
+    shutil.which(argv[0]) check already next to every call site."""
+    resolved = shutil.which(binary)
+    if resolved is None:
+        return frozenset()
+
+    try:
+        result = subprocess.run(["ldd", resolved], capture_output=True, text=True, timeout=5)
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        return frozenset()  # static binary, or ldd unavailable — static _RO_BIND_ETC baseline still applies
+
+    hops: set[Path] = set()
+    for line in result.stdout.splitlines():
+        parts = line.split("=>")
+        raw = parts[1] if len(parts) > 1 else parts[0]
+        candidate = raw.split(" (")[0].strip()
+        if candidate and Path(candidate).is_absolute() and Path(candidate).exists():
+            hops |= _etc_symlink_hops(Path(candidate))
+
+    return frozenset(str(p) for p in hops)
+
+
+class BubblewrapRunner:
+    """Runs a tool inside bwrap: read-only system libraries + a small,
+    explicitly-justified slice of /etc, one writable scratch bind, a
+    cleared environment, network shared (every catalog tool needs to
+    reach its target). The hard boundary behind the soft guardrail
+    heuristics — ScopeGuardStage/DangerousFlagGuardStage inspect a call
+    before it runs; this is what happens if one of them has a gap."""
+
+    #: --ro-bind-try skips a path that doesn't exist on this distro rather
+    #: than hard-erroring. A bind mount follows a symlinked source
+    #: transparently, so binding each of these by its real path is correct
+    #: whether or not the host happens to symlink it into /usr (usrmerge).
+    _RO_BIND_DIRS: tuple[str, ...] = ("/usr", "/bin", "/lib", "/lib64", "/sbin")
+
+    #: Read-only, explicitly justified — never a wholesale /etc bind (which
+    #: would expose /etc/shadow, SSH host keys, etc.). resolv.conf/
+    #: nsswitch.conf/hosts for name resolution, ssl for the CA trust store,
+    #: ld.so.cache for the dynamic linker, alternatives because Debian/
+    #: Ubuntu route many shared libraries through symlinks that hop through
+    #: /etc/alternatives/... (found by nmap failing to start — see
+    #: _etc_symlink_hops/_dynamic_etc_binds above, which now finds this
+    #: kind of gap for any binary, not just nmap).
+    _RO_BIND_ETC: tuple[str, ...] = (
+        "/etc/resolv.conf", "/etc/nsswitch.conf", "/etc/hosts",
+        "/etc/ssl", "/etc/ld.so.cache", "/etc/alternatives",
+    )
+
+    def __init__(self) -> None:
+        self._etc_binds_cache: dict[str, frozenset[str]] = {}
+
+    def run(self, argv: list[str], *, timeout: float, cwd: Path) -> str:
+        if shutil.which(argv[0]) is None:
+            raise ToolNotInstalledError(argv[0])
+        if shutil.which("bwrap") is None:
+            raise ToolNotInstalledError("bwrap")
+
+        binary = argv[0]
+        if binary not in self._etc_binds_cache:
+            self._etc_binds_cache[binary] = _dynamic_etc_binds(binary)
+        etc_binds = self._RO_BIND_ETC + tuple(self._etc_binds_cache[binary])
+
+        bwrap_argv = ["bwrap"]
+        for path in self._RO_BIND_DIRS + etc_binds:
+            bwrap_argv += ["--ro-bind-try", path, path]
+        bwrap_argv += [
+            "--bind", str(cwd), "/work",
+            "--chdir", "/work",
+            "--proc", "/proc",
+            "--dev", "/dev",
+            "--unshare-all", "--unshare-user", "--share-net",
+            "--die-with-parent",
+            "--new-session",
+            "--disable-userns",
+            "--clearenv",
+            "--setenv", "PATH", "/usr/bin:/bin",
+            "--setenv", "HOME", "/work",
+            "--setenv", "LANG", "C.UTF-8",
+            *argv,
+        ]
+
+        popen_kwargs: dict[str, object] = {}
+        if os.name == "posix":
+            popen_kwargs["start_new_session"] = True
+        elif os.name == "nt":
+            popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
+        proc = subprocess.Popen(
+            bwrap_argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            shell=False,
+            **popen_kwargs,
+        )
+        try:
+            stdout, _ = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_tree(proc)
+            proc.communicate()
+            raise ToolTimeoutError(argv, timeout) from None
+
+        return stdout.decode("utf-8", errors="replace")
