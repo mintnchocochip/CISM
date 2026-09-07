@@ -4,10 +4,16 @@ or write outside the sandbox's scratch directory. Matching runs against
 shlex.split(extra) tokens, not a substring scan of the whole `extra`
 string — a target/URL value that happens to contain "-o" as a substring
 must not false-positive. Within a token, a short (-x) denylisted flag
-matches by prefix (curl/nmap accept an attached value with no separating
-space, e.g. "-o/tmp/pwn"); a long (--xxx) denylisted flag matches only by
-exact `=`-split head, never by prefix, so one long flag is never mistaken
-for another that merely shares its start.
+matches by prefix and by cluster membership (curl/nmap accept an attached
+value with no separating space, e.g. "-o/tmp/pwn", and bundle short flags
+into one token, e.g. "-sSo/tmp/pwn"); a long (--xxx) denylisted flag
+matches its `=`-split head exactly OR as an abbreviation of it (curl and
+nmap both resolve any unambiguous prefix of a long option, so "--conf"
+invokes "--config"), but never the reverse, so a longer unrelated flag is
+never mistaken for a denylisted one that merely shares its start. For a
+tool whose parser uses getopt_long_only (nmap), a single-dash long option
+("-script") is normalized to its "--" form before those long-flag rules
+run.
 """
 
 from __future__ import annotations
@@ -316,3 +322,95 @@ def test_a_safe_nmap_flag_is_still_unaffected_by_the_new_entries() -> None:
     beyond what they explicitly name."""
     result = _stage().check(_call(name="nmap", target="10.0.0.5", extra="-sV -A -T4"))
     assert result.allowed is True
+
+
+def test_curl_interface_flag_is_blocked() -> None:
+    """--interface binds the outgoing connection to a chosen interface or
+    source address, redirecting where the request actually leaves from
+    while the visible URL stays in-scope — same class as --resolve. It
+    shipped in the denylist with no assertion covering it."""
+    result = _stage().check(_call(name="curl", target="https://x", extra="--interface eth0"))
+    assert result.allowed is False
+    assert "--interface" in result.reason
+
+
+def test_curl_create_dirs_flag_is_blocked() -> None:
+    """--create-dirs lets -o/--output-dir materialize an arbitrary
+    directory tree outside the scratch dir instead of failing. It shipped
+    in the denylist with no assertion covering it."""
+    result = _stage().check(_call(name="curl", target="https://x", extra="--create-dirs -o out/x"))
+    assert result.allowed is False
+    assert "--create-dirs" in result.reason
+
+
+def test_nmap_single_dash_long_options_are_blocked() -> None:
+    """nmap parses its command line with getopt_long_only(), so a long
+    option written with ONE dash is the same option to the real binary.
+    Live-verified against nmap 7.94SVN: `-script=nonexistent-script-xyz`
+    really starts the NSE engine (arbitrary Lua execution) and
+    `-excludefile /tmp/no-such-file` really opens the file. Before this
+    fix every one of these bypassed the entire nmap denylist, since
+    matching only ever normalized `--`-prefixed heads."""
+    for extra in (
+        "-script /tmp/evil.nse",
+        "-script=http-vuln",
+        "-datadir /tmp/evil",
+        "-excludefile /etc/passwd",
+        "-resume /tmp/x",
+        "-stylesheet /etc/passwd",
+        "-proxies http://169.254.169.254:80",
+        "-append-output",
+    ):
+        result = _stage().check(_call(name="nmap", target="10.0.0.5", extra=extra))
+        assert result.allowed is False, extra
+
+
+def test_a_single_dash_long_option_abbreviation_is_also_blocked() -> None:
+    """getopt_long_only resolves abbreviations for the single-dash
+    spelling too — live-verified: `nmap -excludef /tmp/no-such-file`
+    behaves exactly like `--excludefile`. So blocking only the fully
+    spelled-out single-dash form would leave a one-character bypass."""
+    for extra in ("-scri /tmp/x", "-excludef /etc/passwd", "-datad /tmp/evil"):
+        result = _stage().check(_call(name="nmap", target="10.0.0.5", extra=extra))
+        assert result.allowed is False, extra
+
+
+def test_legitimate_short_nmap_flags_are_not_caught_by_the_single_dash_normalization() -> None:
+    """False-positive regression guard for the single-dash normalization:
+    nmap's real short flags — including the extremely common `-p`, which
+    would collide with `--proxies` if normalization had no length floor —
+    must all still be allowed."""
+    for extra in (
+        "-sV",
+        "-sC",
+        "-Pn",
+        "-sS",
+        "-A",
+        "-T4",
+        "-p 80,443",
+        "-p-",
+        "-p1-65535",
+        "-PS22",
+        "-sV -sC -Pn -T4 -p 1-1000",
+        "-open",
+        "-v",
+        "-n",
+        "-d3",
+    ):
+        result = _stage().check(_call(name="nmap", target="10.0.0.5", extra=extra))
+        assert result.allowed is True, extra
+
+
+def test_curl_short_flags_are_unaffected_by_the_single_dash_normalization() -> None:
+    """curl does NOT accept single-dash long options, so the
+    normalization must not apply to it at all: `-s` (silent) must not be
+    read as an abbreviation of curl's denylisted `--stderr`, and the
+    genuinely denylisted curl short flags must keep blocking exactly as
+    before."""
+    for extra in ("-s -A MyAgent/1.0", "-sSL", "-L", "-k", "-i"):
+        result = _stage().check(_call(name="curl", target="https://x", extra=extra))
+        assert result.allowed is True, extra
+
+    for extra in ("-o /tmp/x", "-O", "-J", "-c /tmp/jar", "-K /etc/curlrc"):
+        result = _stage().check(_call(name="curl", target="https://x", extra=extra))
+        assert result.allowed is False, extra
