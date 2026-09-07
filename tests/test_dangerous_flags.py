@@ -375,6 +375,28 @@ def test_a_single_dash_long_option_abbreviation_is_also_blocked() -> None:
         assert result.allowed is False, extra
 
 
+def test_short_single_dash_long_option_abbreviations_are_blocked() -> None:
+    """getopt_long_only resolves an abbreviation as soon as it is
+    unambiguous, which for several denylisted options is only TWO
+    characters after the dash — so the normalization floor must sit at 2,
+    not higher. Live-verified against nmap 7.94SVN: `nmap -sty
+    /etc/nonexistent-xyz -oX - -sL 127.0.0.1` really emits an
+    `<?xml-stylesheet href="/etc/nonexistent-xyz" ...?>` header (i.e.
+    `--stylesheet` genuinely engages), and `-ser <path>` really resolves
+    to `--servicedb`, observable through its documented implicit `-F`."""
+    for extra in (
+        "-sty /etc/passwd",
+        "-sty=/etc/passwd",
+        "-ser /etc/passwd",
+        "-we",
+        "-web",
+        "-ap",
+        "-app",
+    ):
+        result = _stage().check(_call(name="nmap", target="10.0.0.5", extra=extra))
+        assert result.allowed is False, extra
+
+
 def test_legitimate_short_nmap_flags_are_not_caught_by_the_single_dash_normalization() -> None:
     """False-positive regression guard for the single-dash normalization:
     nmap's real short flags — including the extremely common `-p`, which

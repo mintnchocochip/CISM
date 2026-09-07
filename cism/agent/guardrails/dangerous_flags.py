@@ -55,14 +55,26 @@ _PER_TOOL_DANGEROUS_TOKENS: dict[str, frozenset[str]] = {
 _SINGLE_DASH_LONG_OPTION_TOOLS: frozenset[str] = frozenset({"nmap"})
 
 #: Minimum total length of a single-dash head before it is also evaluated
-#: as a long option (i.e. at least 4 characters after the dash). Short
-#: options and short-option-with-attached-value tokens stay below this
-#: (`-sV`, `-T4`, `-p80`, `-PS22` is 5 but matches no denylisted long
-#: flag), while the shortest abbreviation nmap's own parser resolves to a
-#: denylisted long option that we must catch is `-scri`. Without this
-#: floor, `-p` would normalize to `--p` and collide with `--proxies`,
-#: blocking the single most common nmap flag there is.
-_MIN_SINGLE_DASH_LONG_HEAD = 5
+#: as a long option (i.e. at least 2 characters after the dash). The floor
+#: exists only to keep `-p` — the single most common nmap flag there is —
+#: from normalizing to `--p` and colliding with `--proxies`; one character
+#: after the dash is ambiguous with nmap's real short options, two is not.
+#:
+#: 2 chars after the dash is the tightest floor that costs nothing. Swept
+#: against nmap's full documented option surface (55 long options, 43 short
+#: flags from `nmap -h`), a floor of 3 blocks exactly zero additional short
+#: flags and zero additional long options versus a looser floor of 5, while
+#: catching four more abbreviations that the real binary really resolves to
+#: a denylisted long option — live-verified against nmap 7.94SVN:
+#:   `-sty <path>` -> `--stylesheet` (`nmap -sty /etc/nonexistent-xyz -oX -
+#:                    -sL 127.0.0.1` emits `<?xml-stylesheet href=...?>`)
+#:   `-ser <path>` -> `--servicedb`  (triggers its documented implicit -F)
+#:   `-we` / `-web` -> `--webxml`
+#:   `-ap` / `-app` -> `--append-output`
+#: Genuine short flags stay unaffected because matching is exact-or-prefix
+#: and case-sensitive: `-sV` -> `--sV` prefixes nothing (`--script` is
+#: lowercase), likewise `-sC`, `-Pn`, `-T4`, `-p-`, `-d3`, `-PS22`.
+_MIN_SINGLE_DASH_LONG_HEAD = 3
 
 
 def _hits(token: str, denylist: frozenset[str], *, single_dash_long: bool = False) -> set[str]:
