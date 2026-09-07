@@ -208,12 +208,14 @@ def _etc_symlink_hops(path: Path) -> set[Path]:
 
 
 def _dynamic_etc_binds(binary: str) -> frozenset[str]:
-    """Every /etc path binary's shared-library dependency closure routes
-    through, discovered by running `ldd` on the host (not inside any
-    sandbox) and walking each resolved library's full symlink chain via
-    _etc_symlink_hops. Runs once per distinct binary — BubblewrapRunner
-    memoizes the result per instance (Task 3), since a binary's library
-    dependencies don't change at runtime.
+    """Every directory with an `etc` path component (not necessarily a
+    literal /etc prefix — see _etc_symlink_hops) that binary's
+    shared-library dependency closure routes through, discovered by
+    running `ldd` on the host (not inside any sandbox) and walking each
+    resolved library's full symlink chain via _etc_symlink_hops. Runs
+    once per distinct binary — BubblewrapRunner memoizes the result per
+    instance (Task 3), since a binary's library dependencies don't change
+    at runtime.
 
     `binary` always comes from this codebase's own fixed tool catalog,
     never from LLM-supplied input — this carries no more trust than the
@@ -277,7 +279,12 @@ class BubblewrapRunner:
         binary = argv[0]
         if binary not in self._etc_binds_cache:
             self._etc_binds_cache[binary] = _dynamic_etc_binds(binary)
-        etc_binds = self._RO_BIND_ETC + tuple(self._etc_binds_cache[binary])
+        # sorted(): _etc_binds_cache values are frozensets, so an unsorted
+        # tuple() conversion would make the generated bwrap argv's bind
+        # order vary run-to-run with Python's hash randomization — harder
+        # to diff/debug, and a source of test flakiness for anything that
+        # ends up asserting on argv shape.
+        etc_binds = self._RO_BIND_ETC + tuple(sorted(self._etc_binds_cache[binary]))
 
         bwrap_argv = ["bwrap"]
         for path in self._RO_BIND_DIRS + etc_binds:

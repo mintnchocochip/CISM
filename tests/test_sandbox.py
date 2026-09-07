@@ -10,6 +10,7 @@ tools involved.
 from __future__ import annotations
 
 import shutil
+import socket
 import sys
 import time
 from pathlib import Path
@@ -450,6 +451,23 @@ requires_nmap = pytest.mark.skipif(shutil.which("nmap") is None, reason="nmap no
 requires_curl = pytest.mark.skipif(shutil.which("curl") is None, reason="curl not installed")
 
 
+def _has_network_egress() -> bool:
+    """A real, fast outbound-connectivity probe, not a binary-presence
+    check — bwrap/curl being installed says nothing about whether this
+    environment (a CI runner without egress, for instance) can actually
+    reach the internet, which the DNS/HTTPS test below genuinely needs."""
+    try:
+        socket.create_connection(("1.1.1.1", 443), timeout=2).close()
+        return True
+    except OSError:
+        return False
+
+
+requires_network = pytest.mark.skipif(
+    not _has_network_egress(), reason="no outbound network access"
+)
+
+
 @requires_bwrap
 def test_bubblewrap_runner_blocks_writes_outside_the_scratch_bind(tmp_path) -> None:
     from cism.agent.tools.sandbox import BubblewrapRunner
@@ -487,6 +505,7 @@ def test_bubblewrap_runner_allows_writes_inside_the_scratch_bind(tmp_path) -> No
 
 @requires_bwrap
 @requires_curl
+@requires_network
 def test_bubblewrap_runner_resolves_dns_and_completes_a_real_https_call(tmp_path) -> None:
     """Proves /etc/resolv.conf and the CA trust store binds are both
     actually working, not just present in argv — a raw-IP request
