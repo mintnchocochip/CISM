@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from cism.agent.guardrails import GuardrailStage
+from cism.agent.guardrails import GuardrailStage, PhaseToolGuardStage
 from cism.agent.state import Phase
 from cism.agent.tools import ToolRegistry
 from cism.agent.tools.catalog import CATALOG, phases_for
@@ -70,6 +70,18 @@ _PROMPTS: dict[Phase, str] = {
 #: gap is filled by hand.
 _DECORATED_TOOL_PHASES: dict[str, frozenset[Phase]] = {
     "hydra": frozenset({Phase.EXPLOITATION, Phase.POST_EXPLOITATION}),
+    "dummy_nmap": frozenset({Phase.RECON}),
+    "dummy_msfconsole": frozenset({Phase.ENUMERATION}),
+}
+
+#: Same gap as _DECORATED_TOOL_PHASES, for the capability axis instead of
+#: the phase axis: decorated tools have no CATALOG row to read a
+#: `capability:` value from. hydra's is now real (Task 4's conversion to
+#: sandboxed_tool), read here rather than hand-duplicated a third time.
+_DECORATED_TOOL_CAPABILITIES: dict[str, str] = {
+    "hydra": "executes",
+    "dummy_nmap": "reads",
+    "dummy_msfconsole": "executes",
 }
 
 
@@ -77,7 +89,9 @@ def default_profiles(tools: ToolRegistry) -> PhaseProfiles:
     """The basic profile set. tool_names lists real tool names; a caller
     whose registry only has the dummy tools simply binds nothing for a
     phase — see make_think_node, which filters tool_names
-    against what the registry actually contains."""
+    against what the registry actually contains. Every phase also gets a
+    PhaseToolGuardStage built from that exact same tool_names value, so
+    the action-chain re-check can never drift from what binding decided."""
     del tools  # not needed to build the basic set; kept for callers' symmetry
 
     tool_names_by_phase: dict[Phase, set[str]] = {phase: set() for phase in Phase}
@@ -88,12 +102,22 @@ def default_profiles(tools: ToolRegistry) -> PhaseProfiles:
         for phase in phases:
             tool_names_by_phase[phase].add(name)
 
+    tool_capabilities: dict[str, str] = {name: spec.capability for name, spec in CATALOG.items()}
+    tool_capabilities.update(_DECORATED_TOOL_CAPABILITIES)
+
     return PhaseProfiles(
         {
             phase: PhaseProfile(
                 phase=phase,
                 system_prompt=_PROMPTS[phase],
                 tool_names=frozenset(tool_names_by_phase[phase]),
+                action_stages=(
+                    PhaseToolGuardStage(
+                        phase,
+                        frozenset(tool_names_by_phase[phase]) | {"tool_help"},
+                        tool_capabilities,
+                    ),
+                ),
             )
             for phase in Phase
         }

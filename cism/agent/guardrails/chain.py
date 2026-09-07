@@ -9,6 +9,7 @@ runner and the graph shape it is wired into never change.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
 
@@ -37,6 +38,7 @@ class GuardrailResult(Generic[T]):
     allowed: bool
     value: T
     reason: str = ""
+    stage: str = ""
 
 
 class GuardrailStage(Protocol[T]):
@@ -64,7 +66,7 @@ class GuardrailChain(Generic[T]):
         for stage in self._stages:
             result = stage.check(current)
             if not result.allowed:
-                return result
+                return dataclasses.replace(result, stage=stage.name)
             current = result.value
         return GuardrailResult(allowed=True, value=current)
 

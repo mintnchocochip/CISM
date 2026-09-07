@@ -132,10 +132,11 @@ def make_act_node(
             if not guard.allowed:
                 results.append(
                     ToolMessage(
-                        content=f"blocked by action guardrail: {guard.reason or 'no reason given'}",
+                        content="blocked by action guardrail",
                         tool_call_id=call["id"],
                         name=call["name"],
                         status="error",
+                        additional_kwargs={"guardrail_detail": f"[{guard.stage}] {guard.reason}"},
                     )
                 )
                 continue
