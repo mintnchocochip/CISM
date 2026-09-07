@@ -216,7 +216,7 @@ class ScopeGuardStage:
                 return GuardrailResult(
                     allowed=False,
                     value=call,
-                    reason=f"{host!r} is outside the declared engagement scope",
+                    reason=f"{host!r} is hard-denied regardless of declared engagement scope",
                 )
             in_scope = (
                 self._scope.contains_network(host)

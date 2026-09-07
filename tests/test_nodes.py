@@ -486,3 +486,30 @@ def test_act_preserves_the_rich_guardrail_reason_in_additional_kwargs() -> None:
 
     message = result["messages"][0]
     assert message.additional_kwargs["guardrail_detail"] == "[always-block] 10.0.0.99 is outside scope"
+
+
+def test_act_blocks_a_call_to_a_tool_the_registry_does_not_have_instead_of_raising() -> None:
+    """PhaseToolGuardStage's allowed set is catalog-derived, not
+    registry-filtered (cism/agent/profiles.py's default_profiles) — a
+    registry that is a strict subset of the catalog can let a
+    guard-allowed call through to a tool this particular registry never
+    bound. A KeyError from ToolRegistry.get() must not be allowed to
+    abort the whole run any more than an ordinary guardrail block would."""
+    action_chain = GuardrailChain([])
+    profiles = PhaseProfiles(
+        {
+            Phase.RECON: PhaseProfile(
+                phase=Phase.RECON, system_prompt="", tool_names=frozenset({"dummy_msfconsole"})
+            )
+        }
+    )
+    act = make_act_node(ToolRegistry([dummy_nmap]), action_chain, profiles)
+    call = {"id": "c1", "name": "dummy_msfconsole", "args": {}, "type": "tool_call"}
+    state = _state([AIMessage(content="", tool_calls=[call])])
+
+    result = act(state)
+
+    message = result["messages"][0]
+    assert message.content == "blocked by action guardrail"
+    assert message.status == "error"
+    assert "dummy_msfconsole" in message.additional_kwargs["guardrail_detail"]
