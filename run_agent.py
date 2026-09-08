@@ -21,9 +21,11 @@ See ``cism/agent/`` for what's behind it and the design spec at
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import sys
 
 from cism.agent import LangGraphAgent
+from cism.agent.guardrails import EngagementScope
 from cism.agent.llm import build_chat_model
 from cism.tui.app import CISMApp
 
@@ -66,6 +68,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     if args.live_tools and not args.scope.strip():
         parser.error("--live-tools requires --scope (comma-separated CIDRs/domains)")
     return args
+
+
+def _parse_scope(value: str) -> EngagementScope:
+    """Comma-separated CIDRs/domains -> EngagementScope. A bare IP widens
+    to /32 the same way scope.py's own contains_network already treats
+    one (ipaddress.ip_network(..., strict=False)); anything else that
+    isn't parseable as a network is treated as a domain — contains_host
+    does its own lowercase/suffix matching on those, so no further
+    validation of domain shape happens here."""
+    cidrs: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    domains: list[str] = []
+    for token in value.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            cidrs.append(ipaddress.ip_network(token, strict=False))
+        except ValueError:
+            domains.append(token)
+    return EngagementScope(cidrs=tuple(cidrs), domains=tuple(domains))
 
 
 def main(argv: list[str] | None = None) -> int:

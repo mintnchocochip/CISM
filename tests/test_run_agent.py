@@ -4,9 +4,11 @@ one thing that's pure logic, parse_args."""
 
 from __future__ import annotations
 
+import ipaddress
+
 import pytest
 
-from run_agent import parse_args
+from run_agent import _parse_scope, parse_args
 
 
 def test_base_url_without_model_is_an_error(capsys) -> None:
@@ -59,3 +61,36 @@ def test_no_flags_leaves_live_tools_false_and_scope_empty() -> None:
     args = parse_args([])
     assert args.live_tools is False
     assert args.scope == ""
+
+
+def test_parse_scope_single_cidr() -> None:
+    scope = _parse_scope("10.0.0.0/24")
+    assert scope.cidrs == (ipaddress.ip_network("10.0.0.0/24"),)
+    assert scope.domains == ()
+
+
+def test_parse_scope_bare_ip_widens_to_slash_32() -> None:
+    scope = _parse_scope("10.0.0.5")
+    assert scope.cidrs == (ipaddress.ip_network("10.0.0.5/32"),)
+    assert scope.domains == ()
+
+
+def test_parse_scope_domain() -> None:
+    scope = _parse_scope("example.internal")
+    assert scope.domains == ("example.internal",)
+    assert scope.cidrs == ()
+
+
+def test_parse_scope_mixed_comma_list_preserves_order_per_kind() -> None:
+    scope = _parse_scope("10.0.0.0/24, example.internal , 10.0.0.9")
+    assert scope.cidrs == (
+        ipaddress.ip_network("10.0.0.0/24"),
+        ipaddress.ip_network("10.0.0.9/32"),
+    )
+    assert scope.domains == ("example.internal",)
+
+
+def test_parse_scope_all_blank_tokens_returns_empty_scope() -> None:
+    scope = _parse_scope(" , , ")
+    assert scope.cidrs == ()
+    assert scope.domains == ()
