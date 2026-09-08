@@ -44,9 +44,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="CISM_API_KEY",
         help="name of the env var holding the API key (default: CISM_API_KEY)",
     )
+    parser.add_argument(
+        "--live-tools",
+        action="store_true",
+        help=(
+            "run real tools (nmap/curl/hydra), sandboxed via bwrap (bubblewrap), "
+            "instead of the dummy stubs"
+        ),
+    )
+    parser.add_argument(
+        "--scope",
+        default="",
+        help=(
+            "engagement scope for --live-tools: comma-separated CIDRs/domains, "
+            "e.g. 10.0.0.0/24,example.internal"
+        ),
+    )
     args = parser.parse_args(argv)
     if args.base_url and not args.model:
         parser.error("--base-url requires --model")
+    if args.live_tools and not args.scope.strip():
+        parser.error("--live-tools requires --scope (comma-separated CIDRs/domains)")
     return args
 
 

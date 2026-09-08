@@ -35,3 +35,27 @@ def test_key_env_var_can_be_overridden() -> None:
         ["--base-url", "http://localhost:11434/v1", "--model", "m", "--key-env-var", "OTHER_KEY"]
     )
     assert args.key_env_var == "OTHER_KEY"
+
+
+def test_live_tools_without_scope_is_an_error(capsys) -> None:
+    with pytest.raises(SystemExit):
+        parse_args(["--live-tools"])
+    assert "--scope" in capsys.readouterr().err
+
+
+def test_live_tools_and_scope_together_parse_cleanly() -> None:
+    args = parse_args(["--live-tools", "--scope", "10.0.0.0/24"])
+    assert args.live_tools is True
+    assert args.scope == "10.0.0.0/24"
+
+
+def test_scope_without_live_tools_is_not_an_error() -> None:
+    args = parse_args(["--scope", "10.0.0.0/24"])
+    assert args.live_tools is False
+    assert args.scope == "10.0.0.0/24"
+
+
+def test_no_flags_leaves_live_tools_false_and_scope_empty() -> None:
+    args = parse_args([])
+    assert args.live_tools is False
+    assert args.scope == ""
