@@ -22,11 +22,22 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import shutil
 import sys
 
 from cism.agent import LangGraphAgent
-from cism.agent.guardrails import EngagementScope
+from cism.agent.guardrails import (
+    DangerousFlagGuardStage,
+    EngagementScope,
+    GuardrailChain,
+    GuardrailSeam,
+    PassThroughStage,
+    ScopeGuardStage,
+)
 from cism.agent.llm import build_chat_model
+from cism.agent.tools import CATALOG, ToolRegistry, build_toolkit, hydra
+from cism.agent.tools.sandbox import BubblewrapRunner, set_default_runner
+from cism.depg import EXTRACTORS
 from cism.tui.app import CISMApp
 
 
@@ -88,6 +99,39 @@ def _parse_scope(value: str) -> EngagementScope:
         except ValueError:
             domains.append(token)
     return EngagementScope(cidrs=tuple(cidrs), domains=tuple(domains))
+
+
+def _enable_live_tools(scope_spec: str) -> tuple[ToolRegistry, GuardrailSeam]:
+    """Opts a live run into real tools: BubblewrapRunner as the process
+    default Runner, the real CATALOG+hydra toolkit, and a real
+    ScopeGuardStage/DangerousFlagGuardStage action chain built from
+    scope_spec. Refuses (SystemExit) rather than degrading silently: no
+    bwrap means no sandboxing, and an empty scope means ScopeGuardStage
+    would block every call anyway — neither check mutates global state
+    before both have passed."""
+    if shutil.which("bwrap") is None:
+        raise SystemExit(
+            "--live-tools requires bubblewrap (bwrap) to be installed — "
+            "install it, or omit --live-tools to use the dummy tools."
+        )
+    scope = _parse_scope(scope_spec)
+    if not scope.cidrs and not scope.domains:
+        raise SystemExit(f"--scope {scope_spec!r} contained no usable CIDR or domain")
+
+    set_default_runner(BubblewrapRunner())
+    tools, _ = build_toolkit(CATALOG, [hydra], EXTRACTORS)
+    guardrails = GuardrailSeam(
+        input=GuardrailChain([PassThroughStage()]),
+        action=GuardrailChain([ScopeGuardStage(scope), DangerousFlagGuardStage()]),
+        output=GuardrailChain([PassThroughStage()]),
+    )
+    print(
+        f"LIVE TOOLS ENABLED — real nmap/curl/hydra will run, sandboxed via bwrap "
+        f"(bubblewrap), scoped to {scope_spec!r}. Ensure you have authorization for "
+        f"any target you use.",
+        file=sys.stderr,
+    )
+    return tools, guardrails
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -94,3 +94,66 @@ def test_parse_scope_all_blank_tokens_returns_empty_scope() -> None:
     scope = _parse_scope(" , , ")
     assert scope.cidrs == ()
     assert scope.domains == ()
+
+
+from cism.agent.guardrails import DangerousFlagGuardStage, ScopeGuardStage
+from cism.agent.tools import ToolRegistry
+from cism.agent.tools.sandbox import BubblewrapRunner
+
+import run_agent
+
+
+def test_enable_live_tools_without_bwrap_refuses(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+
+    monkeypatch.setattr(sandbox_module, "_default_runner", sandbox_module._default_runner)
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    called: list[object] = []
+    monkeypatch.setattr(run_agent, "set_default_runner", lambda runner: called.append(runner))
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_agent._enable_live_tools("10.0.0.0/24")
+
+    assert "bwrap" in str(exc_info.value)
+    assert called == []
+
+
+def test_enable_live_tools_with_empty_scope_refuses(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+
+    monkeypatch.setattr(sandbox_module, "_default_runner", sandbox_module._default_runner)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/bwrap" if name == "bwrap" else None
+    )
+    called: list[object] = []
+    monkeypatch.setattr(run_agent, "set_default_runner", lambda runner: called.append(runner))
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_agent._enable_live_tools(" , ")
+
+    assert "scope" in str(exc_info.value).lower()
+    assert called == []
+
+
+def test_enable_live_tools_wires_real_tools_and_a_real_guardrail_seam(
+    monkeypatch, capsys
+) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+
+    monkeypatch.setattr(sandbox_module, "_default_runner", sandbox_module._default_runner)
+    monkeypatch.setattr(
+        "shutil.which", lambda name: "/usr/bin/bwrap" if name == "bwrap" else None
+    )
+
+    tools, guardrails = run_agent._enable_live_tools("10.0.0.0/24,example.internal")
+
+    assert isinstance(tools, ToolRegistry)
+    assert "nmap" in tools
+    assert "curl" in tools
+    assert "hydra" in tools
+    assert "tool_help" in tools
+    assert isinstance(sandbox_module._default_runner, BubblewrapRunner)
+    stage_types = {type(stage) for stage in guardrails.action.stages}
+    assert stage_types == {ScopeGuardStage, DangerousFlagGuardStage}
+    assert guardrails.input.stages and guardrails.output.stages  # still pass-through, but present
+    assert "LIVE TOOLS ENABLED" in capsys.readouterr().err
