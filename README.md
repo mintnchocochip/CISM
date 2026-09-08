@@ -422,6 +422,10 @@ grey ramp, with red, green, and yellow used only semantically.
 pytest
 ```
 
+For the full suite, `pytest -n auto` (via `pytest-xdist`) parallelizes across
+CPU cores — roughly 2x faster, same pass/fail result. Stick to plain `pytest`
+when debugging a single test with `-s`/`-vv`, since worker output interleaves.
+
 258 tests: the event contract and its serialisation, the replayer, transcript
 and composer behaviour, every keybinding, status-line elision at ten widths,
 credential masking end to end, both modals, and ten SVG snapshots pinning the
