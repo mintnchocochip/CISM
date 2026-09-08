@@ -8,8 +8,11 @@ phase's action chain around a :class:`PhaseToolGuardStage`. Adding a
 further guardrail means appending a stage to the relevant chain; the
 runner and the graph shape it is wired into never change.
 
-Note this says nothing about the separate, still-deferred work of wiring
-a ``GuardrailSeam`` into ``LangGraphAgent`` itself — that remains open.
+``run_agent.py``'s ``--live-tools`` flag builds a real one (ScopeGuardStage
++ DangerousFlagGuardStage on the action chain) and passes it to
+``LangGraphAgent`` explicitly; ``LangGraphAgent``'s own default stays
+``GuardrailSeam.no_op()`` for every caller — tests included — that doesn't
+opt in.
 """
 
 from __future__ import annotations
