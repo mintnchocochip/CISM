@@ -14,8 +14,19 @@ without touching the environment::
     python run_agent.py --base-url http://localhost:11434/v1 --model qwen2.5:3b
     python run_agent.py --target 10.0.0.5 --base-url http://localhost:11434/v1 --model qwen2.5:3b
 
-See ``cism/agent/`` for what's behind it and the design spec at
-``docs/superpowers/specs/2026-08-29-real-llm-connector-wiring-design.md``.
+By default, tool calls run against ``dummy_nmap``/``dummy_msfconsole`` — no
+real subprocess ever runs. Pass ``--live-tools`` to run the real catalog
+(nmap/curl/hydra/...) instead, sandboxed via ``bwrap`` (bubblewrap) and
+checked against a real ``ScopeGuardStage``/``DangerousFlagGuardStage``
+action chain — this requires ``--scope`` (comma-separated CIDRs/domains
+you're authorized against) and a working ``bwrap`` install::
+
+    python run_agent.py --live-tools --scope 10.0.0.0/24,example.internal \\
+        --base-url http://localhost:11434/v1 --model qwen2.5:3b
+
+See ``cism/agent/`` for what's behind it and the design specs at
+``docs/superpowers/specs/2026-08-29-real-llm-connector-wiring-design.md``
+and ``docs/superpowers/specs/2026-09-08-live-tools-and-guardrail-wiring-design.md``.
 """
 
 from __future__ import annotations
@@ -136,17 +147,21 @@ def _enable_live_tools(scope_spec: str) -> tuple[ToolRegistry, GuardrailSeam]:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    tools, guardrails = _enable_live_tools(args.scope) if args.live_tools else (None, None)
+
     if args.base_url:
         llm = build_chat_model(args.base_url, args.key_env_var, args.model)
         agent = LangGraphAgent(
             llm=llm,
+            tools=tools,
+            guardrails=guardrails,
             target=args.target,
             endpoint=args.base_url,
             model_name=args.model,
             key_env_var=args.key_env_var,
         )
     else:
-        agent = LangGraphAgent(target=args.target)
+        agent = LangGraphAgent(tools=tools, guardrails=guardrails, target=args.target)
 
     if agent._endpoint == "local (dummy)":
         print(
