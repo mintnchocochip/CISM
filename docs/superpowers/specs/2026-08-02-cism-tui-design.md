@@ -143,6 +143,44 @@ yellow used sparingly. Zero inline styles anywhere in the Python.
 `/phase <name>` · `/depg` · `/mem` · `/replay <run_id>` · `/ablate <part>` ·
 `/export` · `/clear` · `/help`.
 
+### Implementation status (found 2026-09-08, during live-test readiness review)
+
+Not every command listed above — or added to the autocomplete since — is
+actually intercepted. `SlashOverlay`'s `COMMANDS` tuple
+(`cism/tui/widgets/slash.py:31-44`) lists twelve commands total, including
+`/target <os|stack>` and `/model <name>`, neither of which appears in this
+design doc's original list above. `App._run_command` (`cism/tui/app.py:383-399`)
+only special-cases `api` directly and routes everything else through
+`LOCAL_COMMANDS = frozenset({"depg", "mem", "clear", "help", "export",
+"models"})` (`cism/tui/app.py:66`); `model` is forwarded as plain text and
+picked up one layer down, in `LangGraphAgent.submit()`
+(`cism/agent/core.py:139`), which intercepts `api`/`model` before
+scheduling a graph run.
+
+That left four commands in the autocomplete with no interception at either
+layer — `/target`, `/phase`, `/replay`, `/ablate` — silently sent as literal
+chat text to the LLM (`App._run_command`'s fallthrough, `cism/tui/app.py:399`:
+`self.send(line)`).
+
+**`/target` and `/phase` fixed same day (2026-09-08).** Both are now
+intercepted in `LangGraphAgent.submit()` alongside `api`/`model`
+(`cism/agent/core.py:137-153`, `_set_target`/`_set_phase`): `/target <value>`
+replaces `self._target`, bare `/target` reports it; `/phase <name>` goes
+through the existing `PhaseStateMachine.transition()` — the same choke point
+`phase_router` uses — so a manual move is bound by the same
+`PHASE_TRANSITIONS` legality rules as an automated one, not a bypass; an
+illegal move or an unrecognized name reports a `Narration` and leaves the
+phase unchanged; bare `/phase` reports the current phase. No TUI-layer
+change was needed — `App._run_command`'s existing fallthrough already routes
+through `LangGraphAgent.submit()`, which is what made these two fixes small.
+Covered by 6 new tests in `tests/test_langgraph_agent.py`
+(`test_target_command_*`, `test_bare_target_command_*`, `test_phase_command_*`,
+`test_bare_phase_command_*`).
+
+**`/replay` and `/ablate` remain unfixed** — neither has a home in the
+codebase yet (no run-output cache to replay from, no component-disable
+mechanism). Design work needed before implementation, not a small fix.
+
 ## Modals
 
 Both CISM views are `ModalScreen` overlays that dim the transcript behind them.

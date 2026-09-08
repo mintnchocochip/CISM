@@ -29,7 +29,7 @@ from cism.agent.guardrails import GuardrailSeam
 from cism.agent.llm import DummyChatModel, build_chat_model
 from cism.agent.logging import get_agent_logger
 from cism.agent.profiles import PhaseProfiles, default_profiles
-from cism.agent.state import Phase, PhaseStateMachine
+from cism.agent.state import IllegalPhaseTransition, Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
 from cism.depg import EXTRACTORS, ExtractorRegistry, GenericExtractor, LLMExtractor
 from cism.memory import DEFAULT_SALIENCE_TERMS
@@ -132,16 +132,73 @@ class LangGraphAgent:
         """Schedules the run as its own task and returns immediately, per
         the Agent protocol's "must not block" contract. A new submission
         cancels one already in flight — same discipline the TUI's own
-        worker groups apply on its side. ``/api``/``/model`` are answered
-        directly instead of being scheduled as a graph run."""
+        worker groups apply on its side. ``/api``/``/model``/``/target``/
+        ``/phase`` are answered directly instead of being scheduled as a
+        graph run."""
         if text.startswith("/"):
             name, _, argument = text[1:].partition(" ")
             if name in ("api", "model"):
                 await self._configure(name, argument.strip())
                 return
+            if name == "target":
+                await self._set_target(argument.strip())
+                return
+            if name == "phase":
+                await self._set_phase(argument.strip())
+                return
         if self._task is not None and not self._task.done():
             self._task.cancel()
         self._task = asyncio.create_task(self._run(text))
+
+    async def _set_target(self, argument: str) -> None:
+        """Bare ``/target`` reports the current value; ``/target <value>``
+        replaces it. Takes effect on the *next* submit(), same timing note
+        as ``_configure`` — an in-progress run already has its own copy in
+        ``initial_state``."""
+        if argument:
+            self._target = argument
+        await self.events.put(
+            Narration(
+                entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                text=f"target  {self._target or '(none)'}",
+                done=True,
+            )
+        )
+
+    async def _set_phase(self, argument: str) -> None:
+        """Bare ``/phase`` reports the current phase. ``/phase <name>``
+        goes through ``PhaseStateMachine.transition`` — the same choke
+        point ``phase_router`` uses — so a manual move is bound by the same
+        legality rules as an automated one; state.py's own docstring calls
+        that the deliberate single choke point for every phase change."""
+        if not argument:
+            await self.events.put(
+                Narration(
+                    entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                    text=f"phase  {self._phase.current.to_wire()}",
+                    done=True,
+                )
+            )
+            return
+        try:
+            requested = Phase[argument.upper().replace("-", "_")]
+        except KeyError:
+            await self.events.put(
+                Narration(
+                    entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                    text=f"unknown phase {argument!r}",
+                    done=True,
+                )
+            )
+            return
+        try:
+            self._phase.transition(requested)
+        except IllegalPhaseTransition as exc:
+            await self.events.put(
+                Narration(entry_id=f"cfg-{uuid.uuid4().hex[:8]}", text=str(exc), done=True)
+            )
+            return
+        await self.events.put(PhaseChanged(phase=requested.to_wire()))
 
     async def _configure(self, name: str, argument: str) -> None:
         if argument and not self._key_env_var:

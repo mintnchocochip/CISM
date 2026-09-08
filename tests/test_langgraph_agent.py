@@ -386,6 +386,78 @@ async def test_api_command_with_missing_key_env_var_leaves_prior_config_intact(
     assert agent._endpoint == "http://localhost:11434/v1"  # unchanged
 
 
+async def test_target_command_updates_the_agents_target(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent(target="old-target")
+
+    await agent.submit("/target linux nginx php")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, Narration)
+    assert "linux nginx php" in event.text
+    assert agent._target == "linux nginx php"
+
+
+async def test_bare_target_command_reports_the_current_target(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent(target="linux nginx")
+
+    await agent.submit("/target")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, Narration)
+    assert "linux nginx" in event.text
+    assert agent._target == "linux nginx"  # unchanged
+
+
+async def test_phase_command_forces_a_legal_transition(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()  # starts at RECON
+
+    await agent.submit("/phase enumeration")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, PhaseChanged)
+    assert event.phase == "enumeration"
+    assert agent._phase.current == Phase.ENUMERATION
+
+
+async def test_phase_command_refuses_an_illegal_transition(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()  # starts at RECON; RECON -> REPORTING is not a legal move
+
+    await agent.submit("/phase reporting")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, Narration)
+    assert "RECON" in event.text and "REPORTING" in event.text
+    assert agent._phase.current == Phase.RECON  # unchanged
+
+
+async def test_phase_command_refuses_an_unknown_phase_name(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()
+
+    await agent.submit("/phase not-a-real-phase")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, Narration)
+    assert "not-a-real-phase" in event.text
+    assert agent._phase.current == Phase.RECON  # unchanged
+
+
+async def test_bare_phase_command_reports_the_current_phase(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()
+
+    await agent.submit("/phase")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, Narration)
+    assert "recon" in event.text.lower()
+    assert agent._phase.current == Phase.RECON  # unchanged
+
+
 class _StreamingChatModel(BaseChatModel):
     """Like tests/test_nodes.py's fake of the same name, plus a no-op
     bind_tools so it survives LangGraphAgent's tool-binding step — the
