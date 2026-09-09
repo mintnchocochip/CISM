@@ -1,7 +1,7 @@
-"""cism/agent/logging.py: JSONL logging with a 1-day retention TTL.
+"""cism/agent/logging.py: JSONL audit logging with a 3-day retention TTL.
 
 Separate from the AgentEvent stream and DEPG evidence — this is disk
-logging for troubleshooting, and it must not accumulate forever.
+logging for audit/troubleshooting, and it must not accumulate forever.
 """
 
 from __future__ import annotations
@@ -30,19 +30,42 @@ def test_writes_jsonl_lines_to_the_live_file(tmp_path: Path) -> None:
     assert record["component"] == "test.logging.1"
 
 
-def test_startup_sweep_deletes_files_older_than_one_day(tmp_path: Path) -> None:
+def test_startup_sweep_deletes_files_older_than_the_retention_window(tmp_path: Path) -> None:
     today = date.today()
-    stale = tmp_path / f"agent.log.{(today - timedelta(days=3)).isoformat()}"
-    yesterday = tmp_path / f"agent.log.{(today - timedelta(days=1)).isoformat()}"
+    stale = tmp_path / f"agent.log.{(today - timedelta(days=5)).isoformat()}"
+    recent = tmp_path / f"agent.log.{(today - timedelta(days=1)).isoformat()}"
     unrelated = tmp_path / "not-a-log.txt"
-    for path in (stale, yesterday, unrelated):
+    for path in (stale, recent, unrelated):
         _touch(path)
 
     get_agent_logger(name="test.logging.2", log_dir=tmp_path)
 
     assert not stale.exists()
-    assert yesterday.exists()
+    assert recent.exists()
     assert unrelated.exists()
+
+
+def test_writes_the_data_field_alongside_the_message(tmp_path: Path) -> None:
+    logger = get_agent_logger(name="test.logging.5", log_dir=tmp_path)
+    logger.info("ToolFinished", extra={"data": {"tool": "nmap", "summary": "1 open port"}})
+    for handler in logger.handlers:
+        handler.flush()
+
+    content = (tmp_path / "agent.log").read_text(encoding="utf-8").strip()
+    record = json.loads(content)
+    assert record["message"] == "ToolFinished"
+    assert record["data"] == {"tool": "nmap", "summary": "1 open port"}
+
+
+def test_omits_the_data_field_when_none_was_given(tmp_path: Path) -> None:
+    logger = get_agent_logger(name="test.logging.6", log_dir=tmp_path)
+    logger.info("plain message")
+    for handler in logger.handlers:
+        handler.flush()
+
+    content = (tmp_path / "agent.log").read_text(encoding="utf-8").strip()
+    record = json.loads(content)
+    assert "data" not in record
 
 
 def test_sweep_ignores_files_without_a_parseable_date_suffix(tmp_path: Path) -> None:

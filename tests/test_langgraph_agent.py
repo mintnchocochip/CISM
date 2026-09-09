@@ -8,6 +8,7 @@ weights, no network" bar the TUI's own replay demo holds itself to.
 from __future__ import annotations
 
 import asyncio
+import json
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -149,6 +150,23 @@ async def test_a_default_run_starts_and_finishes_ok(tmp_path, monkeypatch) -> No
     assert isinstance(events[-1], RunFinished)
     assert events[-1].ok is True
     await agent.aclose()
+
+
+async def test_every_emitted_event_is_also_written_to_the_audit_log(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent(target="10.0.0.5")
+    await agent.start()
+    events = await _run_to_completion(agent, "scan 10.0.0.5")
+    await agent.aclose()
+
+    log_path = tmp_path / ".cism" / "logs" / "agent.log"
+    records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+
+    assert [r["message"] for r in records] == [type(e).__name__ for e in events]
+    run_started = next(r for r in records if r["message"] == "RunStarted")
+    assert run_started["data"]["run_id"] == events[1].run_id
 
 
 async def test_every_tool_started_has_a_matching_finish_by_call_id(tmp_path, monkeypatch) -> None:

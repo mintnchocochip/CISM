@@ -15,6 +15,7 @@ step — this module is tested standalone.
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 import time
 import uuid
@@ -111,11 +112,22 @@ class LangGraphAgent:
         #: on iterations where nothing about the graph actually changed.
         self._last_depg: tuple[tuple[DEPGNode, ...], tuple[DEPGEdge, ...]] = ((), ())
 
+    async def _emit(self, event: AgentEvent) -> None:
+        """The one place any ``AgentEvent`` reaches the outside world:
+        written to the on-disk audit log (cism/agent/logging.py, TTL'd so
+        it can't grow forever) and put on the TUI's queue, in that order.
+        Every event this module produces is routed through here instead of
+        calling the queue directly, so the audit log is always exactly what
+        the TUI saw — never a hand-picked subset that can drift out of
+        sync."""
+        self._log.info(type(event).__name__, extra={"data": dataclasses.asdict(event)})
+        await self.events.put(event)
+
     async def start(self) -> None:
         """Announce the session before any run, so the status bar reflects
         what's actually running (dummy or real) even if nothing is
         submitted yet."""
-        await self.events.put(self._session())
+        await self._emit(self._session())
 
     def _session(self) -> SessionState:
         return SessionState(
@@ -157,7 +169,7 @@ class LangGraphAgent:
         ``initial_state``."""
         if argument:
             self._target = argument
-        await self.events.put(
+        await self._emit(
             Narration(
                 entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
                 text=f"target  {self._target or '(none)'}",
@@ -172,7 +184,7 @@ class LangGraphAgent:
         legality rules as an automated one; state.py's own docstring calls
         that the deliberate single choke point for every phase change."""
         if not argument:
-            await self.events.put(
+            await self._emit(
                 Narration(
                     entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
                     text=f"phase  {self._phase.current.to_wire()}",
@@ -183,7 +195,7 @@ class LangGraphAgent:
         try:
             requested = Phase[argument.upper().replace("-", "_")]
         except KeyError:
-            await self.events.put(
+            await self._emit(
                 Narration(
                     entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
                     text=f"unknown phase {argument!r}",
@@ -194,15 +206,15 @@ class LangGraphAgent:
         try:
             self._phase.transition(requested)
         except IllegalPhaseTransition as exc:
-            await self.events.put(
+            await self._emit(
                 Narration(entry_id=f"cfg-{uuid.uuid4().hex[:8]}", text=str(exc), done=True)
             )
             return
-        await self.events.put(PhaseChanged(phase=requested.to_wire()))
+        await self._emit(PhaseChanged(phase=requested.to_wire()))
 
     async def _configure(self, name: str, argument: str) -> None:
         if argument and not self._key_env_var:
-            await self.events.put(
+            await self._emit(
                 Narration(
                     entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
                     text=(
@@ -222,7 +234,7 @@ class LangGraphAgent:
             try:
                 llm = build_chat_model(endpoint, self._key_env_var, model_name)
             except ValueError as exc:
-                await self.events.put(
+                await self._emit(
                     Narration(
                         entry_id=f"cfg-{uuid.uuid4().hex[:8]}", text=str(exc), done=True
                     )
@@ -239,12 +251,12 @@ class LangGraphAgent:
                 self._llm, self._tools, self._guardrails, self._extractors, self._profiles
             )
 
-        await self.events.put(self._session())
+        await self._emit(self._session())
 
     async def interrupt(self) -> None:
         if self._task is not None and not self._task.done():
             self._task.cancel()
-            await self.events.put(Interrupted(reason="user interrupt"))
+            await self._emit(Interrupted(reason="user interrupt"))
 
     async def aclose(self) -> None:
         if self._task is not None and not self._task.done():
@@ -252,21 +264,20 @@ class LangGraphAgent:
 
     async def _run(self, text: str) -> None:
         run_id = uuid.uuid4().hex
-        self._log.info("run %s started", run_id)
-        await self.events.put(
+        await self._emit(
             RunStarted(run_id=run_id, phase=self._phase.current.to_wire())
         )
 
         guarded = self._guardrails.input.run(text)
         if not guarded.allowed:
-            await self.events.put(
+            await self._emit(
                 Narration(
                     entry_id=f"{run_id}-input-blocked",
                     text=f"Input rejected: {guarded.reason or 'blocked by input guardrail'}",
                     done=True,
                 )
             )
-            await self.events.put(RunFinished(run_id=run_id, ok=False))
+            await self._emit(RunFinished(run_id=run_id, ok=False))
             return
 
         initial_state: dict[str, Any] = {
@@ -305,7 +316,7 @@ class LangGraphAgent:
                     content = getattr(chunk, "content", "")
                     if content:
                         streamed["text"] += content
-                        await self.events.put(
+                        await self._emit(
                             Narration(entry_id=f"{run_id}-final", text=content, done=False)
                         )
                     continue
@@ -315,11 +326,11 @@ class LangGraphAgent:
                     await self._translate(node, update, run_id, pending_calls, streamed)
         except Exception as exc:  # a graph-loop failure is content, not a crash
             ok = False
-            await self.events.put(
+            await self._emit(
                 Narration(entry_id=f"{run_id}-error", text=f"run failed: {exc}", done=True)
             )
 
-        await self.events.put(RunFinished(run_id=run_id, ok=ok))
+        await self._emit(RunFinished(run_id=run_id, ok=ok))
 
     async def _translate(
         self,
@@ -354,12 +365,12 @@ class LangGraphAgent:
                 call = pending_calls.pop(call_id, None)
                 tool_name = message.name or (call["name"] if call else "unknown")
                 args = str(call["args"]) if call else ""
-                await self.events.put(ToolStarted(call_id=call_id, tool=tool_name, args=args))
+                await self._emit(ToolStarted(call_id=call_id, tool=tool_name, args=args))
                 if getattr(message, "status", "success") == "error":
                     detail = message.additional_kwargs.get("guardrail_detail") or str(message.content)
-                    await self.events.put(ToolFailed(call_id=call_id, reason=detail))
+                    await self._emit(ToolFailed(call_id=call_id, reason=detail))
                 else:
-                    await self.events.put(
+                    await self._emit(
                         ToolFinished(call_id=call_id, summary=str(message.content))
                     )
 
@@ -367,7 +378,7 @@ class LangGraphAgent:
             new_phase = update.get("phase")
             if new_phase is not None and new_phase != self._phase.current:
                 self._phase.transition(new_phase)
-                await self.events.put(PhaseChanged(phase=new_phase.to_wire()))
+                await self._emit(PhaseChanged(phase=new_phase.to_wire()))
 
         elif node == "depg_update":
             nodes = update.get("depg_nodes") or {}
@@ -378,21 +389,21 @@ class LangGraphAgent:
             )
             if payload != self._last_depg:
                 self._last_depg = payload
-                await self.events.put(DEPGUpdated(nodes=payload[0], edges=payload[1]))
+                await self._emit(DEPGUpdated(nodes=payload[0], edges=payload[1]))
 
         elif node == "memory_update":
             items = update.get("memory_items") or {}
             rows = tuple(item.to_event(time.time()) for item in items.values())
-            await self.events.put(MemoryUpdated(rows=rows, terms=DEFAULT_SALIENCE_TERMS))
+            await self._emit(MemoryUpdated(rows=rows, terms=DEFAULT_SALIENCE_TERMS))
 
         elif node == "respond":
             for message in update.get("messages", []):
                 entry_id = f"{run_id}-final"
                 final_text = str(message.content)
                 if final_text != streamed["text"]:
-                    await self.events.put(
+                    await self._emit(
                         NarrationRedacted(entry_id=entry_id, reason=final_text)
                     )
                 else:
-                    await self.events.put(Narration(entry_id=entry_id, text="", done=True))
+                    await self._emit(Narration(entry_id=entry_id, text="", done=True))
                 streamed["text"] = ""

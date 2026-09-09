@@ -1,17 +1,25 @@
-"""Operational/debug logging for the agent loop — graph steps, tool calls,
-guardrail decisions.
+"""Operational/audit logging for the agent loop.
+
+``LangGraphAgent._emit`` (cism/agent/core.py) writes every ``AgentEvent`` it
+puts on the TUI's queue through this logger too — one JSONL line per event,
+in the same order the TUI sees them, each carrying the event's full field
+set under ``data``. This is the audit trail: what ran, what a tool returned,
+which guardrail blocked what, every phase change, in a form you can grep or
+feed to a script, independent of whatever the TUI happened to render.
 
 Deliberately separate from two other things that look similar but are not:
-the ``AgentEvent`` stream (the UI-facing protocol in ``cism/tui/events.py``)
-and DEPG evidence (domain state in ``cism/depg/``). This is disk logging for
-troubleshooting, with a 1-day retention TTL so it cannot accumulate forever.
+the ``AgentEvent`` stream itself (the UI-facing protocol in
+``cism/tui/events.py`` — this just mirrors it to disk) and DEPG evidence
+(domain state in ``cism/depg/``). Retention is a 3-day TTL so it cannot
+accumulate forever — bump ``_RETENTION`` (and ``backupCount`` to match) if
+that window is too short.
 
 Retention is enforced two ways: ``TimedRotatingFileHandler`` rotates the
-live file at midnight and keeps at most one rotated backup, and a startup
-sweep deletes any rotated file dated more than a day ago. The sweep exists
-because the handler only rotates (and prunes) on a write after the boundary
-has passed — a process that wasn't running at midnight would otherwise
-leave stale files sitting around indefinitely.
+live file at midnight and keeps at most ``backupCount`` rotated backups, and
+a startup sweep deletes any rotated file dated older than ``_RETENTION``.
+The sweep exists because the handler only rotates (and prunes) on a write
+after the boundary has passed — a process that wasn't running at midnight
+would otherwise leave stale files sitting around indefinitely.
 """
 
 from __future__ import annotations
@@ -27,7 +35,8 @@ __all__ = ["get_agent_logger"]
 
 _LOG_BASENAME = "agent.log"
 _ROTATED_SUFFIX = re.compile(r"\.(\d{4}-\d{2}-\d{2})$")
-_RETENTION = timedelta(days=1)
+_RETENTION = timedelta(days=3)
+_BACKUP_COUNT = 3
 
 
 class _JsonlFormatter(logging.Formatter):
@@ -38,7 +47,10 @@ class _JsonlFormatter(logging.Formatter):
             "component": record.name,
             "message": record.getMessage(),
         }
-        return json.dumps(base)
+        data = getattr(record, "data", None)
+        if data is not None:
+            base["data"] = data
+        return json.dumps(base, default=str)
 
 
 def _sweep_stale_files(log_dir: Path, today: date) -> None:
@@ -77,7 +89,7 @@ def get_agent_logger(
     handler = TimedRotatingFileHandler(
         directory / _LOG_BASENAME,
         when="midnight",
-        backupCount=1,
+        backupCount=_BACKUP_COUNT,
         encoding="utf-8",
     )
     handler.setFormatter(_JsonlFormatter())
