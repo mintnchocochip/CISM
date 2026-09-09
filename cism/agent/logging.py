@@ -31,12 +31,18 @@ from datetime import date, datetime, timedelta
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
-__all__ = ["get_agent_logger"]
+__all__ = ["get_agent_logger", "read_run_events"]
 
 _LOG_BASENAME = "agent.log"
 _ROTATED_SUFFIX = re.compile(r"\.(\d{4}-\d{2}-\d{2})$")
 _RETENTION = timedelta(days=3)
 _BACKUP_COUNT = 3
+
+
+def _default_log_dir() -> Path:
+    # Resolved lazily (not at import time) so it honours HOME as it stands
+    # when actually called, not whatever it was at import.
+    return Path.home() / ".cism" / "logs"
 
 
 class _JsonlFormatter(logging.Formatter):
@@ -75,9 +81,7 @@ def get_agent_logger(
     Safe to call repeatedly — handlers are only attached once per
     ``(name, log_dir)`` pair.
     """
-    # Resolved lazily (not at import time) so it honours HOME as it stands
-    # when a logger is actually requested, not whatever it was at import.
-    directory = log_dir or (Path.home() / ".cism" / "logs")
+    directory = log_dir or _default_log_dir()
     directory.mkdir(parents=True, exist_ok=True)
     _sweep_stale_files(directory, date.today())
 
@@ -98,3 +102,58 @@ def get_agent_logger(
     logger.propagate = False
     setattr(logger, marker, True)
     return logger
+
+
+def _log_files_oldest_first(log_dir: Path) -> list[Path]:
+    """Rotated backups (oldest date first), then the live file — the same
+    order the lines inside them were actually written in, which is what a
+    caller reconstructing one run's timeline across a midnight rotation
+    needs."""
+    rotated = sorted(
+        (p for p in log_dir.glob(f"{_LOG_BASENAME}.*") if _ROTATED_SUFFIX.search(p.name)),
+        key=lambda p: _ROTATED_SUFFIX.search(p.name).group(1),  # type: ignore[union-attr]
+    )
+    live = log_dir / _LOG_BASENAME
+    return [*rotated, *([live] if live.exists() else [])]
+
+
+def read_run_events(run_id: str, log_dir: Path | None = None) -> list[dict]:
+    """Every audit-log record for ``run_id``, from its ``RunStarted``
+    through its ``RunFinished`` inclusive, in the order they were written.
+
+    Returns ``[]`` when the run isn't found — rotated past the retention
+    window, a typo'd id, or it never happened — an expected, common outcome
+    for a caller (``LangGraphAgent._replay``) to report as "no such run",
+    not an error. A run with no ``RunFinished`` yet (still in flight, or the
+    process died mid-run) still returns whatever was collected — partial,
+    real history beats discarding it over one missing line.
+
+    Each returned record is exactly one audit-log JSON object (``message``,
+    ``data``, ...) — decoding ``record["data"]`` back into a real
+    ``AgentEvent`` (via ``cism.tui.events.decode``) is the caller's job,
+    kept out of this module so it stays free of any dependency on the TUI
+    event schema.
+    """
+    directory = log_dir or _default_log_dir()
+    collecting = False
+    collected: list[dict] = []
+    for path in _log_files_oldest_first(directory):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            data = record.get("data")
+            if not isinstance(data, dict):
+                continue
+            if record.get("message") == "RunStarted" and data.get("run_id") == run_id:
+                collecting = True
+                collected = []  # a repeated run_id (vanishingly unlikely) restarts at its real start
+            if collecting:
+                collected.append(record)
+            if collecting and record.get("message") == "RunFinished" and data.get("run_id") == run_id:
+                return collected
+    return collected

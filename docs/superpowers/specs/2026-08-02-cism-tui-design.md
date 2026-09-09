@@ -177,9 +177,37 @@ Covered by 6 new tests in `tests/test_langgraph_agent.py`
 (`test_target_command_*`, `test_bare_target_command_*`, `test_phase_command_*`,
 `test_bare_phase_command_*`).
 
-**`/replay` and `/ablate` remain unfixed** — neither has a home in the
-codebase yet (no run-output cache to replay from, no component-disable
-mechanism). Design work needed before implementation, not a small fix.
+**`/replay` and `/ablate` fixed 2026-09-09**, once each had somewhere real
+to stand on:
+
+- `LangGraphAgent._emit` (`cism/agent/core.py`) now routes every emitted
+  event through the JSONL audit log (`cism/agent/logging.py`) via
+  `cism.tui.events.encode` — the same round-trip format
+  `cism/tui/replay.py` already reads for demo logs. That made the "no
+  run-output cache" gap moot: `read_run_events(run_id)` pulls one run's
+  slice straight out of the audit log (spanning a midnight rotation if
+  needed), and `_replay` (`cism/agent/core.py`) decodes and replays it —
+  bracketed by narrations, seq renumbered onto this session's own counter,
+  closing by re-asserting the real current phase so the status bar can't
+  end up lying about it. Pure playback, no tool or model call happens.
+- `_ablate` (`cism/agent/core.py`) toggles a tool name or a guardrail
+  stage `.name` (checked across all three chains) into a pending set;
+  `_run` consumes and clears it at the start of the very next run,
+  building a one-off filtered `ToolRegistry`/`GuardrailSeam`/graph for
+  that run only — `self._tools`/`self._guardrails`/`self._graph` are
+  never mutated. `think()` already filters `profile.tool_names` against
+  the registry it's given, so an ablated tool is never offered to the
+  model in the first place, not merely blocked after the fact.
+
+Covered by 9 new tests in `tests/test_langgraph_agent.py` and 4 in
+`tests/test_agent_logging.py`. Verified live against the real dummy
+backend, including a real bug the live run caught that no mocked test
+did: the first cut renumbered replayed events via `rebase()`'s
+offset-plus-index arithmetic, which reserves exactly one number from the
+shared global seq counter — a later `_emit()` call (the end-of-replay
+markers) then drew from that same under-advanced counter and collided
+with a seq already handed out during replay. Fixed by minting a fresh
+`_next_seq()` per replayed event instead.
 
 ## Modals
 

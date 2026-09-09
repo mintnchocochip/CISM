@@ -10,7 +10,7 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
-from cism.agent.logging import get_agent_logger
+from cism.agent.logging import get_agent_logger, read_run_events
 
 
 def _touch(path: Path) -> None:
@@ -85,3 +85,64 @@ def test_calling_twice_for_the_same_directory_does_not_duplicate_handlers(
     second = get_agent_logger(name="test.logging.4", log_dir=tmp_path)
     assert second is first
     assert len(second.handlers) == before
+
+
+def _emit(logger, message: str, data: dict) -> None:
+    logger.info(message, extra={"data": data})
+    for handler in logger.handlers:
+        handler.flush()
+
+
+def test_read_run_events_returns_nothing_for_an_unknown_run_id(tmp_path: Path) -> None:
+    logger = get_agent_logger(name="test.logging.7", log_dir=tmp_path)
+    _emit(logger, "RunStarted", {"run_id": "run-a"})
+    _emit(logger, "RunFinished", {"run_id": "run-a"})
+
+    assert read_run_events("run-b", log_dir=tmp_path) == []
+
+
+def test_read_run_events_returns_exactly_one_runs_slice_in_order(tmp_path: Path) -> None:
+    logger = get_agent_logger(name="test.logging.8", log_dir=tmp_path)
+    _emit(logger, "SessionState", {"model": "x"})  # before any run — must be excluded
+    _emit(logger, "RunStarted", {"run_id": "run-a"})
+    _emit(logger, "ToolStarted", {"call_id": "c1", "tool": "nmap"})
+    _emit(logger, "ToolFinished", {"call_id": "c1", "summary": "done"})
+    _emit(logger, "RunFinished", {"run_id": "run-a"})
+    _emit(logger, "RunStarted", {"run_id": "run-b"})  # a later, unrelated run
+    _emit(logger, "RunFinished", {"run_id": "run-b"})
+
+    records = read_run_events("run-a", log_dir=tmp_path)
+
+    assert [r["message"] for r in records] == [
+        "RunStarted",
+        "ToolStarted",
+        "ToolFinished",
+        "RunFinished",
+    ]
+
+
+def test_read_run_events_returns_a_partial_slice_when_theres_no_run_finished(
+    tmp_path: Path,
+) -> None:
+    logger = get_agent_logger(name="test.logging.9", log_dir=tmp_path)
+    _emit(logger, "RunStarted", {"run_id": "run-a"})
+    _emit(logger, "ToolStarted", {"call_id": "c1", "tool": "nmap"})
+
+    records = read_run_events("run-a", log_dir=tmp_path)
+
+    assert [r["message"] for r in records] == ["RunStarted", "ToolStarted"]
+
+
+def test_read_run_events_spans_a_rotated_backup_and_the_live_file(tmp_path: Path) -> None:
+    today = date.today()
+    rotated = tmp_path / f"agent.log.{(today - timedelta(days=1)).isoformat()}"
+    rotated.write_text(
+        json.dumps({"message": "RunStarted", "data": {"run_id": "run-a"}}) + "\n",
+        encoding="utf-8",
+    )
+    logger = get_agent_logger(name="test.logging.10", log_dir=tmp_path)
+    _emit(logger, "RunFinished", {"run_id": "run-a"})
+
+    records = read_run_events("run-a", log_dir=tmp_path)
+
+    assert [r["message"] for r in records] == ["RunStarted", "RunFinished"]

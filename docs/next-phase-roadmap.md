@@ -146,24 +146,17 @@ no checkpointer anywhere (`build_graph()` calls `.compile()` with no
 
 ---
 
-## 4. TUI — command gaps **(found this session, partially fixed)**
+## 4. TUI — command gaps **(found this session, now fully fixed)**
 
 Tracked in full detail in `docs/superpowers/specs/2026-08-02-cism-tui-design.md`,
 "Implementation status" note under "Slash commands".
 
-- **`/target`, `/phase`** — ✅ fixed 2026-09-08 (this session). Both now
-  intercepted in `LangGraphAgent.submit()` (`cism/agent/core.py`), `/phase`
-  going through the real `PhaseStateMachine.transition()` with full legality
-  checking, not a bypass. 6 new tests in `tests/test_langgraph_agent.py`.
-- **`/replay <run_id>`** — ❌ still unimplemented. No run-output cache exists
-  anywhere in the codebase to replay from. Needs actual design (what gets
-  cached, keyed how, replayed through what — probably reusing
-  `cism/tui/replay.py`'s existing replay-log shape as a starting point,
-  unverified).
-- **`/ablate <part>`** — ❌ still unimplemented. No component-disable
-  mechanism exists. Needs design: what counts as an "ablatable part" (a
-  guardrail stage? a tool? an extractor?), and how the disable is scoped
-  (next run only? session-wide?).
+- **`/target`, `/phase`** — ✅ fixed 2026-09-08. Both now intercepted in
+  `LangGraphAgent.submit()` (`cism/agent/core.py`), `/phase` going through
+  the real `PhaseStateMachine.transition()` with full legality checking,
+  not a bypass. 6 new tests in `tests/test_langgraph_agent.py`.
+- **`/replay <run_id>`, `/ablate <part>`** — ✅ fixed 2026-09-09. See
+  Resolved section below and the design doc's "Implementation status" note.
 
 ---
 
@@ -267,3 +260,55 @@ From `2026-08-29-real-llm-connector-wiring-design.md` "Left open":
   All fixed — see `docs/superpowers/plans/2026-09-06-guardrail-bypass-followup.md`
   (all tasks checked complete) and the priority-summary table in
   `2026-09-06-guardrail-bypass-followup-design.md` §7.
+- **No auditable run log — `TokenDelta`/`ModelInfo.context` dead code.**
+  Fixed 2026-09-09, two parts:
+  - `cism/agent/logging.py` already had a TTL'd JSONL logger wired into
+    `core.py`, used for exactly one "run started" line. `LangGraphAgent._emit`
+    is now the single choke point every `AgentEvent` passes through — each
+    one logged (via `cism.tui.events.encode`) alongside being put on the TUI
+    queue, so the audit log is always exactly what the TUI saw. Retention
+    bumped 1 day → 3.
+  - `TokenDelta` was fully defined, with the status bar already reading it,
+    but nothing ever constructed one. `build_chat_model` now defaults
+    `stream_usage=True` (confirmed live against Ollama), and `core.py` turns
+    the resulting `usage_metadata` into a `TokenDelta` per LLM call.
+    `ModelInfo.context`/`ctx_max` were hardcoded/guessed; added
+    `discover_context_window` (best-effort probe of Ollama's native
+    `/api/show`, `None`-safe for any other server) — confirmed live:
+    gemma4:e4b's real 131,072, not the old 32,768 guess.
+- **`act()` (`cism/agent/nodes.py`) froze the whole TUI during any real tool
+  call.** Root cause: `act()` was a plain sync function calling
+  `tool.invoke(call)` directly — a real tool call bottoms out in a blocking
+  subprocess (`sandbox.py`, up to 60s), and since `act` had no async twin,
+  LangGraph ran it in-place on the same event loop Textual's own worker
+  runs on, freezing all input/repaint for the call's duration. Explains
+  "freezes, especially when I've stepped away" reports exactly: a fast
+  localhost scan is imperceptible watching it directly. Fixed 2026-09-09:
+  `act()` is now `async def` and awaits `tool.ainvoke(call)`, which
+  `BaseTool`'s default async fallback already offloads to a thread — no
+  change needed to `sandbox.py` or the tool catalog. Direct regression test
+  in `tests/test_nodes.py` runs a slow tool concurrently with a fast
+  asyncio ticker and asserts the ticker keeps advancing throughout.
+- **`/replay <run_id>`, `/ablate <part>` slash commands unimplemented.**
+  Fixed 2026-09-09, once the audit-log work above gave `/replay` somewhere
+  real to read from:
+  - `read_run_events(run_id)` (`cism/agent/logging.py`) pulls one run's
+    exact slice out of the audit log (spanning a midnight rotation if
+    needed); `_replay` (`cism/agent/core.py`) decodes it back into real
+    `AgentEvent`s (`cism.tui.events.decode`) and replays them into the
+    session's queue — pure playback, no tool or model call — bracketed by
+    narrations, seq renumbered fresh per event via the shared counter
+    (an earlier cut used `rebase()`'s offset+index arithmetic instead,
+    which only reserves one counter value and collided with the
+    end-of-replay markers — caught live, not by any mocked test), closing
+    by re-asserting the real current phase.
+  - `/ablate <name>` toggles a tool name or any of the three guardrail
+    chains' stage `.name`s into a pending set that `_run` consumes and
+    clears at the start of the very next run only, building a one-off
+    filtered `ToolRegistry`/`GuardrailSeam`/graph without ever mutating the
+    agent's real ones. `think()` already filters bindable tools against the
+    registry it's given, so an ablated tool is never offered to the model,
+    not merely blocked after the fact.
+  - 9 new tests in `tests/test_langgraph_agent.py`, 4 in
+    `tests/test_agent_logging.py`. See the design doc's "Implementation
+    status" note for the full account, including the live-caught bug.

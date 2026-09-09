@@ -482,6 +482,192 @@ async def test_bare_phase_command_reports_the_current_phase(tmp_path, monkeypatc
     assert agent._phase.current == Phase.RECON  # unchanged
 
 
+async def test_bare_ablate_command_reports_nothing_pending(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()
+
+    await agent.submit("/ablate")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, Narration)
+    assert "none" in event.text.lower()
+
+
+async def test_ablate_toggles_a_known_tool_on_then_off(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()
+
+    await agent.submit("/ablate dummy_nmap")
+    on_event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "ablated" in on_event.text.lower()
+    assert agent._ablated == {"dummy_nmap"}
+
+    await agent.submit("/ablate dummy_nmap")
+    off_event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "restored" in off_event.text.lower()
+    assert agent._ablated == set()
+
+
+async def test_ablate_refuses_an_unknown_name(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()
+
+    await agent.submit("/ablate not_a_real_tool_or_stage")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "no such tool or guardrail stage" in event.text.lower()
+    assert agent._ablated == set()
+
+
+async def test_ablate_recognizes_a_guardrail_stage_name_too(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    guardrails = GuardrailSeam(
+        input=GuardrailChain([PassThroughStage()]),
+        action=GuardrailChain([PassThroughStage()]),
+        output=GuardrailChain([PassThroughStage()]),
+    )
+    agent = LangGraphAgent(guardrails=guardrails)
+
+    await agent.submit("/ablate pass-through")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "ablated" in event.text.lower()
+
+
+async def test_an_ablated_tool_is_not_bound_for_the_next_run_only(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    llm = _RecordingChatModel()
+    # default_profiles() derives tool_names from the real catalog, which a
+    # dummy-only registry never matches — an explicit profile naming the
+    # dummy tools (same fixture shape as tests/test_nodes.py's act tests)
+    # is what actually gets them offered to bind_tools in the first place.
+    profiles = PhaseProfiles(
+        {
+            Phase.RECON: PhaseProfile(
+                phase=Phase.RECON,
+                system_prompt="",
+                tool_names=frozenset({"dummy_nmap", "dummy_msfconsole"}),
+            )
+        }
+    )
+    agent = LangGraphAgent(llm=llm, profiles=profiles)
+
+    await agent.submit("/ablate dummy_nmap")
+    await asyncio.wait_for(agent.events.get(), timeout=1)  # the ablate ack
+
+    await _run_to_completion(agent, "hello")
+    first_run_names = {t.name for t in llm.bound_tools}
+    assert "dummy_nmap" not in first_run_names
+    assert agent._ablated == set()  # cleared once the run it applied to started
+
+    await _run_to_completion(agent, "hello again")
+    second_run_names = {t.name for t in llm.bound_tools}
+    assert "dummy_nmap" in second_run_names  # restored — ablation was one run only
+    await agent.aclose()
+
+
+async def test_an_ablated_guardrail_stage_is_skipped_for_the_next_run_only(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    class _RejectEverything:
+        name = "reject-all"
+
+        def check(self, value) -> GuardrailResult:
+            return GuardrailResult(allowed=False, value=value, reason="always blocks")
+
+    guardrails = GuardrailSeam(
+        input=GuardrailChain([PassThroughStage()]),
+        action=GuardrailChain([_RejectEverything()]),
+        output=GuardrailChain([PassThroughStage()]),
+    )
+    agent = LangGraphAgent(guardrails=guardrails)
+
+    await agent.submit("/ablate reject-all")
+    await asyncio.wait_for(agent.events.get(), timeout=1)  # the ablate ack
+
+    events = await _run_to_completion(agent, "scan it")
+    assert any(isinstance(e, ToolFinished) for e in events)
+    assert not any(isinstance(e, ToolFailed) for e in events)
+
+    events_again = await _run_to_completion(agent, "scan it again")
+    assert any(isinstance(e, ToolFailed) for e in events_again)  # the stage is back
+    await agent.aclose()
+
+
+async def test_bare_replay_command_reports_usage(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()
+
+    await agent.submit("/replay")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "usage" in event.text.lower()
+
+
+async def test_replay_of_an_unknown_run_id_says_so(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()
+
+    await agent.submit("/replay not-a-real-run-id")
+
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "no recorded run found" in event.text.lower()
+
+
+async def test_replay_reproduces_a_past_runs_events(tmp_path, monkeypatch) -> None:
+    import cism.agent.core as core_module
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(core_module, "_REPLAY_STEP_DELAY", 0.0)
+    agent = LangGraphAgent(target="10.0.0.5")
+
+    original = await _run_to_completion(agent, "scan 10.0.0.5")
+    run_id = next(e.run_id for e in original if isinstance(e, RunStarted))
+    original_types = [type(e).__name__ for e in original]
+
+    await agent.submit(f"/replay {run_id}")
+    replayed: list = []
+    # The original run's own PhaseChanged events get replayed too, so
+    # stopping on "the last event is a PhaseChanged" would trip on one of
+    # those — wait for the queue to actually go quiet instead.
+    while True:
+        try:
+            replayed.extend(await asyncio.wait_for(drain(agent.events), timeout=0.5))
+        except asyncio.TimeoutError:
+            break
+
+    start_marker = replayed[0]
+    assert isinstance(start_marker, Narration)
+    assert "replaying run" in start_marker.text and run_id in start_marker.text
+
+    end_index = next(
+        i
+        for i, e in enumerate(replayed)
+        if isinstance(e, Narration) and "end replay" in e.text
+    )
+    reproduced = replayed[1:end_index]
+    assert [type(e).__name__ for e in reproduced] == original_types
+    assert next(e for e in reproduced if isinstance(e, RunStarted)).run_id == run_id
+
+    # Regression check: every replayed event must get a fresh seq via the
+    # same shared counter live events use, not stale recorded values or an
+    # offset assigned by simple arithmetic — either of those can collide
+    # with the bracketing narrations/PhaseChanged emitted via _emit after
+    # the loop, since those pull their own seq from the same counter.
+    all_seqs = [e.seq for e in replayed]
+    assert all_seqs == sorted(all_seqs)
+    assert len(set(all_seqs)) == len(all_seqs)
+    assert replayed[1].seq > original[-1].seq  # replayed[0] is the start marker
+
+    # bracketing the replay must not silently change what the session
+    # thinks its real, current phase is.
+    assert isinstance(replayed[-1], PhaseChanged)
+    assert replayed[-1].phase == agent._phase.current.to_wire()
+    await agent.aclose()
+
+
 class _StreamingChatModel(BaseChatModel):
     """Like tests/test_nodes.py's fake of the same name, plus a no-op
     bind_tools so it survives LangGraphAgent's tool-binding step — the

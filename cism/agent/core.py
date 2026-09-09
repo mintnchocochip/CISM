@@ -26,9 +26,9 @@ from langchain_core.messages import HumanMessage
 from langchain_core.messages.tool import ToolCall
 
 from cism.agent.graph import build_graph
-from cism.agent.guardrails import GuardrailSeam
+from cism.agent.guardrails import GuardrailChain, GuardrailSeam
 from cism.agent.llm import DummyChatModel, build_chat_model, discover_context_window
-from cism.agent.logging import get_agent_logger
+from cism.agent.logging import get_agent_logger, read_run_events
 from cism.agent.profiles import PhaseProfiles, default_profiles
 from cism.agent.state import IllegalPhaseTransition, Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
@@ -52,9 +52,19 @@ from cism.tui.events import (
     ToolFailed,
     ToolFinished,
     ToolStarted,
+    decode,
+    encode,
 )
+from cism.tui.events import _next_seq  # same-package access to the shared seq counter
 
 __all__ = ["LangGraphAgent"]
+
+#: Pacing between events during /replay — fast enough to feel immediate,
+#: slow enough to read as a sequence rather than a flash. Deliberately not
+#: the original run's real elapsed gaps: those can be tens of seconds
+#: (a real tool timeout) and replay is for reviewing what happened, not
+#: for reliving how long it took.
+_REPLAY_STEP_DELAY = 0.05
 
 
 def _llm_from_env() -> tuple[BaseChatModel, str, str, str]:
@@ -118,6 +128,12 @@ class LangGraphAgent:
         #: Best-effort, refreshed by _refresh_context_window(); the status
         #: bar's own fallback (StatusBar.ctx_max's default) until then.
         self._context_window = 32_768
+        #: Tool and/or guardrail-stage names to leave out of *the next*
+        #: _run() only — see _ablate()/_run(). A plain set of names, not
+        #: split by kind: a name is unambiguous (tool names and guardrail
+        #: stage names don't collide in practice) and the next run just
+        #: filters both the registry and every guardrail chain against it.
+        self._ablated: set[str] = set()
 
     async def _refresh_context_window(self) -> None:
         """Best-effort — see discover_context_window's own docstring for
@@ -137,8 +153,15 @@ class LangGraphAgent:
         Every event this module produces is routed through here instead of
         calling the queue directly, so the audit log is always exactly what
         the TUI saw — never a hand-picked subset that can drift out of
-        sync."""
-        self._log.info(type(event).__name__, extra={"data": dataclasses.asdict(event)})
+        sync.
+
+        Logged via ``events.encode`` (the same round-trip format
+        ``cism/tui/replay.py`` already reads), not a plain
+        ``dataclasses.asdict`` — that's what lets ``/replay`` (``_replay``
+        below) turn a slice of this same log straight back into real
+        events via ``events.decode``, instead of needing a second,
+        parallel serialisation to stay in sync with this one."""
+        self._log.info(type(event).__name__, extra={"data": encode(event)})
         await self.events.put(event)
 
     async def start(self) -> None:
@@ -168,8 +191,10 @@ class LangGraphAgent:
         the Agent protocol's "must not block" contract. A new submission
         cancels one already in flight — same discipline the TUI's own
         worker groups apply on its side. ``/api``/``/model``/``/target``/
-        ``/phase`` are answered directly instead of being scheduled as a
-        graph run."""
+        ``/phase``/``/ablate`` are answered directly instead of being
+        scheduled as a graph run. ``/replay`` *is* scheduled the same way a
+        real run is — it plays back over time and a later submit() should
+        be able to cut it off the same way."""
         if text.startswith("/"):
             name, _, argument = text[1:].partition(" ")
             if name in ("api", "model"):
@@ -180,6 +205,14 @@ class LangGraphAgent:
                 return
             if name == "phase":
                 await self._set_phase(argument.strip())
+                return
+            if name == "ablate":
+                await self._ablate(argument.strip())
+                return
+            if name == "replay":
+                if self._task is not None and not self._task.done():
+                    self._task.cancel()
+                self._task = asyncio.create_task(self._replay(argument.strip()))
                 return
         if self._task is not None and not self._task.done():
             self._task.cancel()
@@ -235,6 +268,97 @@ class LangGraphAgent:
             return
         await self._emit(PhaseChanged(phase=requested.to_wire()))
 
+    async def _ablate(self, argument: str) -> None:
+        """Bare ``/ablate`` reports what is currently pending. ``/ablate
+        <name>`` toggles ``<name>`` — a registered tool name or a stage
+        ``.name`` from any of the three guardrail chains — in or out of
+        the pending set, which ``_run`` consumes (and always clears) on
+        the very next run. There is deliberately no separate "clear"
+        command: toggling the same name again is that."""
+        if not argument:
+            listing = ", ".join(sorted(self._ablated)) or "(none)"
+            await self._emit(
+                Narration(
+                    entry_id=f"cfg-{uuid.uuid4().hex[:8]}", text=f"ablated  {listing}", done=True
+                )
+            )
+            return
+
+        known_tools = {t.name for t in self._tools.all()}
+        known_stages = {
+            stage.name
+            for chain in (self._guardrails.input, self._guardrails.action, self._guardrails.output)
+            for stage in chain.stages
+        }
+        if argument not in known_tools and argument not in known_stages:
+            await self._emit(
+                Narration(
+                    entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                    text=f"no such tool or guardrail stage: {argument!r}",
+                    done=True,
+                )
+            )
+            return
+
+        if argument in self._ablated:
+            self._ablated.discard(argument)
+            verb = "restored"
+        else:
+            self._ablated.add(argument)
+            verb = "ablated — takes effect on the next run only"
+        await self._emit(
+            Narration(entry_id=f"cfg-{uuid.uuid4().hex[:8]}", text=f"{argument}  {verb}", done=True)
+        )
+
+    async def _replay(self, run_id: str) -> None:
+        """Plays a past run's exact recorded events (from the audit log,
+        cism/agent/logging.py) back into this session's queue — not a
+        re-execution, no tool or model call happens. seq is rebased to
+        continue this session's own numbering (the recorded values are
+        stale — from whenever that run actually happened); ts is left
+        alone, since it's genuinely historical. Bracketed by narrations so
+        it reads as clearly-not-live in the transcript, and closes by
+        re-asserting the real current phase, in case the replayed run
+        shows a different one — the status bar should not end up lying
+        about what phase this session is actually in."""
+        if not run_id:
+            await self._emit(
+                Narration(
+                    entry_id=f"cfg-{uuid.uuid4().hex[:8]}", text="usage: /replay <run_id>", done=True
+                )
+            )
+            return
+
+        records = read_run_events(run_id)
+        if not records:
+            await self._emit(
+                Narration(
+                    entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                    text=f"no recorded run found for {run_id!r}",
+                    done=True,
+                )
+            )
+            return
+
+        replay_id = f"replay-{run_id}"
+        await self._emit(
+            Narration(entry_id=f"{replay_id}-start", text=f"— replaying run {run_id} —", done=True)
+        )
+        for record in records:
+            # dataclasses.replace with a fresh _next_seq() each time, not
+            # rebase()'s offset+index: that only reserves *one* number from
+            # the shared global counter, so anything _emit'd afterwards
+            # (the end-of-replay markers below) would collide with the
+            # numbers handed out here by plain arithmetic instead of by
+            # actually advancing the counter.
+            event = dataclasses.replace(decode(record["data"]), seq=_next_seq())
+            await self.events.put(event)
+            await asyncio.sleep(_REPLAY_STEP_DELAY)
+        await self._emit(
+            Narration(entry_id=f"{replay_id}-end", text="— end replay —", done=True)
+        )
+        await self._emit(PhaseChanged(phase=self._phase.current.to_wire()))
+
     async def _configure(self, name: str, argument: str) -> None:
         if argument and not self._key_env_var:
             await self._emit(
@@ -288,11 +412,41 @@ class LangGraphAgent:
 
     async def _run(self, text: str) -> None:
         run_id = uuid.uuid4().hex
+
+        # Consumed and cleared right here, before anything can await and
+        # let a concurrent /ablate change it mid-run — "the next run"
+        # means exactly this one, decided once, at the start.
+        ablated, self._ablated = self._ablated, set()
+        graph = self._graph
+        guardrails = self._guardrails
+        if ablated:
+            tools = ToolRegistry([t for t in self._tools.all() if t.name not in ablated])
+            guardrails = GuardrailSeam(
+                input=GuardrailChain(
+                    [s for s in self._guardrails.input.stages if s.name not in ablated]
+                ),
+                action=GuardrailChain(
+                    [s for s in self._guardrails.action.stages if s.name not in ablated]
+                ),
+                output=GuardrailChain(
+                    [s for s in self._guardrails.output.stages if s.name not in ablated]
+                ),
+            )
+            graph = build_graph(self._llm, tools, guardrails, self._extractors, self._profiles)
+
         await self._emit(
             RunStarted(run_id=run_id, phase=self._phase.current.to_wire())
         )
+        if ablated:
+            await self._emit(
+                Narration(
+                    entry_id=f"{run_id}-ablate",
+                    text=f"ablated for this run only: {', '.join(sorted(ablated))}",
+                    done=True,
+                )
+            )
 
-        guarded = self._guardrails.input.run(text)
+        guarded = guardrails.input.run(text)
         if not guarded.allowed:
             await self._emit(
                 Narration(
@@ -319,7 +473,7 @@ class LangGraphAgent:
         streamed: dict[str, str] = {"text": ""}
         ok = True
         try:
-            async for stream_mode, payload in self._graph.astream(
+            async for stream_mode, payload in graph.astream(
                 initial_state, stream_mode=["updates", "messages"]
             ):
                 if stream_mode == "messages":
