@@ -15,7 +15,7 @@ in.
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Awaitable, Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
@@ -119,8 +119,8 @@ def make_act_node(
     tools: ToolRegistry,
     base_action_chain: GuardrailChain,
     profiles: PhaseProfiles,
-) -> Callable[[AgentState], dict]:
-    def act(state: AgentState) -> dict:
+) -> Callable[[AgentState], Awaitable[dict]]:
+    async def act(state: AgentState) -> dict:
         profile = profiles.get(state["phase"])
         action_chain = GuardrailChain(base_action_chain.stages + list(profile.action_stages))
         last = state["messages"][-1]
@@ -168,7 +168,16 @@ def make_act_node(
             tool = tools.get(call["name"])
 
             try:
-                message = tool.invoke(call)
+                # ainvoke, not invoke: act() is awaited from inside
+                # core.py's astream() loop, itself driven from a
+                # thread=False Textual worker. A live tool call is a real,
+                # possibly 60s-long blocking subprocess (sandbox.py); a
+                # sync tool.invoke() here would run it in-place on that
+                # same event loop and freeze the whole TUI for the
+                # duration. BaseTool.ainvoke's default _arun already
+                # offloads a sync-only tool (every tool in this catalog)
+                # to run_in_executor, so this alone is the fix.
+                message = await tool.ainvoke(call)
             except Exception as exc:  # tool execution failure is content, not an exception
                 message = ToolMessage(
                     content=f"{type(exc).__name__}: {exc}",

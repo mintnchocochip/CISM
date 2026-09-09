@@ -11,7 +11,9 @@ stub versions or real ones later.
                │no ──▶ respond ── output_chain runs on final text ──▶ END
                │yes
              act ── for each call: action_chain.run(call), then
-                     ToolRegistry.get(call.name).invoke(call) if allowed
+                     await ToolRegistry.get(call.name).ainvoke(call) if allowed
+                     (a real tool call is a blocking subprocess — ainvoke,
+                     not invoke, so it runs off the event loop thread)
                │
          depg_update ── ExtractorRegistry turns successful tool results
                          into DEPG nodes/edges

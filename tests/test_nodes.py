@@ -452,7 +452,7 @@ class _AlwaysBlockStage:
         return GuardrailResult(allowed=False, value=call, reason=self._reason)
 
 
-def test_act_reports_a_blocked_call_with_a_generic_message_not_the_rich_reason() -> None:
+async def test_act_reports_a_blocked_call_with_a_generic_message_not_the_rich_reason() -> None:
     """The actual security property: an adversarial or injected model must
     not be able to read back exactly which host/flag/capability tripped
     the guard, or it has a live oracle to map the ruleset and find an
@@ -465,7 +465,7 @@ def test_act_reports_a_blocked_call_with_a_generic_message_not_the_rich_reason()
     call = {"id": "c1", "name": "dummy_nmap", "args": {"target": "10.0.0.99"}, "type": "tool_call"}
     state = _state([AIMessage(content="", tool_calls=[call])])
 
-    result = act(state)
+    result = await act(state)
 
     message = result["messages"][0]
     assert message.content == "blocked by action guardrail"
@@ -473,7 +473,7 @@ def test_act_reports_a_blocked_call_with_a_generic_message_not_the_rich_reason()
     assert "outside scope" not in message.content
 
 
-def test_act_preserves_the_rich_guardrail_reason_in_additional_kwargs() -> None:
+async def test_act_preserves_the_rich_guardrail_reason_in_additional_kwargs() -> None:
     action_chain = GuardrailChain([_AlwaysBlockStage("10.0.0.99 is outside scope")])
     profiles = PhaseProfiles(
         {Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="", tool_names=frozenset({"dummy_nmap"}))}
@@ -482,13 +482,13 @@ def test_act_preserves_the_rich_guardrail_reason_in_additional_kwargs() -> None:
     call = {"id": "c1", "name": "dummy_nmap", "args": {"target": "10.0.0.99"}, "type": "tool_call"}
     state = _state([AIMessage(content="", tool_calls=[call])])
 
-    result = act(state)
+    result = await act(state)
 
     message = result["messages"][0]
     assert message.additional_kwargs["guardrail_detail"] == "[always-block] 10.0.0.99 is outside scope"
 
 
-def test_act_blocks_a_call_to_a_tool_the_registry_does_not_have_instead_of_raising() -> None:
+async def test_act_blocks_a_call_to_a_tool_the_registry_does_not_have_instead_of_raising() -> None:
     """PhaseToolGuardStage's allowed set is catalog-derived, not
     registry-filtered (cism/agent/profiles.py's default_profiles) — a
     registry that is a strict subset of the catalog can let a
@@ -507,9 +507,54 @@ def test_act_blocks_a_call_to_a_tool_the_registry_does_not_have_instead_of_raisi
     call = {"id": "c1", "name": "dummy_msfconsole", "args": {}, "type": "tool_call"}
     state = _state([AIMessage(content="", tool_calls=[call])])
 
-    result = act(state)
+    result = await act(state)
 
     message = result["messages"][0]
     assert message.content == "blocked by action guardrail"
     assert message.status == "error"
     assert "dummy_msfconsole" in message.additional_kwargs["guardrail_detail"]
+
+
+async def test_act_runs_a_slow_sync_tool_without_blocking_the_event_loop() -> None:
+    """Regression test for the freeze bug: a real tool call is a blocking
+    subprocess (cism/agent/tools/sandbox.py), and act() used to call
+    tool.invoke() directly — running it in-place on the same event loop
+    Textual's own worker runs on, freezing the whole TUI for the call's
+    duration. act() must await tool.ainvoke() instead, which offloads a
+    sync-only tool to a thread (BaseTool's default _arun). Proven here by
+    running a slow tool concurrently with a fast counter loop and asserting
+    the counter keeps advancing while the "tool" is still "running" — on
+    the old blocking behaviour this would never advance until the tool
+    call returned, and the two totals would be measured sequentially."""
+    import asyncio
+    import time
+
+    def _slow(**kwargs) -> str:
+        time.sleep(0.2)
+        return "done"
+
+    slow_tool = StructuredTool.from_function(
+        func=_slow, name="dummy_nmap", description="slow stand-in for a real tool call"
+    )
+    action_chain = GuardrailChain([])
+    profiles = PhaseProfiles(
+        {Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="", tool_names=frozenset({"dummy_nmap"}))}
+    )
+    act = make_act_node(ToolRegistry([slow_tool]), action_chain, profiles)
+    call = {"id": "c1", "name": "dummy_nmap", "args": {}, "type": "tool_call"}
+    state = _state([AIMessage(content="", tool_calls=[call])])
+
+    ticks = 0
+
+    async def _tick_while_running() -> None:
+        nonlocal ticks
+        for _ in range(50):
+            ticks += 1
+            await asyncio.sleep(0.01)
+
+    ticker = asyncio.create_task(_tick_while_running())
+    result = await act(state)
+    ticker.cancel()
+
+    assert result["messages"][0].content == "done"
+    assert ticks >= 5  # event loop kept running while the "tool" slept
