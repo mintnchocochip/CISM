@@ -27,7 +27,7 @@ from langchain_core.messages.tool import ToolCall
 
 from cism.agent.graph import build_graph
 from cism.agent.guardrails import GuardrailSeam
-from cism.agent.llm import DummyChatModel, build_chat_model
+from cism.agent.llm import DummyChatModel, build_chat_model, discover_context_window
 from cism.agent.logging import get_agent_logger
 from cism.agent.profiles import PhaseProfiles, default_profiles
 from cism.agent.state import IllegalPhaseTransition, Phase, PhaseStateMachine
@@ -48,6 +48,7 @@ from cism.tui.events import (
     RunFinished,
     RunStarted,
     SessionState,
+    TokenDelta,
     ToolFailed,
     ToolFinished,
     ToolStarted,
@@ -111,6 +112,23 @@ class LangGraphAgent:
         #: every loop iteration doesn't flood the TUI with identical events
         #: on iterations where nothing about the graph actually changed.
         self._last_depg: tuple[tuple[DEPGNode, ...], tuple[DEPGEdge, ...]] = ((), ())
+        #: Running session total for TokenDelta.total — never reset, unlike
+        #: ctx_used (a point-in-time snapshot of the most recent call).
+        self._token_total = 0
+        #: Best-effort, refreshed by _refresh_context_window(); the status
+        #: bar's own fallback (StatusBar.ctx_max's default) until then.
+        self._context_window = 32_768
+
+    async def _refresh_context_window(self) -> None:
+        """Best-effort — see discover_context_window's own docstring for
+        why this can't be more than that. A stale value from a previous
+        model is harmless (just a wrong ctx_max) so no lock is needed
+        against a concurrent /model or /api switch."""
+        if self._endpoint == "local (dummy)" or not self._model_name:
+            return
+        discovered = await discover_context_window(self._endpoint, self._model_name)
+        if discovered:
+            self._context_window = discovered
 
     async def _emit(self, event: AgentEvent) -> None:
         """The one place any ``AgentEvent`` reaches the outside world:
@@ -126,14 +144,19 @@ class LangGraphAgent:
     async def start(self) -> None:
         """Announce the session before any run, so the status bar reflects
         what's actually running (dummy or real) even if nothing is
-        submitted yet."""
+        submitted yet. Context-window discovery runs first so that initial
+        SessionState already carries a real ModelInfo.context where one is
+        available, rather than reporting 0 and correcting itself later."""
+        await self._refresh_context_window()
         await self._emit(self._session())
 
     def _session(self) -> SessionState:
         return SessionState(
             model=self._model_name or "dummy",
             models_available=(
-                (ModelInfo(self._model_name, loaded=True),) if self._model_name else ()
+                (ModelInfo(self._model_name, context=self._context_window, loaded=True),)
+                if self._model_name
+                else ()
             ),
             endpoint=self._endpoint,
             key_env_var=self._key_env_var,
@@ -250,6 +273,7 @@ class LangGraphAgent:
             self._graph = build_graph(
                 self._llm, self._tools, self._guardrails, self._extractors, self._profiles
             )
+            await self._refresh_context_window()
 
         await self._emit(self._session())
 
@@ -318,6 +342,27 @@ class LangGraphAgent:
                         streamed["text"] += content
                         await self._emit(
                             Narration(entry_id=f"{run_id}-final", text=content, done=False)
+                        )
+                    usage = getattr(chunk, "usage_metadata", None)
+                    if usage:
+                        # usage_metadata only arrives on a trailing,
+                        # content-empty chunk (see build_chat_model's
+                        # stream_usage docstring) — input_tokens already
+                        # reflects the whole conversation resent this call,
+                        # so it (plus this call's own output) is the real
+                        # context-window occupancy, not something to sum
+                        # across calls the way total/delta are.
+                        turn_tokens = usage.get("input_tokens", 0) + usage.get(
+                            "output_tokens", 0
+                        )
+                        self._token_total += turn_tokens
+                        await self._emit(
+                            TokenDelta(
+                                delta=turn_tokens,
+                                total=self._token_total,
+                                ctx_used=turn_tokens,
+                                ctx_max=self._context_window,
+                            )
                         )
                     continue
                 for node, update in payload.items():

@@ -22,13 +22,16 @@ import re
 import uuid
 from typing import Any
 
+import httpx
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_openai import ChatOpenAI
 
-__all__ = ["DummyChatModel", "build_chat_model"]
+__all__ = ["DummyChatModel", "build_chat_model", "discover_context_window"]
+
+_SHOW_TIMEOUT = 3.0
 
 _IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _DEFAULT_TARGET = "0.0.0.0"
@@ -131,6 +134,16 @@ def build_chat_model(
     to bind onto it later, exactly like ``DummyChatModel`` needs no tools to
     exist. Binding is the caller's job (see ``LangGraphAgent``), which is
     also where the tool *registry* — the other half of the pairing — lives.
+
+    ``stream_usage`` defaults on: it sets the standard OpenAI wire-format
+    ``stream_options: {include_usage: true}`` request field, which makes a
+    streaming response's final chunk carry a real ``usage_metadata``
+    (input/output/total token counts) instead of leaving every chunk's
+    ``usage_metadata`` at ``None`` — confirmed against Ollama's own
+    OpenAI-compat endpoint, which honours it. ``LangGraphAgent`` reads that
+    field to drive the status bar's token/context tracking (see
+    ``TokenDelta`` in ``cism/tui/events.py``). Pass ``stream_usage=False``
+    explicitly for a server that chokes on the field.
     """
     api_key = os.environ.get(key_env_var, "")
     if not api_key:
@@ -140,4 +153,43 @@ def build_chat_model(
             "even when (as with Ollama) it never checks the value"
         )
 
+    kwargs.setdefault("stream_usage", True)
     return ChatOpenAI(base_url=base_url, api_key=api_key, model=model, **kwargs)
+
+
+async def discover_context_window(base_url: str, model: str) -> int | None:
+    """Best-effort context-window size for ``model``, in tokens.
+
+    The OpenAI chat-completions wire format ``build_chat_model`` otherwise
+    speaks has no standard field for this, so there is nothing to ask a
+    generic server. Ollama does know (and serves plenty of local dev setups
+    this project targets), via a *sibling* endpoint outside that wire
+    format: ``POST {base}/api/show`` returns a ``model_info`` object with an
+    architecture-prefixed ``"<arch>.context_length"`` key.
+
+    Returns ``None`` — never raises — for a non-``/v1`` base URL, a server
+    that isn't Ollama, or any request failure (timeout, 404, bad JSON): the
+    caller already has a sane fallback (the status bar's own default), and
+    "couldn't determine this" is an expected, common outcome here, not an
+    error.
+    """
+    trimmed = base_url.rstrip("/")
+    if not trimmed.endswith("/v1"):
+        return None
+    show_url = trimmed[: -len("/v1")] + "/api/show"
+
+    try:
+        async with httpx.AsyncClient(timeout=_SHOW_TIMEOUT) as client:
+            response = await client.post(show_url, json={"model": model})
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+
+    model_info = payload.get("model_info")
+    if not isinstance(model_info, dict):
+        return None
+    for key, value in model_info.items():
+        if key.endswith(".context_length") and isinstance(value, int):
+            return value
+    return None

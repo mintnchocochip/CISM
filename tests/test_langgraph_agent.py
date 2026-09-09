@@ -34,6 +34,7 @@ from cism.tui.events import (
     RunFinished,
     RunStarted,
     SessionState,
+    TokenDelta,
     ToolFailed,
     ToolFinished,
     ToolStarted,
@@ -97,7 +98,12 @@ def test_env_vars_build_a_real_connector(tmp_path, monkeypatch) -> None:
     assert session.model == "qwen2.5:3b"
     assert session.key_env_var == "CISM_API_KEY"
     assert session.key_present is True
-    assert session.models_available == (ModelInfo("qwen2.5:3b", loaded=True),)
+    # context defaults to the status bar's own fallback (32_768) until
+    # _refresh_context_window() (start()/_configure()) discovers a real
+    # one — _session() alone never makes the network call.
+    assert session.models_available == (
+        ModelInfo("qwen2.5:3b", context=32_768, loaded=True),
+    )
 
 
 async def test_start_emits_the_initial_session_state(tmp_path, monkeypatch) -> None:
@@ -513,6 +519,76 @@ async def test_final_answer_streams_as_multiple_events_then_one_close(tmp_path, 
     assert [n.done for n in narrations] == [False] * (len(narrations) - 1) + [True]
     assert narrations[-1].text == ""
     assert "".join(n.text for n in narrations) == "Scan complete."
+
+
+class _UsageReportingChatModel(BaseChatModel):
+    """Streams like a real OpenAI-compat server with ``stream_usage=True``:
+    content chunks, then a trailing content-empty chunk carrying
+    ``usage_metadata`` — see ``build_chat_model``'s docstring in
+    cism/agent/llm.py for why that's the real shape, confirmed against
+    Ollama."""
+
+    chunks: list = []
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-usage-reporting-chat-model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        return ChatResult(
+            generations=[ChatGeneration(message=AIMessage(content="".join(self.chunks)))]
+        )
+
+    async def _astream(self, messages, stop=None, run_manager=None, **kwargs):
+        for piece in self.chunks:
+            yield ChatGenerationChunk(message=AIMessageChunk(content=piece))
+        yield ChatGenerationChunk(
+            message=AIMessageChunk(
+                content="",
+                usage_metadata={
+                    "input_tokens": self.input_tokens,
+                    "output_tokens": self.output_tokens,
+                    "total_tokens": self.input_tokens + self.output_tokens,
+                },
+            )
+        )
+
+    def bind_tools(self, tools, *, tool_choice=None, **kwargs):
+        return self
+
+
+async def test_a_streamed_reply_emits_a_token_delta(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    llm = _UsageReportingChatModel(chunks=["done"], input_tokens=120, output_tokens=8)
+    agent = LangGraphAgent(llm=llm)
+    agent._context_window = 4096
+
+    events = await _run_to_completion(agent, "scan it")
+
+    deltas = [e for e in events if isinstance(e, TokenDelta)]
+    assert len(deltas) == 1
+    assert deltas[0].delta == 128
+    assert deltas[0].total == 128
+    assert deltas[0].ctx_used == 128
+    assert deltas[0].ctx_max == 4096
+
+
+async def test_token_totals_accumulate_across_multiple_llm_calls_in_one_run(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent(target="10.0.0.5")  # default dummy model: two tool calls, three LLM turns
+
+    events = await _run_to_completion(agent, "scan 10.0.0.5")
+
+    # DummyChatModel never streams (no _astream override, so LangChain's
+    # default async fallback wraps _generate's single ChatResult with no
+    # usage_metadata) — this just confirms a run with zero real usage data
+    # produces zero TokenDelta events rather than fabricating one.
+    assert [e for e in events if isinstance(e, TokenDelta)] == []
+    await agent.aclose()
 
 
 class _PreambleThenToolCallChatModel(BaseChatModel):
