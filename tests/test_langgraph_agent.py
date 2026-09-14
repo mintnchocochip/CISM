@@ -830,26 +830,88 @@ async def test_a_streamed_reply_emits_a_token_delta(tmp_path, monkeypatch) -> No
 
     deltas = [e for e in events if isinstance(e, TokenDelta)]
     assert len(deltas) == 1
-    assert deltas[0].delta == 128
-    assert deltas[0].total == 128
+    # delta/total track generation only (output_tokens) — ctx_used is the
+    # only field that reflects the whole resent prompt (input+output).
+    assert deltas[0].delta == 8
+    assert deltas[0].total == 8
     assert deltas[0].ctx_used == 128
     assert deltas[0].ctx_max == 4096
 
 
-async def test_token_totals_accumulate_across_multiple_llm_calls_in_one_run(
+class _MultiCallUsageChatModel(BaseChatModel):
+    """Two real (streamed, usage-reporting) LLM turns in one run: a tool
+    call, then — once the tool result comes back and gets resent as part of
+    the prompt — a final answer. ``input_tokens`` grows a lot between the
+    two calls (the resent tool result), ``output_tokens`` stays small on
+    both — the shape that exposed the bug: input_tokens leaking into
+    delta/total made the live token counter and tok/s rate spike by the
+    resent prompt's size instead of tracking real generation."""
+
+    call_count: int = 0
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-multi-call-usage-chat-model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        raise NotImplementedError("this test double only supports astream")
+
+    async def _astream(self, messages, stop=None, run_manager=None, **kwargs):
+        self.call_count += 1
+        if self.call_count == 1:
+            yield ChatGenerationChunk(
+                message=AIMessageChunk(
+                    content="",
+                    tool_call_chunks=[
+                        {
+                            "name": "dummy_nmap",
+                            "args": '{"target": "10.0.0.5"}',
+                            "id": "call_1",
+                            "index": 0,
+                        }
+                    ],
+                )
+            )
+            usage = {"input_tokens": 100, "output_tokens": 10, "total_tokens": 110}
+        else:
+            yield ChatGenerationChunk(message=AIMessageChunk(content="done"))
+            usage = {"input_tokens": 250, "output_tokens": 15, "total_tokens": 265}
+        yield ChatGenerationChunk(
+            message=AIMessageChunk(content="", usage_metadata=usage)
+        )
+
+    def bind_tools(self, tools, *, tool_choice=None, **kwargs):
+        return self
+
+
+async def test_token_delta_tracks_generation_not_the_resent_prompt(
     tmp_path, monkeypatch
 ) -> None:
+    """The bug: delta/total used to be input_tokens + output_tokens per
+    call, summed across calls — so a run with several think() calls (each
+    resending a bigger prompt as tool results pile up) made the live
+    "↑N tokens" counter and the tok/s rate spike by the resent prompt's
+    size, not by what the model actually generated. ctx_used is the one
+    field meant to reflect the whole resent prompt (a snapshot, not
+    summed) — it must keep doing that."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    agent = LangGraphAgent(target="10.0.0.5")  # default dummy model: two tool calls, three LLM turns
+    llm = _MultiCallUsageChatModel()
+    agent = LangGraphAgent(llm=llm, target="10.0.0.5")
+    agent._context_window = 4096
 
     events = await _run_to_completion(agent, "scan 10.0.0.5")
-
-    # DummyChatModel never streams (no _astream override, so LangChain's
-    # default async fallback wraps _generate's single ChatResult with no
-    # usage_metadata) — this just confirms a run with zero real usage data
-    # produces zero TokenDelta events rather than fabricating one.
-    assert [e for e in events if isinstance(e, TokenDelta)] == []
     await agent.aclose()
+
+    deltas = [e for e in events if isinstance(e, TokenDelta)]
+    assert len(deltas) == 2
+
+    assert deltas[0].delta == 10  # this call's own output only
+    assert deltas[0].total == 10
+    assert deltas[0].ctx_used == 110  # 100 input + 10 output, a snapshot
+
+    assert deltas[1].delta == 15  # not 250+15 — input isn't generation
+    assert deltas[1].total == 25  # 10 + 15, cumulative *output* only
+    assert deltas[1].ctx_used == 265  # 250 input + 15 output, this call's own snapshot
 
 
 class _PreambleThenToolCallChatModel(BaseChatModel):

@@ -543,20 +543,28 @@ class LangGraphAgent:
                     if usage:
                         # usage_metadata only arrives on a trailing,
                         # content-empty chunk (see build_chat_model's
-                        # stream_usage docstring) — input_tokens already
+                        # stream_usage docstring). input_tokens already
                         # reflects the whole conversation resent this call,
-                        # so it (plus this call's own output) is the real
-                        # context-window occupancy, not something to sum
-                        # across calls the way total/delta are.
-                        turn_tokens = usage.get("input_tokens", 0) + usage.get(
-                            "output_tokens", 0
-                        )
-                        self._token_total += turn_tokens
+                        # so input+output is the real context-window
+                        # occupancy (ctx_used) — a snapshot, not something
+                        # to sum across calls. delta/total track actual
+                        # generation instead: output_tokens only, so a run
+                        # with several think() calls (each resending a
+                        # bigger prompt as history/tool results pile up)
+                        # doesn't make the live "↑N tokens" counter
+                        # (WorkingIndicator) and tok/s rate (App._record_rate)
+                        # spike by the resent prompt's size on every single
+                        # call — input tokens were never "generated" and
+                        # were already counted as ctx_used the moment they
+                        # were sent.
+                        input_tokens = usage.get("input_tokens", 0)
+                        output_tokens = usage.get("output_tokens", 0)
+                        self._token_total += output_tokens
                         await self._emit(
                             TokenDelta(
-                                delta=turn_tokens,
+                                delta=output_tokens,
                                 total=self._token_total,
-                                ctx_used=turn_tokens,
+                                ctx_used=input_tokens + output_tokens,
                                 ctx_max=self._context_window,
                             )
                         )
