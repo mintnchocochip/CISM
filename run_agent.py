@@ -44,6 +44,7 @@ from cism.agent.guardrails import (
     GuardrailSeam,
     PassThroughStage,
     ScopeGuardStage,
+    parse_scope,
 )
 from cism.agent.llm import build_chat_model
 from cism.agent.tools import CATALOG, ToolRegistry, build_toolkit, hydra
@@ -92,26 +93,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def _parse_scope(value: str) -> EngagementScope:
-    """Comma-separated CIDRs/domains -> EngagementScope. A bare IP widens
-    to /32 the same way scope.py's own contains_network already treats
-    one (ipaddress.ip_network(..., strict=False)); anything else that
-    isn't parseable as a network is treated as a domain — contains_host
-    does its own lowercase/suffix matching on those, so no further
-    validation of domain shape happens here."""
-    cidrs: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
-    domains: list[str] = []
-    for token in value.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        try:
-            cidrs.append(ipaddress.ip_network(token, strict=False))
-        except ValueError:
-            domains.append(token)
-    return EngagementScope(cidrs=tuple(cidrs), domains=tuple(domains))
-
-
 def _enable_live_tools(scope_spec: str) -> tuple[ToolRegistry, GuardrailSeam]:
     """Opts a live run into real tools: BubblewrapRunner as the process
     default Runner, the real CATALOG+hydra toolkit, and a real
@@ -125,7 +106,7 @@ def _enable_live_tools(scope_spec: str) -> tuple[ToolRegistry, GuardrailSeam]:
             "--live-tools requires bubblewrap (bwrap) to be installed — "
             "install it, or omit --live-tools to use the dummy tools."
         )
-    scope = _parse_scope(scope_spec)
+    scope = parse_scope(scope_spec)
     if not scope.cidrs and not scope.domains:
         raise SystemExit(f"--scope {scope_spec!r} contained no usable CIDR or domain")
 
