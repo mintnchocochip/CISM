@@ -29,6 +29,7 @@ stub versions or real ones later.
 from __future__ import annotations
 
 from langchain_core.language_models.chat_models import BaseChatModel
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -56,6 +57,7 @@ def build_graph(
     guardrails: GuardrailSeam,
     extractors: ExtractorRegistry,
     profiles: PhaseProfiles,
+    checkpointer: BaseCheckpointSaver | None = None,
 ) -> CompiledStateGraph:
     graph = StateGraph(AgentState)
 
@@ -74,4 +76,4 @@ def build_graph(
     graph.add_edge("memory_update", "think")
     graph.add_edge("respond", END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)

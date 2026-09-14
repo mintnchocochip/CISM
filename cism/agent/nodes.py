@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Awaitable, Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.messages.tool import ToolCall
 
 from cism.agent.guardrails import GuardrailChain
@@ -40,7 +40,12 @@ __all__ = [
 ]
 
 #: Safety valve against a runaway loop (e.g. a model that never stops
-#: requesting tools). Counts AI turns, not tool calls.
+#: requesting tools). Counts AI turns, not tool calls — and only AI turns
+#: since the current run's own HumanMessage (route_after_think), not the
+#: whole session: state["messages"] now persists across runs (a real
+#: checkpointer backs the graph — see build_graph/LangGraphAgent), so a
+#: whole-history count would exhaust this cap permanently after 6 AI turns
+#: ever, not 6 per run.
 MAX_AI_TURNS = 6
 
 #: A placeholder progression heuristic: on a successful tool call, propose
@@ -107,9 +112,15 @@ def make_think_node(
 
 
 def route_after_think(state: AgentState) -> str:
-    last = state["messages"][-1]
+    messages = state["messages"]
+    last = messages[-1]
     tool_calls = getattr(last, "tool_calls", None) or []
-    ai_turns = sum(1 for m in state["messages"] if isinstance(m, AIMessage))
+    ai_turns = 0
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            break
+        if isinstance(message, AIMessage):
+            ai_turns += 1
     if tool_calls and ai_turns < MAX_AI_TURNS:
         return "act"
     return "respond"

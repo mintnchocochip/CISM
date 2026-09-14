@@ -38,11 +38,16 @@ _DEFAULT_TARGET = "0.0.0.0"
 
 
 def _target_from(messages: list[BaseMessage]) -> str:
-    for message in messages:
+    """Scans only the *current* turn's ask — the most recent
+    ``HumanMessage`` — not the whole conversation. ``messages`` now spans
+    every turn in the session (a real checkpointer backs the graph), so
+    scanning forward from the start would find whatever IP an earlier,
+    possibly unrelated turn happened to mention instead of what was just
+    asked."""
+    for message in reversed(messages):
         if isinstance(message, HumanMessage):
             match = _IPV4.search(str(message.content))
-            if match:
-                return match.group(0)
+            return match.group(0) if match else _DEFAULT_TARGET
     return _DEFAULT_TARGET
 
 
@@ -58,7 +63,17 @@ class DummyChatModel(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
-        tool_results = [m for m in messages if isinstance(m, ToolMessage)]
+        # Scoped to the current turn (back to the most recent HumanMessage),
+        # same reasoning as _target_from above: messages now spans the
+        # whole session, and counting every ToolMessage ever produced would
+        # make this stub treat turn 2 onward as already mid-scan (or
+        # already finished) regardless of what was actually just asked.
+        tool_results: list[ToolMessage] = []
+        for message in reversed(messages):
+            if isinstance(message, HumanMessage):
+                break
+            if isinstance(message, ToolMessage):
+                tool_results.append(message)
         target = _target_from(messages)
 
         if len(tool_results) == 0:

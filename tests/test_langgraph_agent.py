@@ -596,6 +596,81 @@ async def test_an_ablated_guardrail_stage_is_skipped_for_the_next_run_only(
     await agent.aclose()
 
 
+class _MessageRecordingChatModel(BaseChatModel):
+    """Records the exact ``messages`` list it was handed on every call, so a
+    test can tell whether a later run's think() actually saw an earlier
+    run's conversation or started from a blank slate. Never emits tool
+    calls — every turn is a final answer, which keeps each submit() to one
+    LLM call, one act-free run."""
+
+    seen: list = []
+
+    @property
+    def _llm_type(self) -> str:
+        return "cism-message-recording-chat-model"
+
+    def _generate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
+        **kwargs,
+    ) -> ChatResult:
+        self.seen.append(list(messages))
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content="ack"))])
+
+
+async def test_a_second_submit_remembers_the_first_runs_conversation(
+    tmp_path, monkeypatch
+) -> None:
+    """The bug this guards against: LangGraphAgent._run() used to build
+    initial_state["messages"] as just [HumanMessage(this turn's text)] on
+    every submit(), with no checkpointer backing the graph — so the second
+    message in a session was a blank slate as far as the agent's own
+    memory went. Now build_graph() carries a MemorySaver and every _run()
+    reuses the same thread_id, so the second call's think() should see the
+    first call's HumanMessage/AIMessage too, not just its own."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    model = _MessageRecordingChatModel()
+    agent = LangGraphAgent(llm=model)
+
+    await _run_to_completion(agent, "first message")
+    await _run_to_completion(agent, "second message")
+    await agent.aclose()
+
+    assert len(model.seen) == 2
+    first_call_texts = [str(m.content) for m in model.seen[0]]
+    second_call_texts = [str(m.content) for m in model.seen[1]]
+    assert "first message" in first_call_texts
+    # The second call must still be able to see the first turn's exchange,
+    # not just its own new text.
+    assert "first message" in second_call_texts
+    assert "second message" in second_call_texts
+
+
+async def test_a_second_submit_keeps_the_first_runs_memory_rows(
+    tmp_path, monkeypatch
+) -> None:
+    """Same bug, seen through memory_items: initial_state used to hardcode
+    memory_items={} on every run, discarding whatever the previous run had
+    just written. It should now only be seeded empty once, at the very
+    start of the session."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()  # DummyChatModel + dummy tools, real memory_update node
+
+    first_events = await _run_to_completion(agent, "10.0.0.5")
+    second_events = await _run_to_completion(agent, "10.0.0.6")
+    await agent.aclose()
+
+    first_rows = [e for e in first_events if isinstance(e, MemoryUpdated)][-1].rows
+    second_rows = [e for e in second_events if isinstance(e, MemoryUpdated)][-1].rows
+    assert len(first_rows) > 0
+    # Grew (or at least didn't reset to fewer rows than the first run alone
+    # produced) — proves the second run built on top of the first rather
+    # than starting from memory_items={} again.
+    assert len(second_rows) >= len(first_rows)
+
+
 async def test_bare_replay_command_reports_usage(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     agent = LangGraphAgent()

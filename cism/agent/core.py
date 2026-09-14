@@ -24,6 +24,7 @@ from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from langchain_core.messages.tool import ToolCall
+from langgraph.checkpoint.memory import MemorySaver
 
 from cism.agent.graph import build_graph
 from cism.agent.guardrails import GuardrailChain, GuardrailSeam
@@ -111,8 +112,29 @@ class LangGraphAgent:
         )
         self._extractors = extractors or ExtractorRegistry(EXTRACTORS, default_extractor)
         self._profiles = profiles or default_profiles(self._tools)
+        #: In-process only — this is session memory (lives as long as this
+        #: LangGraphAgent instance does), not restart-survival, which is a
+        #: separate, explicitly deferred concern (see the design docs). A
+        #: fixed thread_id keys every _run() into the same checkpointed
+        #: thread, so a graph rebuilt mid-session (the /ablate path in
+        #: _run()) must reuse both this checkpointer and this thread_id or
+        #: ablating a tool for one run would also silently wipe memory.
+        self._checkpointer = MemorySaver()
+        self._thread_id = uuid.uuid4().hex
+        #: True once the checkpointed thread has been seeded once — see
+        #: _run()'s initial_state construction: depg_nodes/depg_edges/
+        #: memory_items are only ever given an empty starting value the
+        #: first time, since after that the checkpointer already holds
+        #: whatever the previous run left there and re-supplying `{}`
+        #: would overwrite it back to empty on every single run.
+        self._thread_seeded = False
         self._graph = build_graph(
-            self._llm, self._tools, self._guardrails, self._extractors, self._profiles
+            self._llm,
+            self._tools,
+            self._guardrails,
+            self._extractors,
+            self._profiles,
+            checkpointer=self._checkpointer,
         )
         self._phase = PhaseStateMachine(Phase.RECON)
         self._target = target
@@ -395,7 +417,12 @@ class LangGraphAgent:
             # was already handed the old self._graph object and keeps
             # pulling from it regardless of what self._graph points to now.
             self._graph = build_graph(
-                self._llm, self._tools, self._guardrails, self._extractors, self._profiles
+                self._llm,
+                self._tools,
+                self._guardrails,
+                self._extractors,
+                self._profiles,
+                checkpointer=self._checkpointer,
             )
             await self._refresh_context_window()
 
@@ -432,7 +459,14 @@ class LangGraphAgent:
                     [s for s in self._guardrails.output.stages if s.name not in ablated]
                 ),
             )
-            graph = build_graph(self._llm, tools, guardrails, self._extractors, self._profiles)
+            graph = build_graph(
+                self._llm,
+                tools,
+                guardrails,
+                self._extractors,
+                self._profiles,
+                checkpointer=self._checkpointer,
+            )
 
         await self._emit(
             RunStarted(run_id=run_id, phase=self._phase.current.to_wire())
@@ -462,19 +496,27 @@ class LangGraphAgent:
             "messages": [HumanMessage(content=guarded.value)],
             "phase": self._phase.current,
             "phase_changed": False,
-            "depg_nodes": {},
-            "depg_edges": [],
-            "memory_items": {},
             "run_id": run_id,
             "target": self._target,
         }
+        if not self._thread_seeded:
+            # Only the very first run of this session needs these seeded —
+            # they have no reducer (unlike messages/add_messages), so
+            # supplying them on every run would overwrite whatever the
+            # checkpointer already carried forward from the previous run
+            # right back to empty, silently undoing cross-run memory.
+            initial_state["depg_nodes"] = {}
+            initial_state["depg_edges"] = []
+            initial_state["memory_items"] = {}
+            self._thread_seeded = True
+        run_config = {"configurable": {"thread_id": self._thread_id}}
 
         pending_calls: dict[str, ToolCall] = {}
         streamed: dict[str, str] = {"text": ""}
         ok = True
         try:
             async for stream_mode, payload in graph.astream(
-                initial_state, stream_mode=["updates", "messages"]
+                initial_state, run_config, stream_mode=["updates", "messages"]
             ):
                 if stream_mode == "messages":
                     chunk, metadata = payload
