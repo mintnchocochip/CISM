@@ -27,7 +27,7 @@ from langchain_core.messages.tool import ToolCall
 from langgraph.checkpoint.memory import MemorySaver
 
 from cism.agent.graph import build_graph
-from cism.agent.guardrails import GuardrailChain, GuardrailSeam
+from cism.agent.guardrails import GuardrailChain, GuardrailSeam, ScopeGuardStage, parse_scope
 from cism.agent.llm import DummyChatModel, build_chat_model, discover_context_window
 from cism.agent.logging import get_agent_logger, read_run_events
 from cism.agent.profiles import PhaseProfiles, default_profiles
@@ -48,6 +48,7 @@ from cism.tui.events import (
     PhaseChanged,
     RunFinished,
     RunStarted,
+    ScopeChanged,
     SessionState,
     TokenDelta,
     ToolFailed,
@@ -213,7 +214,7 @@ class LangGraphAgent:
         the Agent protocol's "must not block" contract. A new submission
         cancels one already in flight — same discipline the TUI's own
         worker groups apply on its side. ``/api``/``/model``/``/target``/
-        ``/phase``/``/ablate`` are answered directly instead of being
+        ``/phase``/``/ablate``/``/scope`` are answered directly instead of being
         scheduled as a graph run. ``/replay`` *is* scheduled the same way a
         real run is — it plays back over time and a later submit() should
         be able to cut it off the same way."""
@@ -227,6 +228,9 @@ class LangGraphAgent:
                 return
             if name == "phase":
                 await self._set_phase(argument.strip())
+                return
+            if name == "scope":
+                await self._set_scope(argument.strip())
                 return
             if name == "ablate":
                 await self._ablate(argument.strip())
@@ -289,6 +293,107 @@ class LangGraphAgent:
             )
             return
         await self._emit(PhaseChanged(phase=requested.to_wire()))
+
+    def _scope_guard(self) -> ScopeGuardStage | None:
+        """The live ScopeGuardStage in the action chain, if --live-tools
+        wired one up (run_agent.py._enable_live_tools) — None under the
+        default no-op guardrails, which is exactly when /scope has
+        nothing real to change."""
+        for stage in self._guardrails.action.stages:
+            if isinstance(stage, ScopeGuardStage):
+                return stage
+        return None
+
+    async def _set_scope(self, argument: str) -> None:
+        """Bare ``/scope`` lists the currently declared engagement scope.
+        ``/scope add <target[,target...]>`` and ``/scope remove
+        <target[,target...]>`` mutate the live ScopeGuardStage in place —
+        the only way to change scope without restarting the process,
+        since --scope is otherwise baked in once at launch (see
+        run_agent.py). Every actual change is a real ScopeChanged
+        AgentEvent (audited + shown in the transcript, one per target
+        actually affected); listing and no-op/error paths are a plain
+        Narration instead, the same split _set_phase already uses."""
+        guard = self._scope_guard()
+        if guard is None:
+            await self._emit(
+                Narration(
+                    entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                    text="/scope requires --live-tools (no ScopeGuardStage is active)",
+                    done=True,
+                )
+            )
+            return
+
+        subcommand, _, rest = argument.partition(" ")
+        rest = rest.strip()
+
+        if not argument:
+            listing = ", ".join(guard.scope.entries()) or (
+                "(empty — every live-tool call will be blocked)"
+            )
+            await self._emit(
+                Narration(
+                    entry_id=f"cfg-{uuid.uuid4().hex[:8]}", text=f"scope  {listing}", done=True
+                )
+            )
+            return
+
+        if subcommand == "add":
+            if not rest:
+                await self._emit(
+                    Narration(
+                        entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                        text="/scope add requires a target (CIDR or domain)",
+                        done=True,
+                    )
+                )
+                return
+            addition = parse_scope(rest)
+            if not addition.cidrs and not addition.domains:
+                await self._emit(
+                    Narration(
+                        entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                        text=f"{rest!r} is not a usable CIDR or domain",
+                        done=True,
+                    )
+                )
+                return
+            guard.expand(addition)
+            for token in addition.entries():
+                await self._emit(ScopeChanged(action="add", target=token))
+            return
+
+        if subcommand == "remove":
+            if not rest:
+                await self._emit(
+                    Narration(
+                        entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                        text="/scope remove requires a target",
+                        done=True,
+                    )
+                )
+                return
+            for token in (t.strip() for t in rest.split(",") if t.strip()):
+                if guard.contract(token):
+                    await self._emit(ScopeChanged(action="remove", target=token))
+                else:
+                    await self._emit(
+                        Narration(
+                            entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                            text=f"{token!r} is not currently in scope",
+                            done=True,
+                        )
+                    )
+            return
+
+        await self._emit(
+            Narration(
+                entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                text=f"unknown /scope subcommand {subcommand!r} — use add, remove, or no argument to list",
+                done=True,
+            )
+        )
 
     async def _ablate(self, argument: str) -> None:
         """Bare ``/ablate`` reports what is currently pending. ``/ablate

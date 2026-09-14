@@ -16,7 +16,15 @@ from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
 from cism.agent import LangGraphAgent
-from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam, PassThroughStage
+from cism.agent.guardrails import (
+    EngagementScope,
+    GuardrailChain,
+    GuardrailResult,
+    GuardrailSeam,
+    PassThroughStage,
+    ScopeGuardStage,
+    parse_scope,
+)
 from cism.agent.llm import DummyChatModel
 from cism.agent.profiles import PhaseProfile, PhaseProfiles
 from cism.agent.state import Phase
@@ -33,6 +41,7 @@ from cism.tui.events import (
     PhaseChanged,
     RunFinished,
     RunStarted,
+    ScopeChanged,
     SessionState,
     TokenDelta,
     ToolFailed,
@@ -1050,3 +1059,123 @@ async def test_a_configured_real_endpoint_defaults_to_llm_extractor(tmp_path, mo
     agent = LangGraphAgent(llm=DummyChatModel(), endpoint="http://example.invalid/v1", model_name="m")
 
     assert isinstance(agent._extractors.get("some-tool-with-no-hand-written-extractor"), LLMExtractor)
+
+
+def _live_tools_agent(scope: EngagementScope | None = None) -> LangGraphAgent:
+    """A LangGraphAgent whose action chain has a real ScopeGuardStage, the
+    way run_agent.py's --live-tools wires one up — /scope only does
+    anything when one of these exists."""
+    stage = ScopeGuardStage(scope or EngagementScope(domains=("example.com",)))
+    guardrails = GuardrailSeam(
+        input=GuardrailChain([PassThroughStage()]),
+        action=GuardrailChain([stage]),
+        output=GuardrailChain([PassThroughStage()]),
+    )
+    return LangGraphAgent(guardrails=guardrails)
+
+
+async def test_scope_without_live_tools_explains_why(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent()  # GuardrailSeam.no_op() — no ScopeGuardStage
+
+    await agent.submit("/scope")
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "--live-tools" in event.text
+    await agent.aclose()
+
+
+async def test_bare_scope_lists_current_entries(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = _live_tools_agent(
+        EngagementScope(domains=("example.com",), cidrs=())
+    )
+
+    await agent.submit("/scope")
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "example.com" in event.text
+    await agent.aclose()
+
+
+async def test_bare_scope_on_an_empty_scope_says_so(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = _live_tools_agent(EngagementScope())
+
+    await agent.submit("/scope")
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "empty" in event.text.lower()
+    await agent.aclose()
+
+
+async def test_scope_add_emits_a_scope_changed_event_per_target(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = _live_tools_agent(EngagementScope())
+
+    await agent.submit("/scope add scanme.nmap.org,10.0.0.0/24")
+    first = await asyncio.wait_for(agent.events.get(), timeout=1)
+    second = await asyncio.wait_for(agent.events.get(), timeout=1)
+
+    assert isinstance(first, ScopeChanged) and first.action == "add"
+    assert isinstance(second, ScopeChanged) and second.action == "add"
+    targets = {first.target, second.target}
+    assert targets == {"10.0.0.0/24", "scanme.nmap.org"}
+    await agent.aclose()
+
+
+async def test_scope_add_actually_widens_the_live_guard(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    stage = ScopeGuardStage(EngagementScope())
+    guardrails = GuardrailSeam(
+        input=GuardrailChain([PassThroughStage()]),
+        action=GuardrailChain([stage]),
+        output=GuardrailChain([PassThroughStage()]),
+    )
+    agent = LangGraphAgent(guardrails=guardrails)
+
+    await agent.submit("/scope add scanme.nmap.org")
+    await asyncio.wait_for(agent.events.get(), timeout=1)
+
+    assert "scanme.nmap.org" in stage.scope.domains
+    await agent.aclose()
+
+
+async def test_scope_add_with_nothing_usable_reports_an_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = _live_tools_agent()
+
+    await agent.submit("/scope add")
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "target" in event.text.lower()
+    await agent.aclose()
+
+
+async def test_scope_remove_emits_a_scope_changed_event(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = _live_tools_agent(EngagementScope(domains=("example.com",)))
+
+    await agent.submit("/scope remove example.com")
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(event, ScopeChanged)
+    assert event.action == "remove"
+    assert event.target == "example.com"
+    await agent.aclose()
+
+
+async def test_scope_remove_of_an_unknown_target_says_so(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = _live_tools_agent(EngagementScope(domains=("example.com",)))
+
+    await agent.submit("/scope remove not-in-scope.example")
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert not isinstance(event, ScopeChanged)
+    assert "not-in-scope.example" in event.text
+    await agent.aclose()
+
+
+async def test_scope_unknown_subcommand_reports_an_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = _live_tools_agent()
+
+    await agent.submit("/scope wat")
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert "add" in event.text and "remove" in event.text
+    await agent.aclose()

@@ -34,6 +34,7 @@ COMMANDS: tuple[SlashCommand, ...] = (
     SlashCommand("target", "<os|stack>", "declare the target environment"),
     SlashCommand("api", "[url]", "show or switch the inference endpoint"),
     SlashCommand("phase", "<name>", "force a PTES phase transition"),
+    SlashCommand("scope", "[add|remove] <target>", "view or extend the live engagement scope"),
     SlashCommand("depg", "", "open the dependency / error propagation graph"),
     SlashCommand("mem", "", "open the memory view"),
     SlashCommand("replay", "<run_id>", "counterfactual replay from the output cache"),
