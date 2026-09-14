@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 
 from conftest import drain, replay_all, settle
 
-from cism.tui.events import Narration, ToolFinished, ToolStarted
+from cism.tui.events import Narration, ToolFailed, ToolFinished, ToolStarted
 from cism.tui.redact import MASK
 from cism.tui.widgets.depg_modal import DEPGModal, DEPGTree
 from cism.tui.widgets.memory_modal import MemoryModal, MemoryTable
@@ -87,6 +88,34 @@ async def test_ctrl_o_toggles_the_last_tool_output(quiet_app) -> None:
         await pilot.press("ctrl+o")
         await settle(pilot, 8)
         assert last.expanded is False
+
+
+async def test_clicking_a_tool_entry_toggles_it_without_hanging(quiet_app) -> None:
+    """Regression test: ToolMeta.on_click -> action_toggle -> posts
+    ToolEntry.Toggled(meta), which ToolEntry's own on_tool_entry_toggled used
+    to re-post as a *new* ToolEntry.Toggled back onto itself after stopping
+    the original — an infinite self-directed message loop that livelocked
+    the whole app (matches a real user report: TUI froze after clicking a
+    blocked/scope-guard tool entry's summary line). A failed (guardrail-
+    blocked) entry is used here since that's the scenario that was reported,
+    though the bug was never actually specific to failure status."""
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        agent.events.put_nowait(ToolStarted("c-nikto", "nikto", "target='google.com'"))
+        agent.events.put_nowait(
+            ToolFailed("c-nikto", "[scope-guard] 'google.com' is outside the declared engagement scope")
+        )
+        await settle(pilot)
+        entry = app.transcript.tool("c-nikto")
+        assert entry is not None and entry.failed
+
+        await asyncio.wait_for(pilot.click(".tool-meta"), timeout=5)
+        await asyncio.wait_for(settle(pilot), timeout=5)
+        assert entry.expanded is True
+
+        await asyncio.wait_for(pilot.click(".tool-meta"), timeout=5)
+        await asyncio.wait_for(settle(pilot), timeout=5)
+        assert entry.expanded is False
 
 
 async def test_ctrl_o_toggles_the_last_narration_when_it_is_more_recent(

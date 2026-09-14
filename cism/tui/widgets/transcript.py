@@ -293,9 +293,7 @@ class ToolEntry(Vertical):
 
     def on_tool_entry_toggled(self, message: ToolEntry.Toggled) -> None:
         if message.meta is self._meta:
-            message.stop()
             self.toggle()
-            self.post_message(ToolEntry.Toggled(self._meta))
 
 
 class PhaseRule(Static):
