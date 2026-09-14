@@ -741,3 +741,74 @@ def test_a_malformed_bracketed_url_is_blocked_not_raised() -> None:
     chain = GuardrailChain([_stage()])
     result = chain.run(_call("curl", target="http://[::1"))
     assert result.allowed is False
+
+
+def test_add_unions_cidrs_and_domains_without_duplicates() -> None:
+    a = EngagementScope(
+        cidrs=(ipaddress.ip_network("10.0.0.0/24"),), domains=("example.com",)
+    )
+    b = EngagementScope(
+        cidrs=(
+            ipaddress.ip_network("10.0.0.0/24"),
+            ipaddress.ip_network("192.168.1.0/24"),
+        ),
+        domains=("scanme.nmap.org",),
+    )
+    combined = a.add(b)
+    assert combined.cidrs == (
+        ipaddress.ip_network("10.0.0.0/24"),
+        ipaddress.ip_network("192.168.1.0/24"),
+    )
+    assert combined.domains == ("example.com", "scanme.nmap.org")
+
+
+def test_without_removes_a_declared_cidr() -> None:
+    scope = EngagementScope(cidrs=(ipaddress.ip_network("10.0.0.0/24"),))
+    remaining, removed = scope.without("10.0.0.0/24")
+    assert removed is True
+    assert remaining.cidrs == ()
+
+
+def test_without_removes_a_declared_domain_case_insensitively() -> None:
+    scope = EngagementScope(domains=("example.com",))
+    remaining, removed = scope.without("Example.com")
+    assert removed is True
+    assert remaining.domains == ()
+
+
+def test_without_a_token_not_in_scope_reports_false_and_leaves_scope_unchanged() -> None:
+    scope = EngagementScope(domains=("example.com",))
+    remaining, removed = scope.without("scanme.nmap.org")
+    assert removed is False
+    assert remaining is scope
+
+
+def test_entries_lists_cidrs_then_domains() -> None:
+    scope = EngagementScope(
+        cidrs=(ipaddress.ip_network("10.0.0.0/24"),), domains=("example.com",)
+    )
+    assert scope.entries() == ("10.0.0.0/24", "example.com")
+
+
+def test_scope_guard_expand_widens_what_is_allowed() -> None:
+    stage = _stage()
+    assert stage.check(_call("nmap", target="scanme.nmap.org")).allowed is False
+
+    stage.expand(EngagementScope(domains=("scanme.nmap.org",)))
+    assert stage.check(_call("nmap", target="scanme.nmap.org")).allowed is True
+
+
+def test_scope_guard_contract_narrows_what_is_allowed() -> None:
+    stage = _stage()
+    assert stage.contract("example.com") is True
+    assert stage.check(_call("curl", target="https://example.com/")).allowed is False
+
+
+def test_scope_guard_contract_reports_false_for_an_unknown_token() -> None:
+    assert _stage().contract("not-in-scope.example") is False
+
+
+def test_scope_guard_scope_property_reflects_mutations() -> None:
+    stage = _stage()
+    stage.expand(EngagementScope(domains=("scanme.nmap.org",)))
+    assert "scanme.nmap.org" in stage.scope.domains

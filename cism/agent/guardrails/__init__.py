@@ -11,7 +11,7 @@ from .chain import (
 )
 from .dangerous_flags import DangerousFlagGuardStage
 from .phase_tool import PhaseToolGuardStage
-from .scope import EngagementScope, ScopeGuardStage
+from .scope import EngagementScope, ScopeGuardStage, parse_scope
 
 __all__ = [
     "DangerousFlagGuardStage",
@@ -22,5 +22,6 @@ __all__ = [
     "GuardrailStage",
     "PassThroughStage",
     "PhaseToolGuardStage",
+    "parse_scope",
     "ScopeGuardStage",
 ]

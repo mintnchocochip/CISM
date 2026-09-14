@@ -21,14 +21,14 @@ from __future__ import annotations
 import ipaddress
 import re
 import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from urllib.parse import urlparse
 
 from langchain_core.messages.tool import ToolCall
 
 from cism.agent.guardrails.chain import GuardrailResult
 
-__all__ = ["EngagementScope", "ScopeGuardStage"]
+__all__ = ["EngagementScope", "parse_scope", "ScopeGuardStage"]
 
 IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
@@ -203,6 +203,61 @@ class EngagementScope:
                 return True
         return False
 
+    def add(self, other: EngagementScope) -> EngagementScope:
+        """Union of both scopes' CIDRs and domains, de-duplicated,
+        order-preserving. Immutable — returns a new EngagementScope rather
+        than mutating either operand; ScopeGuardStage.expand is the only
+        place a live scope is actually replaced."""
+        cidrs = self.cidrs + tuple(c for c in other.cidrs if c not in self.cidrs)
+        domains = self.domains + tuple(d for d in other.domains if d not in self.domains)
+        return replace(self, cidrs=cidrs, domains=domains)
+
+    def without(self, token: str) -> tuple[EngagementScope, bool]:
+        """Removes one exact CIDR or domain — the same per-token parsing
+        parse_scope uses for a single value, not a substring/suffix match.
+        Returns (new_scope, True) if token was actually present, or
+        (self, False) if it wasn't (self returned unchanged, not a copy),
+        so a caller can tell "removed" from "wasn't there" without a
+        separate contains check."""
+        try:
+            network = ipaddress.ip_network(token, strict=False)
+        except ValueError:
+            network = None
+        if network is not None and network in self.cidrs:
+            return replace(self, cidrs=tuple(c for c in self.cidrs if c != network)), True
+        lowered = token.strip().lower()
+        if lowered in self.domains:
+            return replace(self, domains=tuple(d for d in self.domains if d != lowered)), True
+        return self, False
+
+    def entries(self) -> tuple[str, ...]:
+        """Every declared CIDR and domain as one flat tuple of strings, for
+        listing (``/scope`` with no argument) — CIDRs first, in declared
+        order, then domains."""
+        return tuple(str(c) for c in self.cidrs) + self.domains
+
+
+def parse_scope(value: str) -> EngagementScope:
+    """Comma-separated CIDRs/domains -> EngagementScope. A bare IP widens
+    to /32 the same way EngagementScope.contains_network already treats
+    one (ipaddress.ip_network(..., strict=False)); anything else that
+    isn't parseable as a network is treated as a domain —
+    EngagementScope.contains_host does its own lowercase/suffix matching
+    on those, so no further validation of domain shape happens here.
+    Shared by run_agent.py's --scope flag and the /scope add slash
+    command — both need identical CIDR-vs-domain parsing."""
+    cidrs: list[IPNetwork] = []
+    domains: list[str] = []
+    for token in value.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            cidrs.append(ipaddress.ip_network(token, strict=False))
+        except ValueError:
+            domains.append(token)
+    return EngagementScope(cidrs=tuple(cidrs), domains=tuple(domains))
+
 
 class ScopeGuardStage:
     name = "scope-guard"
@@ -230,6 +285,23 @@ class ScopeGuardStage:
                     reason=f"{host!r} is outside the declared engagement scope",
                 )
         return GuardrailResult(allowed=True, value=call)
+
+    def expand(self, addition: EngagementScope) -> None:
+        """Adds every CIDR/domain in ``addition`` to the live scope this
+        stage checks against — the only way scope changes after startup
+        (see cism.agent.core.LangGraphAgent._set_scope, the /scope add
+        command's handler)."""
+        self._scope = self._scope.add(addition)
+
+    def contract(self, token: str) -> bool:
+        """Removes one CIDR/domain from the live scope. Returns whether it
+        was actually present — see EngagementScope.without."""
+        self._scope, removed = self._scope.without(token)
+        return removed
+
+    @property
+    def scope(self) -> EngagementScope:
+        return self._scope
 
 
 def _scan_all_args(args: dict) -> list[str]:
