@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from conftest import drain, replay_all, settle
 
-from cism.tui.events import Narration, ToolFailed, ToolFinished, ToolStarted
+from cism.tui.events import Narration, ScopeChanged, ToolFailed, ToolFinished, ToolStarted
 from cism.tui.redact import MASK
 from cism.tui.widgets.depg_modal import DEPGModal, DEPGTree
 from cism.tui.widgets.memory_modal import MemoryModal, MemoryTable
@@ -313,6 +313,17 @@ async def test_export_writes_the_transcript(export_app, tmp_path) -> None:
         assert "⏺ nmap(-sV -p- 10.0.0.5)" in body
         assert "Starting Nmap" in body
         assert "PTES: exploitation" in body
+
+
+async def test_scope_changed_renders_as_a_transcript_note(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        agent.events.put_nowait(ScopeChanged("add", "scanme.nmap.org"))
+        agent.events.put_nowait(ScopeChanged("remove", "10.0.0.0/24"))
+        await settle(pilot)
+        texts = [n.text for n in app.transcript.query(NarrationEntry)]
+        assert "scope: added scanme.nmap.org" in texts
+        assert "scope: removed 10.0.0.0/24" in texts
 
 
 async def submit_command(pilot, line: str) -> None:

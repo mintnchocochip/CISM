@@ -38,6 +38,7 @@ from .events import (
     RunFinished,
     RunStarted,
     SalienceTerms,
+    ScopeChanged,
     SessionState,
     TokenDelta,
     ToolFailed,
@@ -232,6 +233,10 @@ class CISMApp(App[None]):
             self.status.phase = event.phase
             self.indicator.set_phase(event.phase)
             transcript.add_phase_rule(event.framework, event.phase)
+
+        elif isinstance(event, ScopeChanged):
+            verb = "added" if event.action == "add" else "removed"
+            transcript.add_note(f"scope: {verb} {event.target}")
 
         elif isinstance(event, DEPGUpdated):
             self.depg_nodes = event.nodes

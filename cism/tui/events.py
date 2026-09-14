@@ -37,6 +37,7 @@ __all__ = [
     "RunFinished",
     "RunStarted",
     "SalienceTerms",
+    "ScopeChanged",
     "TokenDelta",
     "ToolFailed",
     "ToolFinished",
@@ -284,6 +285,18 @@ class PhaseChanged(_Event):
 
 
 @dataclass(frozen=True, slots=True)
+class ScopeChanged(_Event):
+    """A /scope add or /scope remove that actually changed the live
+    engagement scope — see cism.agent.guardrails.scope.ScopeGuardStage.
+    Listing (/scope with no argument) and no-op/error paths use a plain
+    Narration instead; this event exists specifically so every real scope
+    change is audited (LangGraphAgent._emit logs every AgentEvent)."""
+
+    action: str  # "add" or "remove"
+    target: str
+
+
+@dataclass(frozen=True, slots=True)
 class DEPGUpdated(_Event):
     nodes: tuple[DEPGNode, ...] = ()
     edges: tuple[DEPGEdge, ...] = ()
@@ -339,6 +352,7 @@ AgentEvent: TypeAlias = (
     | ToolFinished
     | ToolFailed
     | PhaseChanged
+    | ScopeChanged
     | DEPGUpdated
     | MemoryUpdated
     | TokenDelta
@@ -358,6 +372,7 @@ EVENT_TYPES: dict[str, type] = {
         ToolFinished,
         ToolFailed,
         PhaseChanged,
+        ScopeChanged,
         DEPGUpdated,
         MemoryUpdated,
         TokenDelta,

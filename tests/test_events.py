@@ -21,6 +21,7 @@ from cism.tui.events import (
     RunFinished,
     RunStarted,
     SalienceTerms,
+    ScopeChanged,
     TokenDelta,
     ToolFailed,
     ToolFinished,
@@ -40,6 +41,7 @@ SIMPLE_EVENTS = [
     ToolFinished("c1", "6 open ports", 1247, "T1", 0.91),
     ToolFailed("c1", "timeout", "traceback text"),
     PhaseChanged("exploitation", "PTES"),
+    ScopeChanged("add", "scanme.nmap.org"),
     TokenDelta(12, 1200, 4096, 32768),
     Interrupted("user interrupt"),
 ]
@@ -61,6 +63,7 @@ def test_every_event_type_is_registered() -> None:
         "ToolFinished",
         "ToolFailed",
         "PhaseChanged",
+        "ScopeChanged",
         "DEPGUpdated",
         "MemoryUpdated",
         "TokenDelta",
