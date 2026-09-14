@@ -359,8 +359,19 @@ class LangGraphAgent:
                     )
                 )
                 return
+            already = set(guard.scope.entries())
             guard.expand(addition)
-            for token in addition.entries():
+            new_tokens = [token for token in addition.entries() if token not in already]
+            if not new_tokens:
+                await self._emit(
+                    Narration(
+                        entry_id=f"cfg-{uuid.uuid4().hex[:8]}",
+                        text=f"{rest!r} already in scope — no changes made",
+                        done=True,
+                    )
+                )
+                return
+            for token in new_tokens:
                 await self._emit(ScopeChanged(action="add", target=token))
             return
 

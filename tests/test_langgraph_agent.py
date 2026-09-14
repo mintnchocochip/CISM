@@ -1138,6 +1138,17 @@ async def test_scope_add_actually_widens_the_live_guard(tmp_path, monkeypatch) -
     await agent.aclose()
 
 
+async def test_scope_add_of_an_already_in_scope_target_emits_no_event(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = _live_tools_agent(EngagementScope(domains=("example.com",)))
+
+    await agent.submit("/scope add example.com")
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert not isinstance(event, ScopeChanged)
+    assert "example.com" in event.text
+    await agent.aclose()
+
+
 async def test_scope_add_with_nothing_usable_reports_an_error(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     agent = _live_tools_agent()
@@ -1157,6 +1168,34 @@ async def test_scope_remove_emits_a_scope_changed_event(tmp_path, monkeypatch) -
     assert isinstance(event, ScopeChanged)
     assert event.action == "remove"
     assert event.target == "example.com"
+    await agent.aclose()
+
+
+async def test_scope_remove_actually_narrows_the_live_guard(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    stage = ScopeGuardStage(EngagementScope(domains=("example.com",)))
+    guardrails = GuardrailSeam(
+        input=GuardrailChain([PassThroughStage()]),
+        action=GuardrailChain([stage]),
+        output=GuardrailChain([PassThroughStage()]),
+    )
+    agent = LangGraphAgent(guardrails=guardrails)
+
+    await agent.submit("/scope remove example.com")
+    await asyncio.wait_for(agent.events.get(), timeout=1)
+
+    assert "example.com" not in stage.scope.domains
+    await agent.aclose()
+
+
+async def test_scope_remove_with_no_argument_reports_an_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = _live_tools_agent(EngagementScope(domains=("example.com",)))
+
+    await agent.submit("/scope remove")
+    event = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert not isinstance(event, ScopeChanged)
+    assert "target" in event.text.lower()
     await agent.aclose()
 
 
