@@ -70,8 +70,15 @@ def make_think_node(
             names.add("tool_help")
         phase_tools = [tools.get(name) for name in names]
         bound = _bind_tools_if_supported(llm, phase_tools)
-        # Prepended for this invocation only, never appended to state.
-        messages = [SystemMessage(content=profile.system_prompt), *state["messages"]]
+        # Prepended for this invocation only, never appended to state. The
+        # target line exists because profile.system_prompt is phase-only and
+        # never mentions it — without this, the model has no way to know
+        # what "the target" or "our target" refers to.
+        target_line = f"Target: {state['target']}" if state["target"] else "No target configured yet."
+        messages = [
+            SystemMessage(content=f"{target_line}\n\n{profile.system_prompt}"),
+            *state["messages"],
+        ]
         response = None
         async for chunk in bound.astream(messages):
             response = chunk if response is None else response + chunk

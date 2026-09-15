@@ -114,10 +114,16 @@ class DEPGNode:
     evidence: tuple[Evidence, ...] = ()
     #: The choice that made this node current — not the whole decision trail.
     decision: Decision | None = None
+    #: The specific fact distinguishing this node from siblings that share
+    #: cause_class and target (e.g. which port, for a batch of open-port
+    #: nodes on the same host) — see derive_node_id. Defaulted/trailing so
+    #: existing positional construction keeps working; "" renders as before.
+    signal: str = ""
 
     def label(self) -> str:
+        signal = f" ({self.signal})" if self.signal else ""
         return (
-            f"[{self.cause_class}] {self.target} "
+            f"[{self.cause_class}] {self.target}{signal} "
             f"— generality γ={self.generality:.2f} ({self.downstream} downstream)"
         )
 

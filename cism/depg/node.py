@@ -46,4 +46,5 @@ class Node:
             downstream=self.downstream,
             evidence=tuple(e.to_event() for e in self.evidence),
             decision=self.decision,
+            signal=self.signal,
         )

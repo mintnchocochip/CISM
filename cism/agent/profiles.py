@@ -35,6 +35,12 @@ class PhaseProfiles:
     def get(self, phase: Phase) -> PhaseProfile:
         return self._profiles[phase]
 
+    def phases(self) -> list[Phase]:
+        """Registered phases only — a caller iterating all of them (e.g.
+        collecting every action_stage) must not assume every Phase is
+        present, since a test/partial PhaseProfiles isn't required to."""
+        return list(self._profiles)
+
 
 _PROMPTS: dict[Phase, str] = {
     Phase.RECON: (

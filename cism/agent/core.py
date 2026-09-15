@@ -361,6 +361,12 @@ class LangGraphAgent:
             stage.name
             for chain in (self._guardrails.input, self._guardrails.action, self._guardrails.output)
             for stage in chain.stages
+        } | {
+            # PhaseToolGuardStage et al. live per-phase in self._profiles, not
+            # in guardrails.action — without this they're invisible to /ablate.
+            stage.name
+            for phase in self._profiles.phases()
+            for stage in self._profiles.get(phase).action_stages
         }
         if argument not in known_tools and argument not in known_stages:
             await self._emit(
@@ -480,6 +486,7 @@ class LangGraphAgent:
         ablated, self._ablated = self._ablated, set()
         graph = self._graph
         guardrails = self._guardrails
+        profiles = self._profiles
         if ablated:
             tools = ToolRegistry([t for t in self._tools.all() if t.name not in ablated])
             guardrails = GuardrailSeam(
@@ -493,12 +500,25 @@ class LangGraphAgent:
                     [s for s in self._guardrails.output.stages if s.name not in ablated]
                 ),
             )
+            # Per-phase stages (e.g. PhaseToolGuardStage) live in profiles, not
+            # guardrails.action, so they need their own filtering pass here too.
+            profiles = PhaseProfiles(
+                {
+                    phase: dataclasses.replace(
+                        self._profiles.get(phase),
+                        action_stages=tuple(
+                            s for s in self._profiles.get(phase).action_stages if s.name not in ablated
+                        ),
+                    )
+                    for phase in self._profiles.phases()
+                }
+            )
             graph = build_graph(
                 self._llm,
                 tools,
                 guardrails,
                 self._extractors,
-                self._profiles,
+                profiles,
                 checkpointer=self._checkpointer,
             )
 

@@ -12,7 +12,7 @@ import json
 
 from langchain_core.callbacks import CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 
 from cism.agent import LangGraphAgent
@@ -22,6 +22,7 @@ from cism.agent.guardrails import (
     GuardrailResult,
     GuardrailSeam,
     PassThroughStage,
+    PhaseToolGuardStage,
     ScopeGuardStage,
     parse_scope,
 )
@@ -602,6 +603,77 @@ async def test_an_ablated_guardrail_stage_is_skipped_for_the_next_run_only(
 
     events_again = await _run_to_completion(agent, "scan it again")
     assert any(isinstance(e, ToolFailed) for e in events_again)  # the stage is back
+    await agent.aclose()
+
+
+class _CallsMsfconsoleUnbound(BaseChatModel):
+    """Ignores whatever was bound — same trick as
+    test_toolkit_integration.py's _CallsCurlWith — to stand in for a
+    hallucinated call naming a tool the current phase never offered."""
+
+    @property
+    def _llm_type(self) -> str:
+        return "calls-msfconsole-unbound"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        # Scoped to this turn only (back to the most recent HumanMessage) —
+        # else a second submit() on the same checkpointed thread would see
+        # the first run's leftover ToolMessage and never call the tool again.
+        turn: list = []
+        for message in reversed(messages):
+            if isinstance(message, HumanMessage):
+                break
+            turn.append(message)
+
+        if any(isinstance(m, ToolMessage) for m in turn):
+            reply = AIMessage(content="done")
+        else:
+            reply = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "dummy_msfconsole",
+                        "args": {"module": "x", "target": "10.0.0.5"},
+                        "id": "call_1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+        return ChatResult(generations=[ChatGeneration(message=reply)])
+
+
+async def test_ablate_phase_tool_guard_lets_a_call_outside_the_phase_through(
+    tmp_path, monkeypatch
+) -> None:
+    """PhaseToolGuardStage lives in profiles.action_stages, not
+    guardrails.action — proves /ablate reaches it there too, not just the
+    base guardrail chain."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    profiles = PhaseProfiles(
+        {
+            Phase.RECON: PhaseProfile(
+                phase=Phase.RECON,
+                system_prompt="",
+                tool_names=frozenset({"dummy_nmap"}),  # dummy_msfconsole not offered here
+                action_stages=(
+                    PhaseToolGuardStage(
+                        Phase.RECON, frozenset({"dummy_nmap"}), {"dummy_msfconsole": "executes"}
+                    ),
+                ),
+            )
+        }
+    )
+    agent = LangGraphAgent(llm=_CallsMsfconsoleUnbound(), profiles=profiles)
+
+    events = await _run_to_completion(agent, "scan it")
+    assert any(isinstance(e, ToolFailed) for e in events)
+
+    await agent.submit("/ablate phase-tool-guard")
+    await asyncio.wait_for(agent.events.get(), timeout=1)  # the ablate ack
+
+    events_again = await _run_to_completion(agent, "scan it again")
+    assert any(isinstance(e, ToolFinished) for e in events_again)
+    assert not any(isinstance(e, ToolFailed) for e in events_again)
     await agent.aclose()
 
 

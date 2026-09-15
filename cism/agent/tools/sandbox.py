@@ -22,6 +22,7 @@ __all__ = [
     "BubblewrapRunner",
     "Runner",
     "SubprocessRunner",
+    "ToolExecutionError",
     "ToolNotInstalledError",
     "ToolTimeoutError",
     "run_sandboxed",
@@ -50,6 +51,17 @@ class ToolNotInstalledError(Exception):
     def __init__(self, binary: str) -> None:
         super().__init__(f"{binary}: command not found")
         self.binary = binary
+
+
+class ToolExecutionError(Exception):
+    """Raised when a tool ran but exited non-zero. Keeps the real output
+    (unlike ToolNotInstalledError/ToolTimeoutError) instead of a terse label."""
+
+    def __init__(self, argv: list[str], returncode: int, output: str) -> None:
+        super().__init__(f"{argv[0]} exited {returncode}\n{output}")
+        self.argv = argv
+        self.returncode = returncode
+        self.output = output
 
 
 class Runner(Protocol):
@@ -86,7 +98,10 @@ class SubprocessRunner:
             proc.communicate()  # reap, discard
             raise ToolTimeoutError(argv, timeout) from None
 
-        return stdout.decode("utf-8", errors="replace")
+        output = stdout.decode("utf-8", errors="replace")
+        if proc.returncode != 0:
+            raise ToolExecutionError(argv, proc.returncode, output)
+        return output
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
@@ -208,7 +223,10 @@ class BubblewrapRunner:
     call if ScopeGuardStage/DangerousFlagGuardStage have a gap."""
 
     #: --ro-bind-try skips paths missing on this distro instead of erroring.
-    _RO_BIND_DIRS: tuple[str, ...] = ("/usr", "/bin", "/lib", "/lib64", "/sbin")
+    #: /opt because not every tool comes from apt — e.g. nikto (a git clone
+    #: to /opt/nikto with a symlink into /usr/local/bin) needs its actual
+    #: install tree readable, not just the symlink.
+    _RO_BIND_DIRS: tuple[str, ...] = ("/usr", "/bin", "/lib", "/lib64", "/sbin", "/opt")
 
     #: Explicitly justified, never a wholesale /etc bind (which would expose
     #: /etc/shadow, SSH host keys, etc.): resolv.conf/nsswitch.conf/hosts for
@@ -224,7 +242,8 @@ class BubblewrapRunner:
         self._etc_binds_cache: dict[str, frozenset[str]] = {}
 
     def run(self, argv: list[str], *, timeout: float, cwd: Path) -> str:
-        if shutil.which(argv[0]) is None:
+        resolved_binary = shutil.which(argv[0])
+        if resolved_binary is None:
             raise ToolNotInstalledError(argv[0])
         if shutil.which("bwrap") is None:
             raise ToolNotInstalledError("bwrap")
@@ -252,7 +271,13 @@ class BubblewrapRunner:
             "--setenv", "PATH", "/usr/bin:/bin",
             "--setenv", "HOME", "/work",
             "--setenv", "LANG", "C.UTF-8",
-            *argv,
+            # Absolute path, not argv[0] literal: PATH inside the sandbox is
+            # deliberately narrow (/usr/bin:/bin), so a binary installed
+            # elsewhere (e.g. nikto's symlink lives in /usr/local/bin) would
+            # otherwise fail a plain execvp PATH search even though its
+            # directory is bind-mounted and readable.
+            resolved_binary,
+            *argv[1:],
         ]
 
         popen_kwargs: dict[str, object] = {}
@@ -275,4 +300,7 @@ class BubblewrapRunner:
             proc.communicate()
             raise ToolTimeoutError(argv, timeout) from None
 
-        return stdout.decode("utf-8", errors="replace")
+        output = stdout.decode("utf-8", errors="replace")
+        if proc.returncode != 0:
+            raise ToolExecutionError(argv, proc.returncode, output)  # argv, not bwrap_argv
+        return output

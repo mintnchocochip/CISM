@@ -107,7 +107,10 @@ async def test_a_real_curl_call_through_build_toolkit_flows_to_a_depg_node(tmp_p
     depg_updates = [e for e in events if isinstance(e, DEPGUpdated)]
     assert depg_updates
     node = depg_updates[-1].nodes[0]
-    assert node.cause_class == "curl"
+    # curl against 127.0.0.1:1 (nothing ever listens there) genuinely fails —
+    # now correctly marked dead and pruned into a dead-region marker, rather
+    # than silently reported as a live "curl" node.
+    assert node.cause_class == "dead-region"
     assert node.target == "127.0.0.1"
     assert node.evidence
 

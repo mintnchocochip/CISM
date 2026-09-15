@@ -43,6 +43,22 @@ def test_render_argv_appends_extra_only_when_allow_raw() -> None:
     assert argv == ["--top-ports", "20", "10.0.0.5"]
 
 
+def test_render_argv_always_appends_forced_flags() -> None:
+    spec = ToolSpec(binary="nmap", capability="reads", description="d", forced_flags=["-sT", "-Pn"])
+    argv = render_argv(spec, "10.0.0.5")
+
+    assert argv == ["-sT", "-Pn", "10.0.0.5"]
+
+
+def test_render_argv_forced_flags_come_before_extra() -> None:
+    spec = ToolSpec(
+        binary="nmap", capability="reads", description="d", allow_raw=True, forced_flags=["-sT", "-Pn"]
+    )
+    argv = render_argv(spec, "10.0.0.5", extra="-p 80,443")
+
+    assert argv == ["-sT", "-Pn", "-p", "80,443", "10.0.0.5"]
+
+
 def test_build_catalog_produces_one_tool_per_row_with_its_capability() -> None:
     catalog = {
         "nikto": ToolSpec(binary="nikto", capability="reads", description="d", target="-host")
@@ -73,21 +89,20 @@ def test_nmap_catalog_row_builds_argv_from_target_and_extra() -> None:
     with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
         tool.invoke({"target": "10.0.0.5", "extra": "-p 80,443"})
 
-    assert mock_run.call_args.args[0] == ["nmap", "-p", "80,443", "10.0.0.5"]
+    assert mock_run.call_args.args[0] == ["nmap", "-sT", "-Pn", "-p", "80,443", "10.0.0.5"]
 
 
-def test_nmap_catalog_row_with_no_extra_passes_no_flags() -> None:
-    """Unlike the old hand-written nmap(), which defaulted to "-sV" when no
-    options were given, the catalog's generic `extra` field has no per-tool
-    default value — this is an accepted, minor behavior change: the whole
-    point of tool_help (Task 4) is letting the model choose its own flags
-    rather than relying on one baked in here."""
+def test_nmap_catalog_row_with_no_extra_still_forces_the_no_raw_socket_flags() -> None:
+    """-sT -Pn is forced_flags, not extra: the sandbox has no raw-socket
+    privilege regardless of what the model does or doesn't type, so this one
+    combination is baked in rather than left to the model to retype
+    correctly every call (see the nmap row in catalog.yaml)."""
     (tool,) = build_catalog({"nmap": CATALOG["nmap"]})
 
     with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
         tool.invoke({"target": "10.0.0.5"})
 
-    assert mock_run.call_args.args[0] == ["nmap", "10.0.0.5"]
+    assert mock_run.call_args.args[0] == ["nmap", "-sT", "-Pn", "10.0.0.5"]
 
 
 def test_curl_catalog_row_builds_argv_from_target_and_extra() -> None:

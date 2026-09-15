@@ -31,6 +31,7 @@ def render_argv(spec: ToolSpec, target: str, **kwargs: Any) -> list[str]:
             argv.append(flag.cli)
         else:
             argv += [flag.cli, str(kwargs[name])]
+    argv += spec.forced_flags
     if spec.allow_raw and kwargs.get("extra"):
         argv += shlex.split(str(kwargs["extra"]))
     if spec.target == "positional":

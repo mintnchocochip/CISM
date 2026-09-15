@@ -1,0 +1,10 @@
+.venv
+.git
+.pytest_cache
+__pycache__
+*.pyc
+snapshot_report.html
+tests
+bench
+demo
+cism.egg-info

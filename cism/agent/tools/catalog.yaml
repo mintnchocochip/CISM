@@ -15,8 +15,13 @@
 nikto:
   binary: nikto
   capability: reads
-  description: Web server vulnerability scan.
+  description: >-
+    Web server vulnerability scan. Self-limited to 45s of testing per host
+    automatically, so it always returns real findings instead of running
+    past the sandbox timeout and getting killed with nothing to show.
   target: "-host"
+  forced_flags: ["-maxtime", "45s"]
+  timeout: 75.0
 
 whatweb:
   binary: whatweb
@@ -31,7 +36,12 @@ dnsenum:
 nmap:
   binary: nmap
   capability: reads
-  description: Network/port scan.
+  description: >-
+    Network/port scan. -sT -Pn (TCP connect scan, skip host discovery) is
+    always applied automatically — the sandbox has no raw-socket privilege,
+    so the default SYN scan / ping discovery would fail. Use extra for
+    anything else (e.g. "-p 1-1000", "-sV").
+  forced_flags: ["-sT", "-Pn"]
   allow_raw: true
   # Explicit override, not the reads-only default above: nmap was already
   # offered in every non-reporting phase before this migration (the old

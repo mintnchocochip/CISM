@@ -17,6 +17,13 @@ def test_get_returns_the_profile_for_a_phase() -> None:
     assert profiles.get(Phase.RECON) is profile
 
 
+def test_phases_lists_only_registered_phases() -> None:
+    profile = PhaseProfile(phase=Phase.RECON, system_prompt="p", tool_names=frozenset())
+    profiles = PhaseProfiles({Phase.RECON: profile})
+
+    assert profiles.phases() == [Phase.RECON]
+
+
 def test_get_raises_on_an_unregistered_phase() -> None:
     profiles = PhaseProfiles({})
     with pytest.raises(KeyError):

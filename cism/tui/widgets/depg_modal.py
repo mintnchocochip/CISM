@@ -46,7 +46,11 @@ class DEPGTree(Tree[DEPGNode]):
         self.guide_depth = 3
 
     def node_label(self, node: DEPGNode, weight: float | None) -> Text:
-        """``[cause-class] target — generality γ=0.72 (3 downstream)``."""
+        """``[cause-class] target (signal) — generality γ=0.72 (3 downstream)``.
+
+        The signal is what distinguishes siblings sharing a cause_class and
+        target (e.g. one open-port node per port on the same host) — without
+        it, a batch of them renders as indistinguishable duplicate lines."""
         style = self.get_component_rich_style(STATE_CLASS[node.state])
         gamma = self.get_component_rich_style("node--gamma")
         weight_style = self.get_component_rich_style("node--weight")
@@ -54,7 +58,8 @@ class DEPGTree(Tree[DEPGNode]):
         label = Text()
         if weight is not None:
             label.append(f"{weight:.2f} ", style=weight_style)
-        label.append(f"[{node.cause_class}] {node.target}", style=style)
+        target = f"{node.target} ({node.signal})" if node.signal else node.target
+        label.append(f"[{node.cause_class}] {target}", style=style)
         label.append(
             f" — generality γ={node.generality:.2f} ({node.downstream} downstream)",
             style=gamma,

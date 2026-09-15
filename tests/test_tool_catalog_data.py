@@ -31,6 +31,7 @@ def test_tool_spec_flags_default_to_empty() -> None:
     spec = ToolSpec(binary="x", capability="reads", description="d")
     assert spec.flags == {}
     assert spec.target == "positional"
+    assert spec.forced_flags == []
     assert spec.allow_raw is False
     assert spec.help_flag == "--help"
     assert spec.phases is None

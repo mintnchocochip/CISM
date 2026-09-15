@@ -120,20 +120,39 @@ class HydraExtractor:
         return Extraction(nodes=[node])
 
 
+_MAX_PROMPT_CHARS = 6000
+
 _PROMPT = (
-    "You are extracting security findings from a penetration-testing tool's "
-    "raw output.\n"
+    "You are extracting security findings from the raw output of {tool}, a "
+    "penetration-testing tool.\n"
     "For each distinct finding, report: cause_class (a short label, e.g. "
     "'open-port', 'outdated-server-header'), signal (the specific fact, e.g. "
     "'443/tcp'), tier (T1=confirmed exploit/credential, T2=strong structured "
     "evidence like an open port or version string, T3=weak/unstructured "
     "evidence), verdict ('alive' if this finding is still relevant, 'dead' if "
     "the check failed or found nothing), evidence_quote (an exact substring "
-    "of the output below that backs this claim), and summary (one short "
-    "sentence).\n"
+    "of the output below that backs this claim, copied verbatim), and "
+    "summary (one short sentence).\n"
+    "Example: the line \"Server: Apache/2.2.8\" is cause_class "
+    "'outdated-server-header', signal 'Apache/2.2.8', tier T2, verdict "
+    "'alive', evidence_quote 'Server: Apache/2.2.8'.\n"
     "If there is nothing worth reporting, return an empty findings list.\n\n"
-    "Tool output:\n{output}"
+    "{tool} output{truncated_note}:\n{output}"
 )
+
+
+def _normalize_whitespace(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _grounded(quote: str, content: str) -> bool:
+    """Whitespace-insensitive substring check — a small model reproducing a
+    quote with collapsed spaces or a dropped newline shouldn't lose a tier
+    over formatting. An empty quote is never grounded."""
+    normalized_quote = _normalize_whitespace(quote)
+    if not normalized_quote:
+        return False
+    return normalized_quote in _normalize_whitespace(content)
 
 
 class ExtractedFinding(BaseModel):
@@ -163,17 +182,25 @@ class LLMExtractor:
     def extract(
         self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
     ) -> Extraction:
+        content = str(message.content)
+        tool = message.name or "unknown-tool"
+        prompt_output = content
+        truncated_note = ""
+        if len(prompt_output) > _MAX_PROMPT_CHARS:
+            prompt_output = prompt_output[:_MAX_PROMPT_CHARS]
+            truncated_note = " (truncated)"
+
         try:
             structured = self._llm.with_structured_output(ExtractedFindings)
-            result = structured.invoke([HumanMessage(content=_PROMPT.format(output=message.content))])
+            prompt = _PROMPT.format(tool=tool, truncated_note=truncated_note, output=prompt_output)
+            result = structured.invoke([HumanMessage(content=prompt)])
         except Exception:
             return self._fallback.extract(call, message, graph, target)
 
-        content = str(message.content)
         call_id = call["id"] if call else message.tool_call_id
         nodes = []
         for finding in result.findings:
-            tier = finding.tier if finding.evidence_quote in content else "T3"
+            tier = finding.tier if _grounded(finding.evidence_quote, content) else "T3"
             nodes.append(
                 Node(
                     id=derive_node_id(finding.cause_class, target, finding.signal),

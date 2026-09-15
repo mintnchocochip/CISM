@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from cism.agent.tools.sandbox import (
+    ToolExecutionError,
     ToolNotInstalledError,
     ToolTimeoutError,
     run_sandboxed,
@@ -28,6 +29,17 @@ from cism.agent.tools.sandbox import (
 def test_a_normal_command_returns_its_output() -> None:
     output = run_sandboxed([sys.executable, "-c", "print('hello')"])
     assert "hello" in output
+
+
+def test_a_nonzero_exit_raises_instead_of_being_reported_as_success() -> None:
+    script = "print('partial output before failure'); import sys; sys.exit(1)"
+
+    with pytest.raises(ToolExecutionError) as exc_info:
+        run_sandboxed([sys.executable, "-c", script])
+
+    assert exc_info.value.returncode == 1
+    assert "partial output before failure" in exc_info.value.output
+    assert "partial output before failure" in str(exc_info.value)
 
 
 def test_shell_metacharacters_in_an_argument_are_never_interpreted() -> None:
@@ -296,6 +308,7 @@ class _FakeCompletedPopen:
     canned output, never actually runs anything."""
 
     captured_argv: list[str] | None = None
+    returncode = 0
 
     def __init__(self, argv, **kwargs) -> None:
         type(self).captured_argv = argv
@@ -410,6 +423,12 @@ def test_bubblewrap_runner_binds_cwd_as_work_and_chdirs_into_it(monkeypatch) -> 
 
 
 def test_bubblewrap_runner_appends_the_real_argv_last(monkeypatch) -> None:
+    """argv[0] is resolved to its absolute path (via the same shutil.which
+    lookup already used for the ToolNotInstalledError check) rather than
+    passed through as the bare name: PATH inside the sandbox is narrowed to
+    /usr/bin:/bin, so a binary living elsewhere (e.g. nikto's symlink in
+    /usr/local/bin) would fail execvp's PATH search even with its directory
+    bind-mounted. The rest of argv (flags/target) is untouched."""
     from cism.agent.tools import sandbox as sandbox_module
     from cism.agent.tools.sandbox import BubblewrapRunner
 
@@ -419,7 +438,7 @@ def test_bubblewrap_runner_appends_the_real_argv_last(monkeypatch) -> None:
 
     BubblewrapRunner().run(["curl", "-sS", "https://x"], timeout=5.0, cwd=Path("/tmp/scratch"))
 
-    assert _FakeCompletedPopen.captured_argv[-3:] == ["curl", "-sS", "https://x"]
+    assert _FakeCompletedPopen.captured_argv[-3:] == ["/usr/bin/curl", "-sS", "https://x"]
 
 
 def test_bubblewrap_runner_raises_tool_not_installed_for_a_missing_binary(monkeypatch) -> None:
@@ -577,6 +596,22 @@ def test_bubblewrap_runner_does_not_leak_secret_environment_variables(tmp_path, 
 
     assert "super-secret-test-value" not in output
     assert "CISM_API_KEY" not in output
+
+
+@requires_bwrap
+def test_bubblewrap_runner_raises_tool_execution_error_on_nonzero_exit(tmp_path) -> None:
+    from cism.agent.tools.sandbox import BubblewrapRunner, ToolExecutionError
+
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+
+    with pytest.raises(ToolExecutionError) as exc_info:
+        BubblewrapRunner().run(
+            ["sh", "-c", "echo real-output; exit 3"], timeout=5.0, cwd=scratch
+        )
+
+    assert exc_info.value.returncode == 3
+    assert "real-output" in exc_info.value.output
 
 
 @requires_bwrap

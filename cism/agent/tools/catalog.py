@@ -32,6 +32,11 @@ class ToolSpec(BaseModel):
     description: str
     flags: dict[str, Flag] = {}
     target: str = "positional"
+    #: Always appended, regardless of what the model puts in `extra` — for a
+    #: sandbox-wide constraint the model can't be trusted to retype
+    #: correctly every call (e.g. nmap's no-raw-socket workaround), not a
+    #: general default. extra can still add anything on top.
+    forced_flags: list[str] = []
     allow_raw: bool = False
     timeout: float = 60.0
     #: The rare binary needing `-h` (or something else) instead of `--help`

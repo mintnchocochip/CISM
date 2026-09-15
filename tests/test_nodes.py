@@ -451,7 +451,7 @@ async def test_think_always_binds_tool_help_even_when_the_profile_declares_no_to
     )
     think = make_think_node(_RecordsBoundTools(), ToolRegistry([help_tool]), profiles)
 
-    await think({"messages": [HumanMessage(content="go")], "phase": Phase.REPORTING})
+    await think({"messages": [HumanMessage(content="go")], "phase": Phase.REPORTING, "target": "10.0.0.5"})
 
     assert [t.name for t in recorded[0]] == ["tool_help"]
 
@@ -527,6 +527,28 @@ async def test_act_blocks_a_call_to_a_tool_the_registry_does_not_have_instead_of
     assert message.content == "blocked by action guardrail"
     assert message.status == "error"
     assert "dummy_msfconsole" in message.additional_kwargs["guardrail_detail"]
+
+
+async def test_act_marks_a_nonzero_exit_as_error_and_keeps_its_output() -> None:
+    from cism.agent.tools.sandbox import ToolExecutionError
+
+    def _fails(**kwargs) -> str:
+        raise ToolExecutionError(["nmap"], 1, "Couldn't open a raw socket.")
+
+    failing_tool = StructuredTool.from_function(func=_fails, name="dummy_nmap", description="")
+    action_chain = GuardrailChain([])
+    profiles = PhaseProfiles(
+        {Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="", tool_names=frozenset({"dummy_nmap"}))}
+    )
+    act = make_act_node(ToolRegistry([failing_tool]), action_chain, profiles)
+    call = {"id": "c1", "name": "dummy_nmap", "args": {}, "type": "tool_call"}
+    state = _state([AIMessage(content="", tool_calls=[call])])
+
+    result = await act(state)
+
+    message = result["messages"][0]
+    assert message.status == "error"
+    assert "Couldn't open a raw socket." in message.content
 
 
 async def test_act_runs_a_slow_sync_tool_without_blocking_the_event_loop() -> None:
