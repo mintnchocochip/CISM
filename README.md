@@ -68,9 +68,31 @@ python run_agent.py
 python run_agent.py --target 10.0.0.5
 ```
 
-Also no lab, no weights, no network — the model behind it is a canned
-`DummyChatModel` and the two tools it can call are stubs — but it is a real
-run through LangGraph's own graph loop, not a scripted log.
+With no other flags, no lab, no weights, no network are required — the model
+behind it is a canned `DummyChatModel` and the two tools it can call are
+stubs (`dummy_nmap`/`dummy_msfconsole`) — but it is a real run through
+LangGraph's own graph loop, not a scripted log.
+
+Point it at a real OpenAI-compatible server (llama.cpp, vLLM, LM Studio, real
+OpenAI, or Ollama's `/v1` endpoint) with `--base-url`/`--model`:
+
+```bash
+python run_agent.py --base-url http://localhost:11434/v1 --model qwen2.5:3b
+```
+
+Pass `--live-tools --scope <cidr|domain,...>` to run the real tool catalog
+(nmap/curl/nikto/whatweb/dnsenum/hydra) instead of the dummy stubs, sandboxed
+via `bwrap` (bubblewrap) and gated by a real `ScopeGuardStage`/
+`DangerousFlagGuardStage` action chain — see "Tool catalog" below for what's
+in it and what installing it requires:
+
+```bash
+python run_agent.py --live-tools --scope 10.0.0.0/24,example.internal \
+    --base-url http://localhost:11434/v1 --model qwen2.5:3b
+```
+
+`--key-env-var` names the environment variable holding the API key (default
+`CISM_API_KEY`) for a server that needs one.
 
 ## Keys
 
@@ -95,15 +117,20 @@ run through LangGraph's own graph loop, not a scripted log.
 | `/target <spec>` | declare the target environment, e.g. `linux nginx php` |
 | `/api [url]` | show or switch the inference endpoint |
 | `/phase <name>` | force a PTES phase transition |
+| `/scope [add\|remove] <target>` | view or extend the live engagement scope |
 | `/depg` `/mem` | the two modal views |
 | `/replay <run_id>` | counterfactual replay from the output cache |
 | `/ablate <part>` | disable a component for the next run |
 | `/export` `/clear` `/help` | |
 
-`/depg`, `/mem`, `/models`, `/clear`, `/help`, `/export`, and a bare `/api`
-are answered by the TUI from state it already holds. Everything else is
-forwarded to the agent as a normal submission — the UI cannot force a phase
-transition or load a model on its own, it can only ask.
+`/depg`, `/mem`, `/models`, `/clear`, `/help`, and `/export` are answered by
+the TUI from state it already holds. Everything else — including a bare
+`/api`, `/model`, `/target`, `/phase`, and `/scope` — is forwarded to the
+agent as a normal submission; the UI cannot force a phase transition, load a
+model, or widen scope on its own, it can only ask. `/scope` with no argument
+lists the current engagement scope; `/scope add <cidr|domain>` and `/scope
+remove <cidr|domain>` extend or shrink it live, on top of whatever
+`run_agent.py --scope` set at startup.
 
 ### Keys are never typed into the composer
 
@@ -174,6 +201,8 @@ and a wall-clock `ts`, so a run can be recorded, diffed, and replayed.
 | `ToolFinished` | `call_id`, `summary`, `lines`, `tier`, `score` | fills the `⎿` line |
 | `ToolFailed` | `call_id`, `reason`, `traceback` | red glyph, traceback stays collapsed |
 | `PhaseChanged` | `phase`, `framework` | draws a phase rule, swaps the verb list |
+| `ScopeChanged` | `action`, `target` | reports a `/scope add`/`remove` that actually changed scope |
+| `NarrationRedacted` | `entry_id`, `reason` | retroactively withholds a streamed entry |
 | `DEPGUpdated` | `nodes`, `edges` | replaces the DEPG model |
 | `MemoryUpdated` | `rows`, `terms` | replaces the memory model |
 | `TokenDelta` | `delta`, `total`, `ctx_used`, `ctx_max` | status bar and token counter |
@@ -181,7 +210,7 @@ and a wall-clock `ts`, so a run can be recorded, diffed, and replayed.
 | `Interrupted` | `reason` | stops the indicator, marks the transcript |
 | `RunFinished` | `run_id`, `ok` | stops the indicator |
 
-`AgentEvent` is the union alias over those thirteen types.
+`AgentEvent` is the union alias over those fifteen types.
 
 **`SessionState` never carries a key.** It carries the *name* of the
 environment variable and a boolean saying whether it is set. The TUI has no
@@ -267,8 +296,16 @@ depg_update ── ExtractorRegistry turns successful tool results into DEPG nod
   │
 phase_router ── proposes a legal phase move via PhaseStateMachine
   │
+memory_update ── this step's findings, failures, narration and phase changes upsert into MemoryStore
+  │
   └──▶ think (loop)
 ```
+
+State — messages, DEPG nodes/edges, memory items, phase — persists across
+`submit()` calls within one process: `LangGraphAgent.__init__` builds a
+`MemorySaver()` checkpointer and every `build_graph()` call in the class is
+compiled with it, keyed by a stable per-agent `thread_id`. It does not
+survive a process restart.
 
 - **Phase** (`cism/agent/state.py`) — the six-phase enum below, with an
   explicit transition table rather than a strict linear sequence, so a
@@ -288,50 +325,128 @@ phase_router ── proposes a legal phase move via PhaseStateMachine
 
 - **Guardrails** (`cism/agent/guardrails/`) — chain of responsibility, three
   seams (input, action, output). Input and output are still pass-through;
-  the action chain has its first real stage, `ScopeGuardStage`
+  the action chain has three real stages: `ScopeGuardStage`
   (`guardrails/scope.py`), which blocks a tool call whose target falls
-  outside a declared `EngagementScope` (a CIDR/domain allowlist) — a
-  heuristic safety net, since it can only check targets it can actually find
-  in a call's arguments, not a formal guarantee. Adding another real check
-  is still just appending a stage; neither the chain runner nor the graph
-  shape changes.
+  outside a declared `EngagementScope` (a CIDR/domain allowlist);
+  `DangerousFlagGuardStage` (`guardrails/dangerous_flags.py`), a denylist
+  that blocks a call whose free-form flags could read/write outside the
+  sandbox scratch dir or trigger code execution (e.g. nmap NSE scripting);
+  and `PhaseToolGuardStage` (`guardrails/phase_tool.py`), which re-checks a
+  call's tool against the current phase's catalog-derived allowlist at call
+  time. All three are heuristic safety nets — they can only check what they
+  can actually find in a call's arguments, not a formal guarantee. Adding
+  another real check is still just appending a stage; neither the chain
+  runner nor the graph shape changes.
 - **Tools** (`cism/agent/tools/`) — `ToolRegistry` is a hard allowlist: a
   tool is reachable only if it was explicitly constructed into the registry,
   and looking up a name that wasn't raises rather than failing silently.
   `LangGraphAgent()`'s default stays `dummy_nmap`/`dummy_msfconsole` (canned
-  output, no subprocess); real, subprocess-backed tools — `nmap`, `curl`,
-  `hydra` so far, with the rest of a ~53-tool catalog still to come — are
-  opt-in, constructed into the registry explicitly by whoever wants a live
-  run. Every real tool goes through one seam, `run_sandboxed()`
-  (`tools/sandbox.py`): argv-only execution (never `shell=True`), a per-call
-  scratch directory that no longer exists once the call returns, and a hard
-  timeout that kills the whole process tree, not just the leaf — behind a
-  `Runner` protocol so a container-backed implementation can replace
-  `SubprocessRunner` later without any tool function changing.
+  output, no subprocess); real, subprocess-backed tools are opt-in,
+  constructed into the registry explicitly by whoever wants a live run — see
+  "Tool catalog" below for the current list. Every real tool goes through
+  one seam, `run_sandboxed()` (`tools/sandbox.py`): argv-only execution
+  (never `shell=True`), a per-call scratch directory that no longer exists
+  once the call returns, and a hard timeout that kills the whole process
+  tree, not just the leaf — behind a `Runner` protocol so a container-backed
+  implementation can replace `SubprocessRunner` later without any tool
+  function changing.
 - **DEPG domain model** (`cism/depg/`) — `Node` and `Edge`, the agent's
   mutable working copy of the dependency/error-propagation graph, distinct
   from the frozen `DEPGNode`/`DEPGEdge` wire format above. `Graph`
   (`depg/graph.py`) is the container that merges nodes/edges as they're
-  proposed; `ExtractorRegistry`/`CauseExtractor` (`depg/extract.py`) is the
-  seam a tool's result turns into `Node`/`Edge` proposals through — today
-  only `GenericExtractor` is registered, stamping one untested node per
-  successful tool call with the tool's own name as its cause-class, so a
-  live run now shows real (if unlabeled) DEPG nodes instead of the empty
-  modal a bare agent run used to leave. `to_event()`/`Graph.to_event()` are
-  the only places any of this touches `cism.tui.events`. Cause-class-specific
-  extraction, γ/propagation math, and graph traversal are still later work.
+  proposed, resolves each dirty node's `state` via `reduce_state`
+  (`depg/reducer.py`), and prunes fully-dead regions.
+  `ExtractorRegistry`/`CauseExtractor` (`depg/extract.py`) is the seam a
+  tool's result turns into `Node`/`Edge` proposals through: `NmapExtractor`
+  and `HydraExtractor` (`depg/extractors.py`) parse their tool's own
+  plain-text output directly; every other tool falls back to `LLMExtractor`
+  (same file — structured-output extraction, grounded against the tool's
+  own text, T3-clamped if a claimed quote isn't actually present) or, failing
+  that, `GenericExtractor` (`depg/extract.py`), which stamps one untested
+  node per tool call with the tool's own name as cause-class. `depg/linking.py`
+  finds each new node's precondition (the node that led to it);
+  `depg/normalize.py` normalizes a target string (scheme/port/case/trailing
+  dot stripped) before it becomes part of a node's identity, so
+  `10.0.0.5`/`ssh://10.0.0.5:22`/`10.0.0.5.` collapse onto one node family
+  instead of fragmenting. `to_event()`/`Graph.to_event()` are the only
+  places any of this touches `cism.tui.events`. `generality`/`downstream`
+  are defined on every node but not yet computed anywhere — they render as
+  `γ=0.00 (0 downstream)` in the DEPG modal until that's wired in. γ/graded
+  propagation (`Edge.weight` is stored but inert; a precondition is
+  currently live-or-dead, not soft-weakened) is later work.
+- **Memory** (`cism/memory/`) — `MemoryStore` (`memory/store.py`), the
+  working container `memory_update` mutates each step, mirroring `Graph`'s
+  role for the DEPG. A DEPG-derived row keys on the node's own id; a
+  narration/tool-failure candidate keys on `memory_key(source, phase,
+  snippet)` so a recurring one collapses onto one row (`hits` increments)
+  instead of spamming the memory view. Each `MemoryItem` carries a tier
+  (T1/T2/T3), the phase it was seen in, a snippet, and a salience score
+  computed from `DEFAULT_SALIENCE_TERMS` (tier weight, time decay, a small
+  per-hit bonus) — the same coefficients the replay demo's recorded log
+  uses, so a live run and the demo decay memory identically.
 - **Logging** (`cism/agent/logging.py`) — separate from both the event
   stream and DEPG evidence: JSONL operational logging for graph steps, tool
   calls, and guardrail decisions, written to `~/.cism/logs/agent.log` with a
-  1-day retention TTL enforced by both file rotation and a startup sweep.
+  retention TTL enforced by both file rotation and a startup sweep; also
+  `read_run_events(run_id)`, the read path `/replay` uses to pull one run's
+  events back out of the log.
 
-What isn't here yet: a real model, the rest of the tool catalog (~50 more
-tools beyond `nmap`/`curl`/`hydra`), cause-class-specific DEPG extraction
-(today's `GenericExtractor` labels every node with the calling tool's own
-name), γ/propagation math, phase locking, and guardrail logic beyond the
-action chain's scope check (input and output are still pass-through). Each
-was designed with a single, explicit seam to extend into, so none of it
-should require reshaping what's already built.
+  There is no live-log view inside the TUI itself. To watch it while an
+  agent is actually running, tail the file from another terminal:
+
+  ```bash
+  tail -f ~/.cism/logs/agent.log | jq .
+  ```
+
+  Or filter to one run:
+
+  ```bash
+  jq 'select(.data.run_id == "YOUR_RUN_ID")' ~/.cism/logs/agent.log
+  ```
+
+### Tool catalog
+
+The real catalog is small and deliberately data-driven. Five tools are
+declared in `cism/agent/tools/catalog.yaml` (binary, capability, target flag,
+timeout, allowed phases): **nikto**, **whatweb**, **dnsenum**, **nmap**,
+**curl**. A sixth, **hydra**, doesn't fit that flat shape — it needs a
+scratch directory pre-populated with credential files before the process
+starts — so it's hand-written in `cism/agent/tools/credentials.py` instead.
+`build_toolkit(CATALOG, [hydra], EXTRACTORS)` (`run_agent.py`) assembles all
+six plus a synthetic `tool_help` tool into one `ToolRegistry`. Extending the
+catalog with another flag-and-target-shaped tool is a `catalog.yaml` row, not
+a new Python function; a tool with hydra's shape needs its own hand-written
+function next to `credentials.py`.
+
+`--live-tools` also hard-requires `bwrap` (bubblewrap), the sandboxing
+seam every real tool call runs through. On Debian/Ubuntu/Kali:
+
+```bash
+sudo apt update && sudo apt install -y nmap curl nikto whatweb dnsenum hydra bubblewrap
+```
+
+`hydra`'s `userlist`/`passwordlist` arguments only ever select one of two
+fixed, named wordlists (`cism/agent/tools/credentials.py`) — never an
+arbitrary path, so a compromised model can't turn a credential tool into a
+way to read arbitrary files off the host. No package installs these under
+these exact names; create them yourself with whatever username/password
+lists you're authorized to use:
+
+```bash
+sudo install -d /usr/share/wordlists
+sudo $EDITOR /usr/share/wordlists/common-users.txt
+sudo $EDITOR /usr/share/wordlists/common-passwords.txt
+```
+
+What isn't here yet: a real model by default (still `DummyChatModel` unless
+`--base-url`/`--model` is passed), a bigger tool catalog beyond the six
+above, computed `generality`/`downstream` weighting in the DEPG view, LLM
+reconciliation of near-duplicate DEPG nodes, IP/hostname alias merging, and
+guardrail logic beyond the action chain (input and output are still
+pass-through). Each was designed with a single, explicit seam to extend
+into, so none of it should require reshaping what's already built. See
+[docs/next-phase-roadmap.md](docs/next-phase-roadmap.md) for the fuller,
+file:line-cited list.
 
 ## The status line
 
@@ -426,19 +541,24 @@ For the full suite, `pytest -n auto` (via `pytest-xdist`) parallelizes across
 CPU cores — roughly 2x faster, same pass/fail result. Stick to plain `pytest`
 when debugging a single test with `-s`/`-vv`, since worker output interleaves.
 
-258 tests: the event contract and its serialisation, the replayer, transcript
+624 tests: the event contract and its serialisation, the replayer, transcript
 and composer behaviour, every keybinding, status-line elision at ten widths,
 credential masking end to end, both modals, and ten SVG snapshots pinning the
 look — plus, for the agent core, the phase state machine's legal and illegal
-transitions, the guardrail chain's short-circuit behaviour, the tool
-registry's allowlist, DEPG node/edge wire-format round-trips, the `Graph`
-container's merge/dedupe rules, `depg_update` turning tool results into DEPG
-nodes, the logger's retention sweep, `LangGraphAgent` run end to end
-(including a blocked input, a blocked action, and a live run's `DEPGUpdated`
-stream), `run_sandboxed`'s timeout/process-tree-kill/output-capping behaviour,
-`ScopeGuardStage`'s allow/block heuristics, a real `curl` call proven end to
-end through the graph loop, and one test driving `CISMApp` with a real
-`LangGraphAgent` instead of `FakeAgent`.
+transitions, each guardrail stage (`ScopeGuardStage`, `DangerousFlagGuardStage`,
+`PhaseToolGuardStage`) and the chain's short-circuit behaviour, the tool
+registry's allowlist and `catalog.yaml`/`build_toolkit` assembly, DEPG
+node/edge wire-format round-trips, the `Graph` container's merge/dedupe/
+settle/prune rules, target normalization, `depg_update` turning tool results
+into DEPG nodes (including the real `NmapExtractor`/`HydraExtractor`/
+`LLMExtractor`), memory's tiered upsert, the logger's retention sweep and
+`/replay`'s read path, `LangGraphAgent` run end to end (including a blocked
+input, a blocked action, `/scope`/`/ablate`/`/replay`, and a live run's
+`DEPGUpdated` stream, across process restarts via the checkpointer),
+`run_sandboxed`'s timeout/process-tree-kill/output-capping behaviour and
+`BubblewrapRunner`'s sandbox binds, real `curl`/`nmap` calls proven end to
+end through the graph loop via `build_toolkit`, and one test driving
+`CISMApp` with a real `LangGraphAgent` instead of `FakeAgent`.
 
 The spinner has its own invariant test — every glyph must be exactly one cell
 and not East-Asian-Ambiguous. The first glyph set failed both, which is why
@@ -483,21 +603,34 @@ cism/tui/
     depg_modal.py     Tree + decision-path and evidence DataTables
     memory_modal.py   sortable DataTable + live salience equation
 cism/agent/            the LangGraph-backed core — see "The agent core"
-  core.py               LangGraphAgent — satisfies the Agent protocol
+  core.py               LangGraphAgent — satisfies the Agent protocol, checkpointer, /scope /replay /ablate
   graph.py              build_graph() — the compiled LangGraph, pure factory
-  nodes.py              think / act / depg_update / phase_router / respond
+  nodes.py              think / act / depg_update / phase_router / memory_update / respond
   state.py              Phase, PHASE_TRANSITIONS, PhaseStateMachine, AgentState
+  profiles.py           PhaseProfiles — per-phase system prompt + tool allowlist
   llm.py                DummyChatModel — canned, deterministic
-  logging.py            JSONL operational logging, 1-day retention TTL
-  tools/                ToolRegistry (hard allowlist) + dummy_nmap/dummy_msfconsole
-    sandbox.py            run_sandboxed() — the shared execution seam for real tools
-    discovery.py, linux.py, credentials.py   real tools so far: nmap, curl, hydra
-  guardrails/           GuardrailChain, GuardrailSeam — input/output still pass-through
-    scope.py              ScopeGuardStage — the action chain's first real check
+  logging.py            JSONL operational logging, retention TTL + /replay's read path
+  tools/                ToolRegistry (hard allowlist), catalog assembly, dummy_nmap/dummy_msfconsole
+    catalog.py             ToolSpec/Flag — the data-driven tool schema
+    catalog.yaml           the 5 declared tools: nikto, whatweb, dnsenum, nmap, curl
+    credentials.py         hydra — hand-written, doesn't fit catalog.yaml's flat shape
+    sandbox.py             run_sandboxed() — the shared execution seam for real tools
+    registry.py            ToolRegistry — the hard allowlist
+    base.py                build_catalog/build_toolkit — assembles catalog.yaml + hydra + tool_help
+  guardrails/            GuardrailChain, GuardrailSeam — input/output still pass-through
+    scope.py               ScopeGuardStage — target vs. EngagementScope
+    dangerous_flags.py     DangerousFlagGuardStage — denylist on free-form flags
+    phase_tool.py          PhaseToolGuardStage — re-checks tool-vs-phase at call time
+  memory/                MemoryStore — tiered (T1/T2/T3) retained findings
 cism/depg/              the dependency/error-propagation graph domain model
   node.py, edge.py      mutable Node/Edge, to_event() into the TUI wire format
-  graph.py              Graph — merges nodes/edges as extraction proposes them
-  extract.py            ExtractorRegistry/CauseExtractor — GenericExtractor so far
+  evidence.py            Evidence — one observation attached to a node
+  graph.py               Graph — merges nodes/edges, settle() derives state, prune() collapses dead regions
+  reducer.py              reduce_state() — node state from evidence + parent support
+  extract.py              ExtractorRegistry/CauseExtractor/GenericExtractor — the fallback seam
+  extractors.py            NmapExtractor, HydraExtractor, LLMExtractor — the real ones
+  linking.py               find_precondition() — links a new node to what led to it
+  normalize.py             normalize_target(), hash_signal() — deterministic identity transforms
 demo_replay.py        the demo entry point (FakeAgent, replays a log)
 demo/recon_run.jsonl  the recorded run
 run_agent.py          the live entry point (LangGraphAgent; a real OpenAI-compatible

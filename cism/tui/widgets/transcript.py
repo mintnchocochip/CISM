@@ -1,13 +1,7 @@
-"""The transcript: one scrolling column of left-aligned entries.
-
-There are no boxes and no panels here. Every entry is a plain widget in a
-single ``VerticalScroll``, which is anchored to the bottom so new content
-follows the cursor until the user scrolls up — at which point Textual releases
-the anchor on its own and autoscroll pauses.
-
-Tool output is collapsed by default. The ``⎿`` line is focusable and
-clickable; expanding reveals a scrollable, dim block indented five spaces.
-"""
+"""The transcript: one scrolling column of left-aligned entries, no boxes
+or panels. A single ``VerticalScroll`` anchors to the bottom until the user
+scrolls up. Tool output is collapsed by default; the ``⎿`` line is
+focusable/clickable and expands to a scrollable, dim indented block."""
 
 from __future__ import annotations
 
@@ -46,17 +40,10 @@ class UserTurn(Static):
 
 
 class NarrationEntry(Static):
-    """Streamed model narration.
-
-    Chunks are appended to one Rich ``Text`` held by the widget and flushed on
-    a coalescing timer. The widget is never rebuilt and the buffer is never
-    re-joined, so append cost does not grow with entry length.
-
-    Expanded by default — you watch it type live, and a finished answer
-    shouldn't vanish on its own. ``ctrl+o`` (routed through
-    ``Transcript.last_collapsible()``) can collapse it once it's ``done``,
-    the same mechanism ``ToolEntry`` already uses for tool output.
-    """
+    """Streamed model narration. Chunks append to one Rich ``Text`` held by
+    the widget and flush on a coalescing timer, so append cost doesn't grow
+    with entry length. Expanded by default; ``ctrl+o`` can collapse it once
+    ``done``, same mechanism ``ToolEntry`` uses for tool output."""
 
     COMPONENT_CLASSES = {"narration--text", "narration--hint"}
 
@@ -183,12 +170,9 @@ class ToolMeta(Static):
         return out
 
     def _append_wrapped(self, out: Text, runs: list[tuple[str, object]]) -> None:
-        """Fill words into the line, hanging-indenting wraps to column 5.
-
-        Rich has no hanging-indent mode, and letting the widget wrap on its own
-        pushes continuations back to column 0 — which breaks the ``⎿`` gutter
-        that makes a tool entry readable at a glance.
-        """
+        """Fill words into the line, hanging-indenting wraps to column 5 —
+        Rich has no hanging-indent mode, and default wrap would push
+        continuations back to column 0 and break the ``⎿`` gutter."""
         width = max((self.size.width or 80) - len(INDENT), 16)
         used = 0
         for text, style in runs:
@@ -323,15 +307,10 @@ class PhaseRule(Static):
 
 
 class Transcript(VerticalScroll):
-    """The one scroll region.
-
-    Content is top-aligned until it overflows, then the view follows the
-    bottom. Scrolling up pauses that; returning to the bottom resumes it.
-
-    Textual's own :meth:`anchor` is not used here: it pins short content to
-    the bottom of the viewport, so an almost-empty transcript would float
-    just above the composer instead of starting at the top.
-    """
+    """The one scroll region. Content is top-aligned until it overflows,
+    then follows the bottom; scrolling up pauses that. Textual's own
+    :meth:`anchor` isn't used — it pins short content to the bottom, which
+    would float an almost-empty transcript instead of starting at the top."""
 
     #: How often the follow check runs, in seconds.
     FOLLOW_INTERVAL = 1 / 15
@@ -357,13 +336,9 @@ class Transcript(VerticalScroll):
         )
 
     def pause_follow(self) -> None:
-        """Stop tracking the bottom for good.
-
-        Clearing the flag alone is not enough: the next tick sees the viewport
-        sitting at the bottom and turns following back on. Callers that need
-        the scroll position to stay put — a scripted capture, say — have to
-        stop the timer as well.
-        """
+        """Stop tracking the bottom for good — clearing the flag alone isn't
+        enough, since the next tick would see the viewport at the bottom
+        and turn following back on, so the timer stops too."""
         self._following = False
         if self._follow_timer is not None:
             self._follow_timer.stop()

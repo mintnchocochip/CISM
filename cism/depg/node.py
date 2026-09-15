@@ -1,14 +1,8 @@
-"""The agent-side working node of the Dependency / Error Propagation Graph.
-
-This is the mutable copy the agent updates as a run progresses. It is a
-different object from :class:`cism.tui.events.DEPGNode`, which is the
-frozen, whole-state-replacement wire format the TUI consumes. ``to_event()``
-is the only place this module touches ``cism.tui.events``.
-
-``id`` is a derived identity key, not a tool_call_id — see
-:func:`derive_node_id`. ``state`` is never set here or by an extractor; only
-:meth:`cism.depg.graph.Graph.settle` writes it.
-"""
+"""The agent-side working node of the Dependency / Error Propagation Graph
+— the mutable copy the agent updates, distinct from :class:`cism.tui.
+events.DEPGNode`, the frozen wire format. ``id`` is a derived identity key,
+not a tool_call_id (see :func:`derive_node_id`); ``state`` is only ever
+written by :meth:`cism.depg.graph.Graph.settle`."""
 
 from __future__ import annotations
 

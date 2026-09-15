@@ -1,10 +1,6 @@
 """The PTES-derived phase model and the LangGraph state schema.
-
 ``PhaseStateMachine.transition`` is the single choke point every phase
-change in the graph must go through — ``nodes.py`` never assigns
-``state["phase"]`` directly. That is deliberate: it is what makes future
-phase locking a change to one method rather than a change to the graph.
-"""
+change must go through — ``nodes.py`` never assigns ``state["phase"]`` directly."""
 
 from __future__ import annotations
 
@@ -40,11 +36,9 @@ class Phase(Enum):
         return self.name.lower().replace("_", "-")
 
 
-#: Legal next phases per phase, including staying put. Not a strict linear
-#: sequence: real engagements pivot (post-exploitation on one host often
-#: kicks off recon on another; a failed exploit sends you back to
-#: vulnerability discovery), so those moves are legal — everything else
-#: raises rather than being silently allowed.
+#: Legal next phases per phase, including staying put. Not strictly linear —
+#: real engagements pivot back (post-exploitation to recon, a failed exploit
+#: back to vuln discovery) — everything else raises.
 PHASE_TRANSITIONS: dict[Phase, frozenset[Phase]] = {
     Phase.RECON: frozenset({Phase.RECON, Phase.ENUMERATION}),
     Phase.ENUMERATION: frozenset(

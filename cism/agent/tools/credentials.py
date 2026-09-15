@@ -1,8 +1,5 @@
-"""Password/credential attack tools. ``hydra`` is the structurally most
-demanding of the three Checkpoint-1 proof tools: it needs a scratch
-directory pre-populated with credential files before the process starts,
-not just an argv list.
-"""
+"""Password/credential attack tools. ``hydra`` needs a scratch directory
+pre-populated with credential files before the process starts, not just an argv list."""
 
 from __future__ import annotations
 
@@ -14,11 +11,8 @@ __all__ = ["CREDENTIAL_TOOLS", "hydra"]
 
 _MAX_THREADS = 16
 
-#: userlist/passwordlist select from a small known-safe set of names, never
-#: an arbitrary host path — same reasoning as a wordlist-by-name pattern
-#: elsewhere in this catalog: letting the model supply any filesystem path
-#: would turn a credential tool into a way to read arbitrary files off the
-#: host running the agent.
+#: userlist/passwordlist select from a known-safe set of names, never an
+#: arbitrary host path — else the model could read arbitrary files off the host.
 _WORDLISTS: dict[str, Path] = {
     "common-users": Path("/usr/share/wordlists/common-users.txt"),
     "common-passwords": Path("/usr/share/wordlists/common-passwords.txt"),

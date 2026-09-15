@@ -1,26 +1,9 @@
-"""Operational/audit logging for the agent loop.
-
-``LangGraphAgent._emit`` (cism/agent/core.py) writes every ``AgentEvent`` it
-puts on the TUI's queue through this logger too — one JSONL line per event,
-in the same order the TUI sees them, each carrying the event's full field
-set under ``data``. This is the audit trail: what ran, what a tool returned,
-which guardrail blocked what, every phase change, in a form you can grep or
-feed to a script, independent of whatever the TUI happened to render.
-
-Deliberately separate from two other things that look similar but are not:
-the ``AgentEvent`` stream itself (the UI-facing protocol in
-``cism/tui/events.py`` — this just mirrors it to disk) and DEPG evidence
-(domain state in ``cism/depg/``). Retention is a 3-day TTL so it cannot
-accumulate forever — bump ``_RETENTION`` (and ``backupCount`` to match) if
-that window is too short.
-
-Retention is enforced two ways: ``TimedRotatingFileHandler`` rotates the
-live file at midnight and keeps at most ``backupCount`` rotated backups, and
-a startup sweep deletes any rotated file dated older than ``_RETENTION``.
-The sweep exists because the handler only rotates (and prunes) on a write
-after the boundary has passed — a process that wasn't running at midnight
-would otherwise leave stale files sitting around indefinitely.
-"""
+"""Operational/audit logging for the agent loop. ``LangGraphAgent._emit``
+mirrors every ``AgentEvent`` it queues to the TUI through this logger too —
+one JSONL line per event, independent of what the TUI renders. Retention
+is a 3-day TTL: ``TimedRotatingFileHandler`` rotates at midnight and a
+startup sweep deletes anything older, since the handler alone only prunes
+on a write after the boundary passes."""
 
 from __future__ import annotations
 
@@ -40,8 +23,7 @@ _BACKUP_COUNT = 3
 
 
 def _default_log_dir() -> Path:
-    # Resolved lazily (not at import time) so it honours HOME as it stands
-    # when actually called, not whatever it was at import.
+    # Resolved lazily so it honours HOME as it stands when called, not at import.
     return Path.home() / ".cism" / "logs"
 
 
@@ -105,10 +87,8 @@ def get_agent_logger(
 
 
 def _log_files_oldest_first(log_dir: Path) -> list[Path]:
-    """Rotated backups (oldest date first), then the live file — the same
-    order the lines inside them were actually written in, which is what a
-    caller reconstructing one run's timeline across a midnight rotation
-    needs."""
+    """Rotated backups (oldest first), then the live file — write order,
+    for a caller reconstructing a run's timeline across midnight rotation."""
     rotated = sorted(
         (p for p in log_dir.glob(f"{_LOG_BASENAME}.*") if _ROTATED_SUFFIX.search(p.name)),
         key=lambda p: _ROTATED_SUFFIX.search(p.name).group(1),  # type: ignore[union-attr]
@@ -118,22 +98,13 @@ def _log_files_oldest_first(log_dir: Path) -> list[Path]:
 
 
 def read_run_events(run_id: str, log_dir: Path | None = None) -> list[dict]:
-    """Every audit-log record for ``run_id``, from its ``RunStarted``
-    through its ``RunFinished`` inclusive, in the order they were written.
-
-    Returns ``[]`` when the run isn't found — rotated past the retention
-    window, a typo'd id, or it never happened — an expected, common outcome
-    for a caller (``LangGraphAgent._replay``) to report as "no such run",
-    not an error. A run with no ``RunFinished`` yet (still in flight, or the
-    process died mid-run) still returns whatever was collected — partial,
-    real history beats discarding it over one missing line.
-
-    Each returned record is exactly one audit-log JSON object (``message``,
-    ``data``, ...) — decoding ``record["data"]`` back into a real
-    ``AgentEvent`` (via ``cism.tui.events.decode``) is the caller's job,
-    kept out of this module so it stays free of any dependency on the TUI
-    event schema.
-    """
+    """Every audit-log record for ``run_id``, ``RunStarted`` through
+    ``RunFinished`` inclusive, in write order. Returns ``[]`` for a run
+    that isn't found (rotated out, typo'd id, never happened) — an
+    expected outcome, not an error. A still-in-flight or crashed run
+    returns whatever was collected. Decoding ``record["data"]`` back into
+    an ``AgentEvent`` is the caller's job, to keep this module free of any
+    TUI dependency."""
     directory = log_dir or _default_log_dir()
     collecting = False
     collected: list[dict] = []

@@ -1,19 +1,9 @@
 """A canned, deterministic chat model for validating the loop with no lab,
-no weights, and no network — the agent-side equivalent of what
-``cism/tui/replay.py`` does for the TUI.
-
+weights, or network — the agent-side equivalent of ``cism/tui/replay.py``.
 Behaviour is driven purely by how many tool results are already in the
-conversation, so a run is reproducible call for call:
-
-- no tool result yet          -> call ``dummy_nmap`` on the target
-- one tool result (nmap)      -> call ``dummy_msfconsole`` on the target
-- two or more tool results    -> a final answer, no further tool calls
-
-Swapping this for a real model is the one-line change that docstring
-promised: see ``build_chat_model`` below, which builds a
-network-capable ``BaseChatModel`` for whoever opts into one, since both are
-just ``BaseChatModel`` instances.
-"""
+conversation: none -> call ``dummy_nmap``, one -> call ``dummy_msfconsole``,
+two+ -> a final answer. ``build_chat_model`` below builds the real,
+network-capable ``BaseChatModel`` counterpart."""
 
 from __future__ import annotations
 
@@ -38,12 +28,8 @@ _DEFAULT_TARGET = "0.0.0.0"
 
 
 def _target_from(messages: list[BaseMessage]) -> str:
-    """Scans only the *current* turn's ask — the most recent
-    ``HumanMessage`` — not the whole conversation. ``messages`` now spans
-    every turn in the session (a real checkpointer backs the graph), so
-    scanning forward from the start would find whatever IP an earlier,
-    possibly unrelated turn happened to mention instead of what was just
-    asked."""
+    """Scans only the current turn (back to the most recent ``HumanMessage``),
+    not the whole session — else an earlier turn's IP could be picked up instead."""
     for message in reversed(messages):
         if isinstance(message, HumanMessage):
             match = _IPV4.search(str(message.content))
@@ -63,11 +49,7 @@ class DummyChatModel(BaseChatModel):
         run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
-        # Scoped to the current turn (back to the most recent HumanMessage),
-        # same reasoning as _target_from above: messages now spans the
-        # whole session, and counting every ToolMessage ever produced would
-        # make this stub treat turn 2 onward as already mid-scan (or
-        # already finished) regardless of what was actually just asked.
+        # Scoped to the current turn only, same reasoning as _target_from above.
         tool_results: list[ToolMessage] = []
         for message in reversed(messages):
             if isinstance(message, HumanMessage):
@@ -121,44 +103,23 @@ def build_chat_model(
     model: str,
     **kwargs: Any,
 ) -> BaseChatModel:
-    """A ``ChatOpenAI`` pointed at any server that speaks the OpenAI chat
-    completions wire format — llama.cpp's ``--api`` mode, vLLM, LM Studio,
-    real OpenAI, or Ollama's ``/v1`` endpoint. One construction path covers
-    all of them because that wire format is the actual shared implementation,
-    not a coincidence: Ollama's OpenAI-compatible endpoint requires the
-    ``api_key`` field to be present and non-empty but never validates its
-    contents (see https://docs.ollama.com/api/openai-compatibility), which is
-    exactly why this takes the *name* of an environment variable rather than
-    a key value — the same ``key_env_var``/``key_present`` split the TUI's
-    ``SessionState`` already uses, so a local no-auth server still gets a
-    real (if throwaway) secret name to report instead of a hole in that
-    contract.
+    """A ``ChatOpenAI`` pointed at any server speaking the OpenAI chat
+    completions wire format — llama.cpp, vLLM, LM Studio, real OpenAI, or
+    Ollama's ``/v1`` endpoint. Takes the *name* of an env var rather than a
+    key value because Ollama requires ``api_key`` non-empty but never
+    validates it, so a no-auth server still gets a real secret name to
+    report via ``key_env_var``/``key_present``.
 
-    Caveat a caller must know before relying on tool calls against a local
-    server: whether the *model being served* supports function calling is
-    independent of whether the server's endpoint does. Ollama's endpoint
-    supports the tools field, but only for models trained for it (e.g.
-    Llama 3.1, Mistral Nemo, Firefunction v2, Command-R) — an
-    unsupported model will not necessarily error, it may instead emit raw
-    tool-call-shaped JSON as ordinary text content, which looks like a
-    model failing to call anything rather than a config problem.
+    Whether the *model being served* supports function calling is
+    independent of whether the endpoint does — an unsupported model may
+    emit raw tool-call JSON as plain text instead of erroring.
 
-    Tool binding is deliberately not done here: this factory only ever
-    builds the model, so what it returns is a plain, uncommitted
-    ``BaseChatModel`` regardless of which tools (if any) the caller intends
-    to bind onto it later, exactly like ``DummyChatModel`` needs no tools to
-    exist. Binding is the caller's job (see ``LangGraphAgent``), which is
-    also where the tool *registry* — the other half of the pairing — lives.
+    Tool binding isn't done here; this only builds a plain, uncommitted
+    ``BaseChatModel`` — binding is the caller's job (``LangGraphAgent``).
 
-    ``stream_usage`` defaults on: it sets the standard OpenAI wire-format
-    ``stream_options: {include_usage: true}`` request field, which makes a
-    streaming response's final chunk carry a real ``usage_metadata``
-    (input/output/total token counts) instead of leaving every chunk's
-    ``usage_metadata`` at ``None`` — confirmed against Ollama's own
-    OpenAI-compat endpoint, which honours it. ``LangGraphAgent`` reads that
-    field to drive the status bar's token/context tracking (see
-    ``TokenDelta`` in ``cism/tui/events.py``). Pass ``stream_usage=False``
-    explicitly for a server that chokes on the field.
+    ``stream_usage`` defaults on so a streaming response's final chunk
+    carries real ``usage_metadata`` (``LangGraphAgent`` reads it for
+    ``TokenDelta``); pass ``stream_usage=False`` for a server that chokes on it.
     """
     api_key = os.environ.get(key_env_var, "")
     if not api_key:
@@ -173,21 +134,11 @@ def build_chat_model(
 
 
 async def discover_context_window(base_url: str, model: str) -> int | None:
-    """Best-effort context-window size for ``model``, in tokens.
-
-    The OpenAI chat-completions wire format ``build_chat_model`` otherwise
-    speaks has no standard field for this, so there is nothing to ask a
-    generic server. Ollama does know (and serves plenty of local dev setups
-    this project targets), via a *sibling* endpoint outside that wire
-    format: ``POST {base}/api/show`` returns a ``model_info`` object with an
-    architecture-prefixed ``"<arch>.context_length"`` key.
-
-    Returns ``None`` — never raises — for a non-``/v1`` base URL, a server
-    that isn't Ollama, or any request failure (timeout, 404, bad JSON): the
-    caller already has a sane fallback (the status bar's own default), and
-    "couldn't determine this" is an expected, common outcome here, not an
-    error.
-    """
+    """Best-effort context-window size for ``model``, in tokens. The OpenAI
+    wire format has no field for this, so Ollama's sibling endpoint
+    (``POST {base}/api/show``) is queried instead. Returns ``None`` — never
+    raises — for any non-Ollama server or request failure; the caller
+    already has a sane fallback."""
     trimmed = base_url.rstrip("/")
     if not trimmed.endswith("/v1"):
         return None

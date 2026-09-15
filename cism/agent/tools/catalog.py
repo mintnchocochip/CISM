@@ -1,14 +1,8 @@
 """Data-driven tool declarations: most CLI tools are `binary <flags>
-<target>`, so they are rows in cism/agent/tools/catalog.yaml, not
-hand-written functions. See cism.agent.tools.base for the factory that
-turns a row into a real tool.
-
-ToolSpec is a Pydantic model, not a plain dataclass: a malformed row
-(wrong capability literal, an unknown phase name) fails loudly with a real
-ValidationError at import time — the same "fails loudly instead of
-silently widening what the agent can execute" principle ToolRegistry's own
-docstring already states elsewhere in this codebase.
-"""
+<target>`, so they're rows in catalog.yaml, not hand-written functions —
+see cism.agent.tools.base for the factory that builds a row into a real
+tool. ToolSpec is a Pydantic model so a malformed row fails loudly with a
+real ValidationError at import time."""
 
 from __future__ import annotations
 

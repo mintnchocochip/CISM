@@ -1,16 +1,6 @@
-"""``LangGraphAgent``: the LangGraph-backed core, satisfying
-``cism.tui.events.Agent`` exactly as ``FakeAgent`` does.
-
-This is the first real implementer of the seam the TUI already depends on
-— the translation layer between LangGraph's own step loop and the frozen
-``AgentEvent`` dataclasses the TUI consumes. Two independent loops meet at
-exactly one point, ``self.events``: this class's internal run loop pushes,
-whatever drains the queue (a TUI pump worker, or a test) only ever pulls.
-Nothing here mutates a widget or knows one exists.
-
-Wiring this into ``demo_replay.py`` or the live app is a separate, later
-step — this module is tested standalone.
-"""
+"""LangGraphAgent: satisfies cism.tui.events.Agent by translating
+LangGraph's step loop into AgentEvent dataclasses pushed onto
+self.events. Nothing here touches a widget."""
 
 from __future__ import annotations
 
@@ -61,11 +51,7 @@ from cism.tui.events import _next_seq  # same-package access to the shared seq c
 
 __all__ = ["LangGraphAgent"]
 
-#: Pacing between events during /replay — fast enough to feel immediate,
-#: slow enough to read as a sequence rather than a flash. Deliberately not
-#: the original run's real elapsed gaps: those can be tens of seconds
-#: (a real tool timeout) and replay is for reviewing what happened, not
-#: for reliving how long it took.
+#: Pacing between /replay events — readable, not the original run's real gaps.
 _REPLAY_STEP_DELAY = 0.05
 
 
@@ -113,21 +99,12 @@ class LangGraphAgent:
         )
         self._extractors = extractors or ExtractorRegistry(EXTRACTORS, default_extractor)
         self._profiles = profiles or default_profiles(self._tools)
-        #: In-process only — this is session memory (lives as long as this
-        #: LangGraphAgent instance does), not restart-survival, which is a
-        #: separate, explicitly deferred concern (see the design docs). A
-        #: fixed thread_id keys every _run() into the same checkpointed
-        #: thread, so a graph rebuilt mid-session (the /ablate path in
-        #: _run()) must reuse both this checkpointer and this thread_id or
-        #: ablating a tool for one run would also silently wipe memory.
+        #: In-process session memory only, not restart-survival. A fixed
+        #: thread_id so a graph rebuilt mid-session (/ablate) still shares it.
         self._checkpointer = MemorySaver()
         self._thread_id = uuid.uuid4().hex
-        #: True once the checkpointed thread has been seeded once — see
-        #: _run()'s initial_state construction: depg_nodes/depg_edges/
-        #: memory_items are only ever given an empty starting value the
-        #: first time, since after that the checkpointer already holds
-        #: whatever the previous run left there and re-supplying `{}`
-        #: would overwrite it back to empty on every single run.
+        #: True once depg_nodes/depg_edges/memory_items have been seeded —
+        #: after that, re-supplying `{}` would wipe checkpointed state (see _run).
         self._thread_seeded = False
         self._graph = build_graph(
             self._llm,
@@ -141,28 +118,17 @@ class LangGraphAgent:
         self._target = target
         self._task: asyncio.Task[None] | None = None
         self._log = get_agent_logger()
-        #: The last DEPGUpdated payload emitted, so depg_update running on
-        #: every loop iteration doesn't flood the TUI with identical events
-        #: on iterations where nothing about the graph actually changed.
+        #: Last DEPGUpdated payload sent, so an unchanged graph doesn't re-emit.
         self._last_depg: tuple[tuple[DEPGNode, ...], tuple[DEPGEdge, ...]] = ((), ())
-        #: Running session total for TokenDelta.total — never reset, unlike
-        #: ctx_used (a point-in-time snapshot of the most recent call).
+        #: Running session total; never reset (unlike ctx_used, a snapshot).
         self._token_total = 0
-        #: Best-effort, refreshed by _refresh_context_window(); the status
-        #: bar's own fallback (StatusBar.ctx_max's default) until then.
+        #: Refreshed by _refresh_context_window(); falls back to StatusBar's default.
         self._context_window = 32_768
-        #: Tool and/or guardrail-stage names to leave out of *the next*
-        #: _run() only — see _ablate()/_run(). A plain set of names, not
-        #: split by kind: a name is unambiguous (tool names and guardrail
-        #: stage names don't collide in practice) and the next run just
-        #: filters both the registry and every guardrail chain against it.
+        #: Tool/guardrail-stage names to skip for the next _run() only (see _ablate).
         self._ablated: set[str] = set()
 
     async def _refresh_context_window(self) -> None:
-        """Best-effort — see discover_context_window's own docstring for
-        why this can't be more than that. A stale value from a previous
-        model is harmless (just a wrong ctx_max) so no lock is needed
-        against a concurrent /model or /api switch."""
+        """Best-effort; a stale value from a prior model is harmless."""
         if self._endpoint == "local (dummy)" or not self._model_name:
             return
         discovered = await discover_context_window(self._endpoint, self._model_name)
@@ -170,29 +136,15 @@ class LangGraphAgent:
             self._context_window = discovered
 
     async def _emit(self, event: AgentEvent) -> None:
-        """The one place any ``AgentEvent`` reaches the outside world:
-        written to the on-disk audit log (cism/agent/logging.py, TTL'd so
-        it can't grow forever) and put on the TUI's queue, in that order.
-        Every event this module produces is routed through here instead of
-        calling the queue directly, so the audit log is always exactly what
-        the TUI saw — never a hand-picked subset that can drift out of
-        sync.
-
-        Logged via ``events.encode`` (the same round-trip format
-        ``cism/tui/replay.py`` already reads), not a plain
-        ``dataclasses.asdict`` — that's what lets ``/replay`` (``_replay``
-        below) turn a slice of this same log straight back into real
-        events via ``events.decode``, instead of needing a second,
-        parallel serialisation to stay in sync with this one."""
+        """Every AgentEvent's single exit point: logged to the audit log,
+        then queued for the TUI, so the log always matches what the TUI
+        saw. Uses events.encode so /replay can decode it straight back."""
         self._log.info(type(event).__name__, extra={"data": encode(event)})
         await self.events.put(event)
 
     async def start(self) -> None:
-        """Announce the session before any run, so the status bar reflects
-        what's actually running (dummy or real) even if nothing is
-        submitted yet. Context-window discovery runs first so that initial
-        SessionState already carries a real ModelInfo.context where one is
-        available, rather than reporting 0 and correcting itself later."""
+        """Emits SessionState before any run. Refreshes the context window
+        first so it's accurate from the start, not corrected later."""
         await self._refresh_context_window()
         await self._emit(self._session())
 
@@ -210,14 +162,10 @@ class LangGraphAgent:
         )
 
     async def submit(self, text: str) -> None:
-        """Schedules the run as its own task and returns immediately, per
-        the Agent protocol's "must not block" contract. A new submission
-        cancels one already in flight — same discipline the TUI's own
-        worker groups apply on its side. ``/api``/``/model``/``/target``/
-        ``/phase``/``/ablate``/``/scope`` are answered directly instead of being
-        scheduled as a graph run. ``/replay`` *is* scheduled the same way a
-        real run is — it plays back over time and a later submit() should
-        be able to cut it off the same way."""
+        """Schedules a task and returns immediately (Agent protocol: must
+        not block); a new submission cancels one in flight. Most slash
+        commands are answered directly; /replay runs as a real task since
+        it plays back over time and should be cancellable the same way."""
         if text.startswith("/"):
             name, _, argument = text[1:].partition(" ")
             if name in ("api", "model"):
@@ -245,10 +193,8 @@ class LangGraphAgent:
         self._task = asyncio.create_task(self._run(text))
 
     async def _set_target(self, argument: str) -> None:
-        """Bare ``/target`` reports the current value; ``/target <value>``
-        replaces it. Takes effect on the *next* submit(), same timing note
-        as ``_configure`` — an in-progress run already has its own copy in
-        ``initial_state``."""
+        """Bare /target reports the value; /target <value> replaces it —
+        takes effect next submit(), not an already-running one."""
         if argument:
             self._target = argument
         await self._emit(
@@ -260,11 +206,9 @@ class LangGraphAgent:
         )
 
     async def _set_phase(self, argument: str) -> None:
-        """Bare ``/phase`` reports the current phase. ``/phase <name>``
-        goes through ``PhaseStateMachine.transition`` — the same choke
-        point ``phase_router`` uses — so a manual move is bound by the same
-        legality rules as an automated one; state.py's own docstring calls
-        that the deliberate single choke point for every phase change."""
+        """Bare /phase reports the current phase; /phase <name> goes
+        through PhaseStateMachine.transition, same as phase_router, so a
+        manual move follows the same legality rules as an automatic one."""
         if not argument:
             await self._emit(
                 Narration(
@@ -295,25 +239,18 @@ class LangGraphAgent:
         await self._emit(PhaseChanged(phase=requested.to_wire()))
 
     def _scope_guard(self) -> ScopeGuardStage | None:
-        """The live ScopeGuardStage in the action chain, if --live-tools
-        wired one up (run_agent.py._enable_live_tools) — None under the
-        default no-op guardrails, which is exactly when /scope has
-        nothing real to change."""
+        """The live ScopeGuardStage, if --live-tools wired one; None under
+        the default no-op guardrails."""
         for stage in self._guardrails.action.stages:
             if isinstance(stage, ScopeGuardStage):
                 return stage
         return None
 
     async def _set_scope(self, argument: str) -> None:
-        """Bare ``/scope`` lists the currently declared engagement scope.
-        ``/scope add <target[,target...]>`` and ``/scope remove
-        <target[,target...]>`` mutate the live ScopeGuardStage in place —
-        the only way to change scope without restarting the process,
-        since --scope is otherwise baked in once at launch (see
-        run_agent.py). Every actual change is a real ScopeChanged
-        AgentEvent (audited + shown in the transcript, one per target
-        actually affected); listing and no-op/error paths are a plain
-        Narration instead, the same split _set_phase already uses."""
+        """Bare /scope lists current scope; add/remove mutate the live
+        ScopeGuardStage in place — the only way to change scope without
+        restarting. Each real change emits ScopeChanged; everything else
+        (listing, no-ops, errors) is a plain Narration."""
         guard = self._scope_guard()
         if guard is None:
             await self._emit(
@@ -407,12 +344,9 @@ class LangGraphAgent:
         )
 
     async def _ablate(self, argument: str) -> None:
-        """Bare ``/ablate`` reports what is currently pending. ``/ablate
-        <name>`` toggles ``<name>`` — a registered tool name or a stage
-        ``.name`` from any of the three guardrail chains — in or out of
-        the pending set, which ``_run`` consumes (and always clears) on
-        the very next run. There is deliberately no separate "clear"
-        command: toggling the same name again is that."""
+        """Bare /ablate reports what's pending; /ablate <name> toggles a
+        tool or guardrail-stage name for the next run only — toggling
+        again clears it, so there's no separate "clear" command."""
         if not argument:
             listing = ", ".join(sorted(self._ablated)) or "(none)"
             await self._emit(
@@ -449,16 +383,10 @@ class LangGraphAgent:
         )
 
     async def _replay(self, run_id: str) -> None:
-        """Plays a past run's exact recorded events (from the audit log,
-        cism/agent/logging.py) back into this session's queue — not a
-        re-execution, no tool or model call happens. seq is rebased to
-        continue this session's own numbering (the recorded values are
-        stale — from whenever that run actually happened); ts is left
-        alone, since it's genuinely historical. Bracketed by narrations so
-        it reads as clearly-not-live in the transcript, and closes by
-        re-asserting the real current phase, in case the replayed run
-        shows a different one — the status bar should not end up lying
-        about what phase this session is actually in."""
+        """Replays a past run's recorded events from the audit log — no
+        tool or model call happens. seq is rebased to this session's
+        counter; ts stays historical. Re-asserts the real current phase at
+        the end in case the replayed run shows a different one."""
         if not run_id:
             await self._emit(
                 Narration(
@@ -483,12 +411,7 @@ class LangGraphAgent:
             Narration(entry_id=f"{replay_id}-start", text=f"— replaying run {run_id} —", done=True)
         )
         for record in records:
-            # dataclasses.replace with a fresh _next_seq() each time, not
-            # rebase()'s offset+index: that only reserves *one* number from
-            # the shared global counter, so anything _emit'd afterwards
-            # (the end-of-replay markers below) would collide with the
-            # numbers handed out here by plain arithmetic instead of by
-            # actually advancing the counter.
+            # Fresh _next_seq() per event, not rebase() — rebase only reserves one value.
             event = dataclasses.replace(decode(record["data"]), seq=_next_seq())
             await self.events.put(event)
             await asyncio.sleep(_REPLAY_STEP_DELAY)
@@ -528,10 +451,7 @@ class LangGraphAgent:
             self._llm = llm
             self._endpoint = endpoint
             self._model_name = model_name
-            # This reassignment takes effect on the *next* submit(), not one
-            # already in flight: an in-progress _run()'s astream() iteration
-            # was already handed the old self._graph object and keeps
-            # pulling from it regardless of what self._graph points to now.
+            # Takes effect on the next submit(); an in-flight run already holds the old graph.
             self._graph = build_graph(
                 self._llm,
                 self._tools,
@@ -556,9 +476,7 @@ class LangGraphAgent:
     async def _run(self, text: str) -> None:
         run_id = uuid.uuid4().hex
 
-        # Consumed and cleared right here, before anything can await and
-        # let a concurrent /ablate change it mid-run — "the next run"
-        # means exactly this one, decided once, at the start.
+        # Consumed before any await, so a concurrent /ablate can't change "this run".
         ablated, self._ablated = self._ablated, set()
         graph = self._graph
         guardrails = self._guardrails
@@ -616,11 +534,7 @@ class LangGraphAgent:
             "target": self._target,
         }
         if not self._thread_seeded:
-            # Only the very first run of this session needs these seeded —
-            # they have no reducer (unlike messages/add_messages), so
-            # supplying them on every run would overwrite whatever the
-            # checkpointer already carried forward from the previous run
-            # right back to empty, silently undoing cross-run memory.
+            # Seed once only — no reducer, so resupplying `{}` every run would wipe checkpointed state.
             initial_state["depg_nodes"] = {}
             initial_state["depg_edges"] = []
             initial_state["memory_items"] = {}
@@ -636,17 +550,8 @@ class LangGraphAgent:
             ):
                 if stream_mode == "messages":
                     chunk, metadata = payload
-                    # "messages" mode carries two shapes: token-level chat
-                    # model deltas from "think" (what we want to narrate
-                    # progressively), and the complete final message every
-                    # node returns (including "respond"'s already-guarded
-                    # answer) — LangGraph emits both over this channel. Only
-                    # the "think" node is a real streaming source here, so
-                    # anything else is a duplicate of state we already
-                    # translate via the "updates" branch below and must be
-                    # skipped, or "respond"'s text would double up in
-                    # ``streamed["text"]`` and desync the guardrail-mismatch
-                    # comparison below.
+                    # Only "think"'s token deltas matter here — every other node's
+                    # final message duplicates what the "updates" branch already handles.
                     if metadata.get("langgraph_node") != "think":
                         continue
                     content = getattr(chunk, "content", "")
@@ -657,22 +562,9 @@ class LangGraphAgent:
                         )
                     usage = getattr(chunk, "usage_metadata", None)
                     if usage:
-                        # usage_metadata only arrives on a trailing,
-                        # content-empty chunk (see build_chat_model's
-                        # stream_usage docstring). input_tokens already
-                        # reflects the whole conversation resent this call,
-                        # so input+output is the real context-window
-                        # occupancy (ctx_used) — a snapshot, not something
-                        # to sum across calls. delta/total track actual
-                        # generation instead: output_tokens only, so a run
-                        # with several think() calls (each resending a
-                        # bigger prompt as history/tool results pile up)
-                        # doesn't make the live "↑N tokens" counter
-                        # (WorkingIndicator) and tok/s rate (App._record_rate)
-                        # spike by the resent prompt's size on every single
-                        # call — input tokens were never "generated" and
-                        # were already counted as ctx_used the moment they
-                        # were sent.
+                        # Arrives on a trailing empty chunk. ctx_used is a point-in-time
+                        # input+output snapshot; delta/total track output_tokens only, so a
+                        # resent prompt doesn't spike the live token-rate display.
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
                         self._token_total += output_tokens
@@ -712,16 +604,8 @@ class LangGraphAgent:
                     pending_calls[call["id"]] = call
                     had_calls = True
                 if had_calls:
-                    # This turn routes to "act", not "respond" — any text it
-                    # streamed alongside the tool call (real models sometimes
-                    # emit a sentence of preamble next to a call) is not the
-                    # run's final answer. Clear it now so it doesn't linger
-                    # and get concatenated with a later think turn's text,
-                    # which would desync the guardrail-mismatch comparison
-                    # in the "respond" branch below and trigger a
-                    # false-positive NarrationRedacted. Only the final
-                    # answer turn (no tool_calls) leaves streamed["text"]
-                    # intact for that comparison.
+                    # Routes to "act", not "respond" — clear preamble text so it doesn't
+                    # leak into a later turn's final-answer comparison in "respond" below.
                     streamed["text"] = ""
 
         elif node == "act":

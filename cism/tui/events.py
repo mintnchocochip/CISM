@@ -1,12 +1,9 @@
 """The event contract between the CISM agent core and the terminal UI.
 
-The TUI is a *pure consumer*. The agent pushes frozen dataclasses onto an
-``asyncio.Queue``; the TUI drains that queue and mutates widgets. Nothing in
-``cism.tui`` ever calls back into LangGraph, llama.cpp, or the scorer.
-
-Every event carries a monotonically increasing ``seq`` and a wall-clock ``ts``
-so a run can be recorded, diffed, and replayed deterministically.
-"""
+The TUI is a pure consumer: the agent pushes frozen dataclasses onto an
+``asyncio.Queue`` and the TUI drains it, never calling back into LangGraph,
+llama.cpp, or the scorer. Every event carries a monotonic ``seq`` and a
+wall-clock ``ts`` so a run can be recorded, diffed, and replayed."""
 
 from __future__ import annotations
 
@@ -81,12 +78,8 @@ class Evidence:
 
 @dataclass(frozen=True, slots=True)
 class Decision:
-    """A choice the agent made on the way to a node.
-
-    ``score_gap`` is the margin over the runner-up: a small gap means the
-    agent nearly went somewhere else, which is exactly what you want to see
-    when a branch turns out to be a dead end.
-    """
+    """A choice the agent made on the way to a node. ``score_gap`` is the
+    margin over the runner-up — small means it nearly went elsewhere."""
 
     timestamp: str
     chose: str
@@ -108,12 +101,9 @@ class ModelInfo:
 
 @dataclass(frozen=True, slots=True)
 class DEPGNode:
-    """A node in the Dependency / Error Propagation Graph.
-
-    ``generality`` is gamma: how far a cause-class is expected to transfer to
-    sibling targets. ``downstream`` counts nodes whose reachability depends on
-    this one being resolved.
-    """
+    """A node in the Dependency / Error Propagation Graph. ``generality`` is
+    gamma: how far a cause-class transfers to sibling targets. ``downstream``
+    counts nodes whose reachability depends on this one resolving."""
 
     id: str
     cause_class: str
@@ -122,8 +112,7 @@ class DEPGNode:
     state: NodeState
     downstream: int = 0
     evidence: tuple[Evidence, ...] = ()
-    #: The choice that made this node current. The full trail to a node is
-    #: the decisions along its root-to-node path, so nothing is duplicated.
+    #: The choice that made this node current — not the whole decision trail.
     decision: Decision | None = None
 
     def label(self) -> str:
@@ -157,15 +146,8 @@ class MemoryRow:
 
 @dataclass(frozen=True, slots=True)
 class SalienceTerms:
-    """Current coefficients of the salience decay model.
-
-    The score for a row is::
-
-        S = w_tier * s0 * exp(-lambda * age) + beta * hits
-
-    The memory view renders this equation with these values substituted so the
-    decay behaviour is legible during a demo.
-    """
+    """Current coefficients of the salience decay model:
+    ``S = w_tier * s0 * exp(-lambda * age) + beta * hits``."""
 
     tier_weight: dict[str, float]
     decay_lambda: float
@@ -221,12 +203,8 @@ class RunFinished(_Event):
 
 @dataclass(frozen=True, slots=True)
 class Narration(_Event):
-    """A chunk of model narration.
-
-    ``entry_id`` groups chunks into one transcript entry. Chunks append to the
-    existing entry in place; the widget is never rebuilt. ``done`` marks the
-    final chunk for that entry.
-    """
+    """A chunk of model narration. ``entry_id`` groups chunks into one
+    transcript entry, appended in place; ``done`` marks the final chunk."""
 
     entry_id: str
     text: str
@@ -235,13 +213,8 @@ class Narration(_Event):
 
 @dataclass(frozen=True, slots=True)
 class NarrationRedacted(_Event):
-    """Replaces whatever has already been shown for ``entry_id`` with a
-    withheld-content notice. Used when the output guardrail's verdict on
-    the complete text differs from what was already streamed to the
-    transcript — the seam a real (currently pass-through) output guardrail
-    needs to retroactively take back content that reached the screen
-    before the guardrail finished running on it.
-    """
+    """Replaces what's shown for ``entry_id`` with a withheld notice — for
+    when the output guardrail's verdict differs from what already streamed."""
 
     entry_id: str = ""
     reason: str = ""
@@ -286,11 +259,8 @@ class PhaseChanged(_Event):
 
 @dataclass(frozen=True, slots=True)
 class ScopeChanged(_Event):
-    """A /scope add or /scope remove that actually changed the live
-    engagement scope — see cism.agent.guardrails.scope.ScopeGuardStage.
-    Listing (/scope with no argument) and no-op/error paths use a plain
-    Narration instead; this event exists specifically so every real scope
-    change is audited (LangGraphAgent._emit logs every AgentEvent)."""
+    """A /scope add or remove that actually changed the live scope; listing
+    and no-op/error paths use a plain Narration instead."""
 
     action: str  # "add" or "remove"
     target: str
@@ -325,13 +295,9 @@ class Interrupted(_Event):
 
 @dataclass(frozen=True, slots=True)
 class SessionState(_Event):
-    """Model, endpoint, and target environment.
-
-    ``key_env_var`` is the *name* of the variable holding the API key and
-    ``key_present`` says whether it is set. The key itself never travels on
-    this event and is never displayed — the transcript gets exported and
-    pasted into reports.
-    """
+    """Model, endpoint, and target environment. ``key_env_var`` names the
+    API key variable; ``key_present`` says whether it's set — the key
+    itself never travels here, since transcripts get exported."""
 
     model: str = ""
     models_available: tuple[ModelInfo, ...] = ()

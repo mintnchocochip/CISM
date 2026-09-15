@@ -119,11 +119,8 @@ class DEPGModal(ModalScreen[None]):
     # -- the path that produced a node -------------------------------------
 
     def path_to(self, node_id: str) -> list[DEPGNode]:
-        """Every node from a root down to ``node_id``, in order.
-
-        Walks parent links rather than searching, and stops on a repeat so a
-        cyclic graph cannot hang the view.
-        """
+        """Every node from a root down to ``node_id``, in order. Walks parent
+        links and stops on a repeat so a cyclic graph can't hang the view."""
         chain: list[DEPGNode] = []
         seen: set[str] = set()
         current = node_id
@@ -142,6 +139,10 @@ class DEPGModal(ModalScreen[None]):
         children: dict[str, list[tuple[str, float]]] = {}
         has_parent: set[str] = set()
         for edge in self.edges:
+            # A node with two incoming edges must nest under the same single
+            # parent _parent_of resolves it to, or the tree and the path_to() breadcrumb disagree.
+            if self._parent_of.get(edge.child) != edge.parent:
+                continue
             children.setdefault(edge.parent, []).append((edge.child, edge.weight))
             has_parent.add(edge.child)
 

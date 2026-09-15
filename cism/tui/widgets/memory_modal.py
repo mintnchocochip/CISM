@@ -1,11 +1,6 @@
-"""The memory view: a modal overlay over the transcript.
-
-Rows are colour-graded by tier and the table is sortable by any column
-(press the column's number, or click its header). The footer renders the
-salience equation with the highlighted row's term values substituted, so the
-decay behaviour is visible while the demo is running rather than being
-something you have to assert.
-"""
+"""The memory view: a modal overlay over the transcript. Rows are
+colour-graded by tier and sortable by any column. The footer renders the
+salience equation with the highlighted row's term values substituted."""
 
 from __future__ import annotations
 

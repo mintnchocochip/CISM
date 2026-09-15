@@ -1,17 +1,7 @@
-"""The graph's node functions: think, act, phase_router, respond.
-
-Each node function is produced by a small factory (``make_*``) that closes
-over its injected dependencies (the model, the tool registry, a guardrail
-chain) rather than reaching for globals — the same dependency-injection
-discipline as :func:`cism.agent.graph.build_graph`, so nodes stay testable
-in isolation.
-
-The input guardrail is applied once, in :mod:`cism.agent.core`, to the
-user's submitted text before the graph is ever started — not here. Unlike
-the action and output chains, there is exactly one input to guard per run,
-and it exists before any node does, so there is no seam here for it to sit
-in.
-"""
+"""The graph's node functions: think, act, phase_router, respond. Each is
+produced by a make_* factory closing over its injected dependencies, so
+nodes stay testable in isolation. The input guardrail runs once in
+cism.agent.core, before the graph starts — not here."""
 
 from __future__ import annotations
 
@@ -27,6 +17,7 @@ from cism.agent.state import AgentState, IllegalPhaseTransition, Phase, PhaseSta
 from cism.agent.tools import ToolRegistry
 from cism.depg import Edge, ExtractorRegistry, Graph
 from cism.depg.linking import find_precondition
+from cism.depg.normalize import normalize_target
 from cism.memory import MemoryStore, memory_key
 
 __all__ = [
@@ -39,20 +30,12 @@ __all__ = [
     "route_after_think",
 ]
 
-#: Safety valve against a runaway loop (e.g. a model that never stops
-#: requesting tools). Counts AI turns, not tool calls — and only AI turns
-#: since the current run's own HumanMessage (route_after_think), not the
-#: whole session: state["messages"] now persists across runs (a real
-#: checkpointer backs the graph — see build_graph/LangGraphAgent), so a
-#: whole-history count would exhaust this cap permanently after 6 AI turns
-#: ever, not 6 per run.
+#: Runaway-loop safety valve. Counts AI turns only since this run's own
+#: HumanMessage, not the whole persisted session — otherwise it'd exhaust once, ever.
 MAX_AI_TURNS = 6
 
-#: A placeholder progression heuristic: on a successful tool call, propose
-#: moving one phase forward. This is not the real phase-decision logic —
-#: that is later work — it exists only so the router (and PhaseChanged
-#: events) have something observable to validate against dummy data. Every
-#: entry here is already a legal move in PHASE_TRANSITIONS.
+#: Placeholder progression heuristic — advance one phase on a successful tool
+#: call. Not real phase logic; just gives the router something to validate against.
 DEFAULT_NEXT_PHASE: dict[Phase, Phase] = {
     Phase.RECON: Phase.ENUMERATION,
     Phase.ENUMERATION: Phase.VULNERABILITY_DISCOVERY,
@@ -80,31 +63,21 @@ def make_think_node(
 ) -> Callable[[AgentState], dict]:
     async def think(state: AgentState) -> dict:
         profile = profiles.get(state["phase"])
-        # tool_help is exempt from phase gating (design doc §5): knowing
-        # what a tool can do carries none of the risk that using it does,
-        # so it's always offered when the registry has one, regardless of
-        # what this phase's profile declares. The `if name in tools` filter
-        # on profile.tool_names itself is unchanged from before — a profile
-        # can still name a tool the current registry doesn't have (e.g. the
-        # bare dummy-tools registry).
+        # tool_help is exempt from phase gating — knowing what a tool does carries
+        # none of the risk that using it does, so it's always offered when present.
         names = {name for name in profile.tool_names if name in tools}
         if "tool_help" in tools:
             names.add("tool_help")
         phase_tools = [tools.get(name) for name in names]
         bound = _bind_tools_if_supported(llm, phase_tools)
-        # The prompt is prepended for this invocation only — never appended
-        # to state, or every loop iteration would stack another copy.
+        # Prepended for this invocation only, never appended to state.
         messages = [SystemMessage(content=profile.system_prompt), *state["messages"]]
         response = None
         async for chunk in bound.astream(messages):
             response = chunk if response is None else response + chunk
         if response is None:
-            # A provider that errors mid-handshake or returns an empty
-            # completion can leave the stream with zero chunks. Without
-            # this, ``response`` stays None and "respond" later crashes
-            # doing ``str(last.content)`` on it — caught by core.py's
-            # broad except as a generic "run failed", but an unhelpful
-            # failure mode. An empty final answer is a better default.
+            # A provider that errors or returns nothing leaves zero chunks;
+            # an empty answer is a better default than a later crash on None.
             response = AIMessage(content="")
         return {"messages": [response]}
 
@@ -153,16 +126,9 @@ def make_act_node(
                 continue
 
             call = guard.value
-            # PhaseToolGuardStage's allowed set is catalog-derived, not
-            # registry-filtered (cism/agent/profiles.py) — a registry that
-            # is a strict subset of the catalog (e.g. a dummy-tools-only
-            # registry) can pass a call for a catalog tool the guard
-            # allows but this registry never actually bound. That is a
-            # hallucinated/unbound call getting past a guard whose set
-            # doesn't match binding for this particular registry — the
-            # same "one bad call must not kill the whole run" case the
-            # guardrail chain itself exists to handle, so it is treated as
-            # guardrail content rather than left to raise.
+            # PhaseToolGuardStage's allowed set is catalog-derived, not registry-filtered,
+            # so it can pass a call this registry never bound — treated as guardrail
+            # content (not raised), same as any other "one bad call" case.
             if call["name"] not in tools:
                 results.append(
                     ToolMessage(
@@ -179,15 +145,8 @@ def make_act_node(
             tool = tools.get(call["name"])
 
             try:
-                # ainvoke, not invoke: act() is awaited from inside
-                # core.py's astream() loop, itself driven from a
-                # thread=False Textual worker. A live tool call is a real,
-                # possibly 60s-long blocking subprocess (sandbox.py); a
-                # sync tool.invoke() here would run it in-place on that
-                # same event loop and freeze the whole TUI for the
-                # duration. BaseTool.ainvoke's default _arun already
-                # offloads a sync-only tool (every tool in this catalog)
-                # to run_in_executor, so this alone is the fix.
+                # ainvoke, not invoke: a sync call here would block the TUI's event
+                # loop for up to 60s. ainvoke's default _arun offloads to a thread.
                 message = await tool.ainvoke(call)
             except Exception as exc:  # tool execution failure is content, not an exception
                 message = ToolMessage(
@@ -204,12 +163,9 @@ def make_act_node(
 
 
 def _trailing_tool_results(messages: list) -> list[tuple[ToolCall | None, ToolMessage]]:
-    """The run of ``ToolMessage``s the most recent ``act`` step appended,
-    each paired with its originating ``ToolCall`` (found on the preceding
-    ``AIMessage`` — a ``ToolMessage`` alone doesn't carry the call's
-    original arguments). Exact, not a heuristic: ``depg_update`` always runs
-    immediately after ``act``, and nothing else appends messages between
-    them."""
+    """The most recent act step's ToolMessages, each paired with its
+    originating ToolCall. Exact, not a heuristic: depg_update always runs
+    right after act, nothing else appends messages between them."""
     results: list[ToolMessage] = []
     for message in reversed(messages):
         if isinstance(message, ToolMessage):
@@ -231,14 +187,16 @@ def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState
     def depg_update(state: AgentState) -> dict:
         graph = Graph.from_state(state["depg_nodes"], state["depg_edges"])
         phase_tag = state["phase"].to_wire()
+        # Normalized once, here — an identity key can't depend on incidental
+        # formatting or "10.0.0.5"/"ssh://10.0.0.5:22" fragment into separate nodes.
+        target = normalize_target(state["target"])
 
         for call, message in _trailing_tool_results(state["messages"]):
             extraction = extractors.get(message.name or "").extract(
-                call, message, graph, state["target"]
+                call, message, graph, target
             )
-            # Every precondition is resolved before any of this message's own
-            # nodes land, or two siblings from one call (nmap's two ports)
-            # would chain onto each other via the last-touched fallback.
+            # Resolved before any of this message's own nodes land, or two
+            # siblings from one call (nmap's two ports) would chain onto each other.
             preconditions = {
                 node.id: find_precondition(graph, node.target, call) for node in extraction.nodes
             }
@@ -253,9 +211,7 @@ def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState
 
         graph.settle()
         graph.prune()
-        # depg_nodes/depg_edges have no reducer, so LangGraph's LastValue
-        # channel fully replaces state with whatever is returned here — the
-        # full merged graph must always come back, never just this step's delta.
+        # No reducer on these keys — must return the full merged graph, never just a delta.
         return {"depg_nodes": graph.nodes, "depg_edges": graph.edges}
 
     return depg_update
@@ -287,9 +243,8 @@ def make_memory_update_node() -> Callable[[AgentState], dict]:
         trailing = _trailing_tool_results(state["messages"])
         this_step_call_ids = {message.tool_call_id for _, message in trailing}
 
-        # Every source below is scoped to this step alone. Widening any of
-        # them to the whole run would grow `hits` every iteration whether or
-        # not the item actually recurred.
+        # Scoped to this step alone — widening to the whole run would grow
+        # `hits` every iteration regardless of whether the item actually recurred.
         for node in state["depg_nodes"].values():
             if not node.evidence:
                 continue
@@ -320,15 +275,8 @@ def make_memory_update_node() -> Callable[[AgentState], dict]:
 def make_respond_node(output_chain: GuardrailChain) -> Callable[[AgentState], dict]:
     def respond(state: AgentState) -> dict:
         """Always returns an explicit message, even when the guardrail
-        passes the content through unchanged. That is deliberate: the
-        translator in core.py only ever turns a "respond" step into a
-        Narration event, never a "think" step, specifically so nothing
-        reaches the UI before the output guardrail has had a chance to see
-        it. The tradeoff is a second AIMessage in this run's transcript
-        (the pre-guard one from "think", plus this one) — harmless today
-        since state isn't persisted across submit() calls, but worth
-        revisiting once it is.
-        """
+        passes content through unchanged — so core.py never narrates a
+        "think" message before the output guardrail has seen it."""
         last = state["messages"][-1]
         content = str(last.content)
         result = output_chain.run(content)

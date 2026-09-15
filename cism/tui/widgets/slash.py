@@ -1,10 +1,7 @@
-"""The slash-command overlay.
-
-Opens when ``/`` is typed into an empty composer, filters fuzzily as you keep
-typing, and is driven with the arrow keys. It sits directly above the composer
-rather than floating, so it pushes the transcript up the way Claude Code's
-does.
-"""
+"""The slash-command overlay. Opens when ``/`` is typed into an empty
+composer, filters fuzzily as you type, and is driven with the arrow keys.
+Sits directly above the composer rather than floating, pushing the
+transcript up the way Claude Code's does."""
 
 from __future__ import annotations
 

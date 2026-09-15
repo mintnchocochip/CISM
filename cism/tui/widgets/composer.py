@@ -1,10 +1,6 @@
 """The fixed bottom composer: one rounded box, a ``>`` glyph, and the input.
-
-The border is dim until something inside is focused, then it takes the accent.
-Enter submits, shift+enter (or ctrl+j, for terminals that do not distinguish
-shift+enter) inserts a newline, and up/down recall history while the buffer is
-a single line.
-"""
+Enter submits, shift+enter (or ctrl+j) inserts a newline, and up/down
+recall history while the buffer is a single line."""
 
 from __future__ import annotations
 

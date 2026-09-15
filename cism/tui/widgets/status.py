@@ -1,13 +1,7 @@
-"""The one-line status bar that sits under the composer.
-
-``qwen2.5-7b · phase: recon · ctx 12.4k/32k (38%) · 47 tok/s · depg 47 nodes ·
-mem T1:8 T2:31 T3:5 · ⏵⏵ auto``
-
-No border, dim text, and exactly one line at any width. Every field carries a
-short form and a priority; when the full line does not fit, low-priority
-fields degrade to their short form and then drop out entirely. Priority-1
-fields always survive.
-"""
+"""The one-line status bar under the composer, e.g. ``qwen2.5-7b · phase:
+recon · ctx 12.4k/32k (38%) · 47 tok/s``. Every field has a short form and
+a priority; when the line doesn't fit, low-priority fields degrade to
+short form then drop out. Priority-1 fields always survive."""
 
 from __future__ import annotations
 
@@ -29,12 +23,9 @@ ESSENTIAL = 1
 
 @dataclass(frozen=True, slots=True)
 class Segment:
-    """One field of the status line, with a fallback rendering.
-
-    ``label`` is the dim prefix shared by both forms (``"phase: "``), kept
-    separate only so it can be styled down against the value. It is included
-    in ``full`` and ``short``, so measurement never has to know about it.
-    """
+    """One field of the status line, with a fallback rendering. ``label`` is
+    the dim prefix shared by both forms, kept separate only so it can be
+    styled down against the value."""
 
     key: str
     full: str
@@ -48,16 +39,9 @@ class Segment:
 
 
 def elide(segments: list[Segment], width: int) -> list[Segment]:
-    """Fit ``segments`` into ``width`` columns.
-
-    Degrades in two passes so the line loses detail before it loses fields:
-    first the lowest-priority segments switch to their short form, then whole
-    segments are dropped. Returns the segments to render, in order, each
-    already reduced to the form that fits.
-
-    Pure and width-only — no widget required, so the behaviour is testable
-    directly at any terminal size.
-    """
+    """Fit ``segments`` into ``width`` columns in two passes: lowest-priority
+    segments switch to short form first, then whole segments drop. Pure and
+    width-only, so it's testable at any terminal size without a widget."""
 
     def measure(chosen: list[Segment], compact: set[str]) -> int:
         if not chosen:

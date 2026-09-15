@@ -212,6 +212,20 @@ def test_a_failed_tool_call_now_produces_a_blocked_tombstone_node() -> None:
     assert node.state == "blocked"
 
 
+def test_differently_formatted_targets_normalize_onto_the_same_node() -> None:
+    """"ssh://10.0.0.5:22" and "10.0.0.5" must merge onto the same node
+    family instead of fragmenting into two — a host is one host regardless
+    of scheme/port/case, per cism/depg/normalize.py."""
+    ai, result = _tool_round("call-1", "dummy_nmap", "ok")
+    state = _state([HumanMessage(content="scan it"), ai, result])
+    state["target"] = "ssh://10.0.0.5:22"
+
+    update = _depg_update()(state)
+
+    node = next(iter(update["depg_nodes"].values()))
+    assert node.target == "10.0.0.5"
+
+
 def test_a_second_call_on_the_same_target_gets_an_edge_from_the_first() -> None:
     depg_update = _depg_update()
     ai1, result1 = _tool_round("call-1", "dummy_nmap", "ok")

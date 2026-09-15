@@ -1,7 +1,6 @@
-"""Builds the LangGraph state graph. A pure factory: every dependency is
-injected, nothing is constructed inside it — that's what keeps this file
-unchanged whether the model, tools, or guardrails behind it are the dummy
-stub versions or real ones later.
+"""Builds the LangGraph state graph. A pure factory — every dependency is
+injected, nothing constructed inside it — so this file is unchanged
+whether the model/tools/guardrails behind it are dummy or real.
 
 ::
 

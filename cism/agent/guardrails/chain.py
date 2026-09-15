@@ -1,19 +1,11 @@
 """The guardrail seam: chain of responsibility.
 
-Three chains are threaded through the graph — input, action, output — each a
-``GuardrailChain`` over its own payload type. :meth:`GuardrailSeam.no_op`
-still builds all three from a single :class:`PassThroughStage`, but a real
-check is live: ``default_profiles`` (cism/agent/profiles.py) builds each
-phase's action chain around a :class:`PhaseToolGuardStage`. Adding a
-further guardrail means appending a stage to the relevant chain; the
-runner and the graph shape it is wired into never change.
-
-``run_agent.py``'s ``--live-tools`` flag builds a real one (ScopeGuardStage
-+ DangerousFlagGuardStage on the action chain) and passes it to
-``LangGraphAgent`` explicitly; ``LangGraphAgent``'s own default stays
-``GuardrailSeam.no_op()`` for every caller — tests included — that doesn't
-opt in.
-"""
+Three chains run through the graph — input, action, output — each a
+``GuardrailChain`` over its own payload type. Adding a guardrail means
+appending a stage to the relevant chain; the runner and graph shape never
+change. ``LangGraphAgent``'s default is ``GuardrailSeam.no_op()``;
+``run_agent.py --live-tools`` builds a real one (ScopeGuardStage +
+DangerousFlagGuardStage) and passes it in explicitly."""
 
 from __future__ import annotations
 
@@ -36,12 +28,9 @@ T = TypeVar("T")
 
 @dataclass(frozen=True, slots=True)
 class GuardrailResult(Generic[T]):
-    """The outcome of running a value through a chain.
-
-    ``value`` carries the (possibly transformed) payload forward when
-    ``allowed`` is true, or is the original payload unchanged when it is
-    false — ``reason`` explains the block in that case.
-    """
+    """The outcome of running a value through a chain. ``value`` carries the
+    (possibly transformed) payload when ``allowed``, else the original
+    payload with ``reason`` explaining the block."""
 
     allowed: bool
     value: T
@@ -75,20 +64,12 @@ class GuardrailChain(Generic[T]):
             try:
                 result = stage.check(current)
             except Exception as exc:
-                # A stage that cannot make sense of a malformed or
-                # adversarial call must not crash the graph node — that
-                # is itself a denial-of-service surface, and the fix
-                # belongs here once, not at every individual raise site
-                # inside every stage.
+                # A stage raising on a malformed call must not crash the graph node.
                 return GuardrailResult(
                     allowed=False,
                     value=current,
                     reason=f"{type(exc).__name__}: {exc}",
-                    # getattr, not stage.name: a malformed stage object
-                    # missing .name would raise AttributeError inside the
-                    # handler that exists precisely to stop stages from
-                    # raising.
-                    stage=getattr(stage, "name", "unknown"),
+                    stage=getattr(stage, "name", "unknown"),  # stage itself may be malformed
                 )
             if not result.allowed:
                 return dataclasses.replace(result, stage=stage.name)

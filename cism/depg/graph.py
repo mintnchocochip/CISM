@@ -24,9 +24,7 @@ class Graph:
     ) -> None:
         self.nodes: dict[str, Node] = dict(nodes) if nodes else {}
         self.edges: list[Edge] = list(edges) if edges else []
-        # Seeded from insertion order so from_state() carries the
-        # last-touched-per-target fallback across graph steps, not just
-        # within one.
+        # Seeded from insertion order so the last-touched-per-target fallback carries across graph steps.
         self.last_for_target: dict[str, str] = {
             node.target: node_id for node_id, node in self.nodes.items()
         }

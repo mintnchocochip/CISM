@@ -1,14 +1,10 @@
 #!/usr/bin/env python
-"""Run the CISM TUI against the real LangGraph-backed agent core.
+"""Run the CISM TUI against the real LangGraph-backed agent core (unlike
+``demo_replay.py``, which replays a recorded log).
 
-Unlike ``demo_replay.py`` this does not replay a recorded log — it drives
-``cism.agent.LangGraphAgent`` live, through the same ``Agent`` protocol.
-
-With no flags, the agent falls back to whatever ``CISM_LLM_BASE_URL``/
-``CISM_LLM_MODEL`` say (or ``DummyChatModel`` if neither is set — see
-``cism/agent/core.py``). To point at a real OpenAI-compatible server
-(llama.cpp, vLLM, LM Studio, real OpenAI, or Ollama's ``/v1`` endpoint)
-without touching the environment::
+With no flags, falls back to ``CISM_LLM_BASE_URL``/``CISM_LLM_MODEL`` (or
+``DummyChatModel`` if neither is set). To point at a real OpenAI-compatible
+server (llama.cpp, vLLM, LM Studio, OpenAI, Ollama's ``/v1``)::
 
     .venv/bin/pip install -e ".[dev,agent]"
     python run_agent.py --base-url http://localhost:11434/v1 --model qwen2.5:3b
@@ -16,17 +12,11 @@ without touching the environment::
 
 By default, tool calls run against ``dummy_nmap``/``dummy_msfconsole`` — no
 real subprocess ever runs. Pass ``--live-tools`` to run the real catalog
-(nmap/curl/hydra/...) instead, sandboxed via ``bwrap`` (bubblewrap) and
-checked against a real ``ScopeGuardStage``/``DangerousFlagGuardStage``
-action chain — this requires ``--scope`` (comma-separated CIDRs/domains
-you're authorized against) and a working ``bwrap`` install::
+sandboxed via ``bwrap``, checked by a real ScopeGuardStage/
+DangerousFlagGuardStage action chain; requires ``--scope`` and ``bwrap``::
 
     python run_agent.py --live-tools --scope 10.0.0.0/24,example.internal \\
         --base-url http://localhost:11434/v1 --model qwen2.5:3b
-
-See ``cism/agent/`` for what's behind it and the design specs at
-``docs/superpowers/specs/2026-08-29-real-llm-connector-wiring-design.md``
-and ``docs/superpowers/specs/2026-09-08-live-tools-and-guardrail-wiring-design.md``.
 """
 
 from __future__ import annotations
@@ -92,13 +82,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _enable_live_tools(scope_spec: str) -> tuple[ToolRegistry, GuardrailSeam]:
-    """Opts a live run into real tools: BubblewrapRunner as the process
-    default Runner, the real CATALOG+hydra toolkit, and a real
-    ScopeGuardStage/DangerousFlagGuardStage action chain built from
-    scope_spec. Refuses (SystemExit) rather than degrading silently: no
-    bwrap means no sandboxing, and an empty scope means ScopeGuardStage
-    would block every call anyway — neither check mutates global state
-    before both have passed."""
+    """Opts a live run into real tools: BubblewrapRunner as the default
+    Runner, the real CATALOG+hydra toolkit, and a real ScopeGuardStage/
+    DangerousFlagGuardStage action chain. Refuses (SystemExit) rather than
+    degrading silently if bwrap or a usable scope is missing."""
     if shutil.which("bwrap") is None:
         raise SystemExit(
             "--live-tools requires bubblewrap (bwrap) to be installed — "

@@ -1,10 +1,7 @@
-"""The pluggable seam that turns a tool call's result into DEPG nodes/edges.
-
-This is deliberately the only place that knows how to read a specific
-tool's output. Swapping in real cause-class heuristics later (regexing real
-nmap/msfconsole output, say) means adding a new :class:`CauseExtractor` and
-registering it — nothing in ``cism/agent/`` changes.
-"""
+"""The pluggable seam that turns a tool call's result into DEPG nodes/edges
+— the only place that knows how to read a specific tool's output. Adding a
+new tool's heuristics means a new :class:`CauseExtractor`, registered;
+nothing in ``cism/agent/`` changes."""
 
 from __future__ import annotations
 
@@ -42,10 +39,9 @@ class CauseExtractor(Protocol):
 
 class GenericExtractor:
     """The fallback: every tool call becomes exactly one node, cause_class
-    taken from the tool's own name. No real interpretation of the output
-    happens here, so the evidence tier stays at the weakest (T3) rather than
-    implying a confidence that hasn't been earned yet. Failures are captured
-    too (verdict="dead"), not silently skipped."""
+    from the tool's name. No real output interpretation happens, so the
+    evidence tier stays at the weakest (T3). Failures are captured too
+    (verdict="dead"), not silently skipped."""
 
     def extract(
         self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
@@ -75,11 +71,9 @@ class GenericExtractor:
 
 
 class ExtractorRegistry:
-    """Dict-keyed-by-tool-name lookup, mirroring :class:`ToolRegistry`'s
-    shape — but unlike ``ToolRegistry.get()``, which raises on an
-    unregistered name because that's a programming bug, an unrecognized
-    tool here is expected: it just means no specialized extractor exists
-    yet, so the default degrades gracefully instead of failing the run."""
+    """Dict-keyed-by-tool-name lookup. Unlike ``ToolRegistry.get()``, which
+    raises on an unregistered name, an unrecognized tool here just means no
+    specialized extractor exists yet — it degrades to the default."""
 
     def __init__(self, extractors: dict[str, CauseExtractor], default: CauseExtractor) -> None:
         self._extractors = dict(extractors)

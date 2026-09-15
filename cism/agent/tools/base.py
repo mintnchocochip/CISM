@@ -1,7 +1,6 @@
 """The factory and escape hatch behind the tool catalog: every built tool
 routes through run_sandboxed, so a data row can no more bypass the sandbox
-than a hand-written @tool function can.
-"""
+than a hand-written @tool function can."""
 
 from __future__ import annotations
 
@@ -77,9 +76,8 @@ def write_lines(scratch: Path, filename: str, values: list[str]) -> str:
 
 
 def _decorated_args_model(func: Callable[..., list[str]]):
-    """The model-facing schema is the decorated function's own signature
-    minus ``scratch`` — that parameter is supplied by this module, not by
-    the model, so exposing it would let a caller name its own directory."""
+    """The decorated function's signature minus ``scratch``, which this
+    module supplies rather than the model — else a caller could name its own directory."""
     fields: dict[str, Any] = {}
     for name, parameter in inspect.signature(func).parameters.items():
         if name == _SCRATCH_PARAM:
@@ -94,9 +92,8 @@ def sandboxed_tool(
     binary: str, capability: Capability, timeout: float = 60.0
 ) -> Callable[[Callable[..., list[str]]], BaseTool]:
     """Escape hatch for a tool needing real prep (file materialization,
-    subcommands) rather than the flat flags-and-target shape build_catalog
-    covers. The wrapped function returns only the argv tail; this decorator
-    still owns the sandbox call, exactly like build_catalog's rows do."""
+    subcommands) beyond build_catalog's flat flags-and-target shape. The
+    wrapped function returns only the argv tail; this decorator still owns the sandbox call."""
 
     def decorator(func: Callable[..., list[str]]) -> BaseTool:
         needs_scratch = _SCRATCH_PARAM in inspect.signature(func).parameters
@@ -123,9 +120,7 @@ def sandboxed_tool(
 def _build_help_tool(catalog: dict[str, ToolSpec], extra_binaries: dict[str, str]) -> BaseTool:
     """One generic tool, not one per catalog entry. Still routed through
     run_sandboxed — timeout-protected even for "harmless" --help, since
-    some binaries hang on it waiting on stdin. Exempt from phase gating
-    (see make_think_node): knowing what a tool can do carries none of the
-    risk that using it does."""
+    some binaries hang waiting on stdin. Exempt from phase gating."""
     binaries = {name: spec.binary for name, spec in catalog.items()} | extra_binaries
 
     def _run(tool_name: str) -> str:
@@ -145,12 +140,9 @@ def _build_help_tool(catalog: dict[str, ToolSpec], extra_binaries: dict[str, str
 
 
 def _binaries_of(tools: list[BaseTool]) -> dict[str, str]:
-    """A decorated tool's real binary name, read from the metadata
-    sandboxed_tool now attaches — not assumed to equal the tool's
-    registered name, even though that happens to be true for hydra today.
-    hydra itself is a plain @tool, not a sandboxed_tool, so its metadata is
-    None rather than a dict missing "binary" — `or {}` covers both "no
-    metadata at all" and "metadata without a binary key" the same way."""
+    """A decorated tool's real binary name, from sandboxed_tool's metadata —
+    not assumed equal to the registered name. `or {}` covers a tool with no
+    metadata at all the same way as metadata missing a "binary" key."""
     return {tool.name: (tool.metadata or {}).get("binary", tool.name) for tool in tools}
 
 
@@ -159,11 +151,9 @@ def build_toolkit(
     decorated_tools: list[BaseTool],
     extractors: dict[str, CauseExtractor],
 ) -> tuple[ToolRegistry, dict[str, str]]:
-    """Assembles one ToolRegistry from every tool source this codebase has
-    (catalog rows, hand-written decorated tools, plus the generic
-    tool_help), and hands back the extractors dict unchanged alongside it
-    so a caller building both together — as LangGraphAgent does — has one
-    call site instead of two independently-ordered ones."""
+    """Assembles one ToolRegistry from every tool source (catalog rows,
+    decorated tools, generic tool_help) and hands back extractors
+    unchanged alongside it, so callers building both have one call site."""
     catalog_tools = build_catalog(catalog)
     help_tool = _build_help_tool(catalog, extra_binaries=_binaries_of(decorated_tools))
     registry = ToolRegistry([*catalog_tools, *decorated_tools, help_tool])

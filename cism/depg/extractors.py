@@ -1,9 +1,7 @@
-"""Real cause-class extractors: nmap open-port findings and hydra credential
-attempts (regex-based, parsing each tool's own default plain-text output),
-plus LLMExtractor — the LLM-backed fallback for any tool without a
-hand-written parser here, and EXTRACTORS, the small dict of tool-name ->
-extractor pairing the two regex-based ones to their tool names.
-"""
+"""Real cause-class extractors: regex-based NmapExtractor/HydraExtractor
+parsing each tool's default plain-text output, plus LLMExtractor as the
+fallback for any tool without a hand-written parser, and EXTRACTORS, the
+tool-name -> extractor dict for the two regex-based ones."""
 
 from __future__ import annotations
 
@@ -153,13 +151,10 @@ class ExtractedFindings(BaseModel):
 
 class LLMExtractor:
     """Fallback CauseExtractor for any tool without a hand-written one.
-    Grounding is mechanical (a real substring check), never another LLM
-    call: a finding whose evidence_quote can't be found in the tool's own
-    output has its tier clamped to T3 rather than dropped. Any exception —
-    malformed structured output, the connector not supporting it, a network
-    error — falls back to GenericExtractor's exact behavior, the same
-    one-weak-T3-node result every tool already gets today.
-    """
+    Grounding is mechanical (a substring check), never another LLM call: a
+    finding whose evidence_quote isn't in the tool's own output gets its
+    tier clamped to T3 rather than dropped. Any exception falls back to
+    GenericExtractor's plain one-weak-T3-node behavior."""
 
     def __init__(self, llm: BaseChatModel) -> None:
         self._llm = llm

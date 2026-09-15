@@ -1,16 +1,7 @@
-"""Keep credentials out of the transcript.
-
-The composer feeds three places that outlive the keystroke: the transcript,
-the input history recalled with the arrow keys, and the file written by
-``/export``. A key pasted into any slash command would reach all three, and
-CISM transcripts get pasted into reports.
-
-So a credential-shaped argument is redacted before the turn is ever echoed,
-and the command that received it is refused rather than forwarded.
-
-Detection is deliberately broad. A false positive costs one retype; a false
-negative leaks a key into a report.
-"""
+"""Keep credentials out of the transcript, history, and ``/export`` — a key
+pasted into any slash command reaches all three otherwise, and transcripts
+get pasted into reports. Detection is deliberately broad: a false positive
+costs one retype, a false negative leaks a key."""
 
 from __future__ import annotations
 
@@ -45,12 +36,8 @@ def looks_like_secret(value: str) -> bool:
 
 
 def redact_command(text: str) -> str:
-    """Mask any credential-shaped word in a composer line.
-
-    Applies to every command, not just ``/api`` — the point is that no path
-    from the composer to the transcript can carry a key, including a command
-    added later that forgot about this.
-    """
+    """Mask any credential-shaped word in a composer line. Applies to every
+    command, not just ``/api``, so no path to the transcript can carry a key."""
     if not text.strip():
         return text
     words = text.split(" ")

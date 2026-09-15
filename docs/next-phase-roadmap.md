@@ -100,7 +100,7 @@ worth new implementation work.
 
 ### 2.1 `phase_router` is a placeholder heuristic **(design doc already says so, verified in code)**
 **Impact: Medium-High — this is core to whether phase progression means
-anything.** `make_phase_router()` (`cism/agent/nodes.py:244-260`) advances to
+anything.** `make_phase_router()` (`cism/agent/nodes.py:264-280`) advances to
 `DEFAULT_NEXT_PHASE[current]` purely on "did the last tool call not error" —
 no DEPG evidence quality, no assessment of whether the phase's actual goal
 was met. Confirmed still true; named explicitly in
@@ -122,15 +122,6 @@ here... not something this design introduces or depends on") but never
 fixed. **This is the one item in this report that's an actual bug, not a
 deferred feature** — worth fixing on its own, independent of any bigger
 phase of work.
-
-### 2.3 No graph/state persistence
-**Impact: Low for a demo/solo tool, High if this ever needs to survive a
-restart or run concurrent engagements.** No LangGraph checkpointer, no
-resume-across-restart, no per-engagement keying if two runs happened at
-once. Explicitly deferred as "a genuinely separate subsystem" in
-`2026-08-29-real-llm-connector-wiring-design.md` ("Out of scope"). Confirmed
-no checkpointer anywhere (`build_graph()` calls `.compile()` with no
-`checkpointer=`).
 
 ---
 
@@ -211,10 +202,6 @@ From `2026-08-29-real-llm-connector-wiring-design.md` "Left open":
 - **A combined `/connect` command** replacing separate `/api`/`/model`
   — considered, dropped, matches current docs. Not a gap, just recorded so
   it isn't re-proposed without knowing it was already decided against.
-- **`/scope <cidr>` as a TUI command** — considered and dropped in
-  `2026-08-02-cism-tui-iteration-design.md` ("Out of scope"): engagement
-  scope belongs in the agent (now: `run_agent.py --scope`), not the display
-  layer. Same reasoning — recorded, not a gap.
 
 ---
 
@@ -244,6 +231,23 @@ From `2026-08-29-real-llm-connector-wiring-design.md` "Left open":
 
 ## Resolved (moved here as items close)
 
+- **No graph/state persistence (§2.3 as originally written).** Fixed:
+  `LangGraphAgent.__init__` (`cism/agent/core.py`) now constructs a
+  `MemorySaver()` checkpointer and passes it to every `build_graph()` call
+  in the class, keyed by a stable per-agent `thread_id` — state (messages,
+  DEPG graph, memory items, phase) persists across `submit()` calls within
+  one process lifetime. Restart-survival and multi-engagement keying are
+  still not addressed (`MemorySaver` is in-process only), but the original
+  "no persistence at all" gap is closed.
+- **`/scope <cidr>` as a TUI command — previously "considered and
+  dropped."** Superseded: a full `/scope` slash command (list current
+  scope, `add`/`remove`) shipped instead, wired in `LangGraphAgent.submit()`
+  (`cism/agent/core.py`) and listed in `cism/tui/widgets/slash.py`'s
+  `COMMANDS`. `run_agent.py --scope` still sets the *initial* engagement
+  scope at startup; `/scope` extends it live from inside a run. The
+  original "scope belongs in the agent, not the display layer" reasoning
+  held — `/scope` is a thin TUI-side forward to agent-owned scope state,
+  not display-layer scope logic.
 - **Finding 8 — nothing wires a real `GuardrailSeam`/toolkit into
   `LangGraphAgent`.** Fixed 2026-09-08: `run_agent.py --live-tools` wires
   `BubblewrapRunner`, the real toolkit, and a real `ScopeGuardStage`+

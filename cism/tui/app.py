@@ -1,15 +1,10 @@
 """The CISM terminal application.
 
-Layout is deliberately flat: one scrolling transcript, an animated working
-line, the composer, and a single status line. The terminal is the frame.
-
-The app is a *pure consumer* of agent events. A long-lived worker drains
-``agent.events`` and calls :meth:`CISMApp._apply`, which is the only place
-transcript state is mutated. Widgets never call into the agent; user actions
-travel back out through :meth:`Agent.submit` and :meth:`Agent.interrupt`,
-each on its own exclusive worker so the UI thread never awaits llama.cpp,
-a subprocess, or the cross-encoder scorer.
-"""
+Layout is flat: one scrolling transcript, a working line, the composer, and
+a status line. The app is a pure consumer of agent events — a worker drains
+``agent.events`` into :meth:`CISMApp._apply`, the only place transcript
+state mutates; user actions go back out via :meth:`Agent.submit` /
+:meth:`Agent.interrupt`, each on its own worker so the UI never blocks."""
 
 from __future__ import annotations
 
@@ -72,6 +67,7 @@ HELP_TEXT = """\
 /target <spec>   declare the target environment, e.g. linux nginx php
 /api [url]       show or switch the inference endpoint
 /phase <name>    force a PTES phase transition
+/scope [add|remove] <target>  view or extend the live engagement scope
 /depg            dependency / error propagation graph      (ctrl+d)
 /mem             memory view                               (ctrl+m)
 /replay <run_id> counterfactual replay from the output cache
@@ -288,11 +284,8 @@ class CISMApp(App[None]):
     # -- token rate --------------------------------------------------------
 
     def _record_rate(self, total: int) -> None:
-        """Average tokens/second over a sliding window.
-
-        The rate is a display concern, so it is derived here from TokenDelta
-        rather than being another field the agent has to report.
-        """
+        """Average tokens/second over a sliding window, derived here from
+        TokenDelta rather than made another field the agent must report."""
         now = time.monotonic()
         samples = self._token_samples
         samples.append((now, total))
@@ -312,8 +305,7 @@ class CISMApp(App[None]):
     def on_composer_submitted(self, message: Composer.Submitted) -> None:
         message.stop()
         text = message.text
-        # Redact before echoing: the transcript is exported and the composer
-        # history is recalled, so a key echoed here would outlive the keystroke.
+        # Redact before echoing — an exported/recalled transcript shouldn't outlive the keystroke.
         self.transcript.add_user_turn(redact_command(text))
         if text.startswith("/"):
             self._run_command(text)

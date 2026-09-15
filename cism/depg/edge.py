@@ -1,8 +1,5 @@
-"""The agent-side working edge of the Dependency / Error Propagation Graph.
-
-See :mod:`cism.depg.node` for why this is a separate, mutable type from
-``cism.tui.events.DEPGEdge``.
-"""
+"""The agent-side working edge — see :mod:`cism.depg.node` for why this is
+a separate, mutable type from ``cism.tui.events.DEPGEdge``."""
 
 from __future__ import annotations
 

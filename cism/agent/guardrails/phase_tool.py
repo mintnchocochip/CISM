@@ -1,18 +1,9 @@
-"""A stage in the action GuardrailChain, alongside ScopeGuardStage and
-DangerousFlagGuardStage: independently re-checks that a called tool is
-actually offered in the current phase.
-
-default_profiles() (cism/agent/profiles.py) already restricts which
-tools are bound at the think step — a destructive-capability tool is
-never even offered to the model outside the phases that declare it. This
-stage exists because binding-time restriction is not a guarantee against
-a compromised or confused model: a prompt injection (from a scanned
-target's own banner text, a DNS TXT record — anything the agent reads
-back as tool output) or a hallucinated tool name could construct a
-ToolCall some other way. allowed_tool_names is deliberately the exact
-same value default_profiles() already computed for binding, not a
-second, parallel derivation that could drift from it.
-"""
+"""A stage in the action GuardrailChain: independently re-checks that a
+called tool is actually offered in the current phase. Binding-time
+restriction (default_profiles) isn't a guarantee against a compromised or
+confused model — a prompt injection or hallucinated name could construct a
+ToolCall another way. allowed_tool_names is the exact same value
+default_profiles() computed for binding, not a second derivation."""
 
 from __future__ import annotations
 
@@ -23,10 +14,8 @@ from cism.agent.state import Phase
 
 __all__ = ["PhaseToolGuardStage"]
 
-#: Matches make_think_node's own bind-time exemption for tool_help
-#: (cism/agent/nodes.py): knowing what a tool can do carries none of the
-#: risk using it does, so it's exempt from phase gating here too,
-#: independent of whatever allowed_tool_names the caller passed in.
+#: Matches make_think_node's own tool_help exemption — knowing what a tool
+#: does carries none of the risk of using it.
 _EXEMPT_TOOL_NAMES: frozenset[str] = frozenset({"tool_help"})
 
 

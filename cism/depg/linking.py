@@ -14,12 +14,10 @@ __all__ = ["find_precondition"]
 
 
 def find_precondition(graph: Graph, target: str, call: ToolCall | None) -> Node | None:
-    """Looks for a same-target node whose own signal or latest evidence
-    mentions something this call's own arguments reference (e.g. hydra's
-    service="ssh" matching nmap's "22/tcp open ssh" evidence). Falls back to
-    the most recently touched node on this target when nothing matches — a
-    guess of last resort, since a wrong edge is worse than a missing one.
-    """
+    """Finds a same-target node whose signal or latest evidence mentions
+    something this call's args reference (e.g. hydra's service="ssh"
+    matching nmap's "22/tcp open ssh"). Falls back to the most recently
+    touched node on this target — a wrong edge is worse than a missing one."""
     tokens = _reference_tokens(call)
     candidates = [n for n in graph.nodes.values() if n.target == target]
 

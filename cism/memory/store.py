@@ -21,10 +21,8 @@ DEFAULT_SALIENCE_TERMS = SalienceTerms(
 
 
 def memory_key(source_type: str, phase_tag: str, snippet: str) -> str:
-    """Dedup key for a non-DEPG memory candidate: a recurring block or
-    narration collapses onto one row (hits increments) instead of spamming
-    the table. A DEPG-derived row uses the node's own id as its key instead
-    of this function."""
+    """Dedup key for a non-DEPG memory candidate, so a recurring block or
+    narration collapses onto one row instead of spamming the table."""
     normalized = " ".join(snippet.split()).lower()
     return f"{source_type}:{phase_tag}:{normalized}"
 
@@ -38,9 +36,8 @@ class MemoryStore:
         return cls(dict(items))
 
     def upsert(self, key: str, tier: Tier, phase_tag: str, snippet: str) -> MemoryItem:
-        """A matching key bumps hits and keeps the original creation time (so
-        age reflects how long this item has been true, not when it last
-        recurred). A new key is inserted fresh."""
+        """A matching key bumps hits and keeps the original creation time,
+        so age reflects how long this has been true. A new key inserts fresh."""
         existing = self.items.get(key)
         if existing is None:
             item = MemoryItem(

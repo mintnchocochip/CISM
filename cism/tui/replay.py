@@ -1,14 +1,8 @@
-"""A fake agent that replays a recorded event log.
-
-This is what makes the TUI demoable with no lab, no model weights, and no
-network. It satisfies :class:`cism.tui.events.Agent` exactly, so the app
-cannot tell it apart from the real LangGraph-backed core.
-
-The log is JSONL, one :func:`cism.tui.events.encode` payload per line, with an
-optional ``"delay"`` key giving the pause *before* that event is emitted.
-Narration lines may instead carry ``"stream"``, which is expanded into a
-sequence of :class:`Narration` chunks so playback looks like live generation.
-"""
+"""A fake agent that replays a recorded event log — makes the TUI demoable
+with no lab, model weights, or network. Satisfies :class:`cism.tui.events.
+Agent` exactly. The log is JSONL, one :func:`encode` payload per line, with
+an optional ``"delay"`` before that event; a ``"stream"`` key expands into
+:class:`Narration` chunks so playback looks like live generation."""
 
 from __future__ import annotations
 
@@ -42,11 +36,8 @@ DEMO_MODELS: tuple[ModelInfo, ...] = (
 
 
 class ReplayLogError(ValueError):
-    """Raised when a replay log cannot be parsed.
-
-    Deliberately raised at load time, before the app mounts, so a broken demo
-    log fails loudly instead of half-starting.
-    """
+    """Raised when a replay log cannot be parsed — at load time, before the
+    app mounts, so a broken demo log fails loudly instead of half-starting."""
 
 
 class ReplayStep:
@@ -113,10 +104,7 @@ def load_log(path: str | Path) -> list[ReplayStep]:
 
 class FakeAgent:
     """Replays a log into the event queue. Satisfies the ``Agent`` protocol.
-
-    ``speed`` scales every delay: ``2.0`` plays twice as fast, ``0`` removes
-    all pauses (used by the tests so they do not sleep).
-    """
+    ``speed`` scales every delay; ``0`` removes all pauses (used by tests)."""
 
     def __init__(
         self,
@@ -148,8 +136,7 @@ class FakeAgent:
     # -- Agent protocol ----------------------------------------------------
 
     async def start(self) -> None:
-        # Announce the session before any playback, so the status bar is
-        # populated even when the log is never played.
+        # Announce the session before playback, so the status bar is populated even if never played.
         await self.events.put(self._session())
         if self.autostart:
             self._spawn()
@@ -163,11 +150,8 @@ class FakeAgent:
             self._spawn()
 
     async def _configure(self, line: str) -> None:
-        """Answer the session-config commands so the demo is interactive.
-
-        The real agent would actually load the model or re-point the client;
-        the fake just reports the state the TUI should now display.
-        """
+        """Answer session-config commands so the demo is interactive — the
+        fake just reports the state the TUI should now display."""
         name, _, argument = line[1:].strip().partition(" ")
         argument = argument.strip()
 
