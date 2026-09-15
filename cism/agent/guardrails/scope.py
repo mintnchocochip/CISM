@@ -255,7 +255,7 @@ def parse_scope(value: str) -> EngagementScope:
         try:
             cidrs.append(ipaddress.ip_network(token, strict=False))
         except ValueError:
-            domains.append(token)
+            domains.append(token.lower())
     return EngagementScope(cidrs=tuple(cidrs), domains=tuple(domains))
 
 

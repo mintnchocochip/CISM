@@ -97,6 +97,11 @@ def test_parse_scope_all_blank_tokens_returns_empty_scope() -> None:
     assert scope.domains == ()
 
 
+def test_parse_scope_lowercases_domain_tokens() -> None:
+    scope = parse_scope("Example.COM")
+    assert scope.domains == ("example.com",)
+
+
 from cism.agent.guardrails import DangerousFlagGuardStage, ScopeGuardStage
 from cism.agent.tools import ToolRegistry
 from cism.agent.tools.sandbox import BubblewrapRunner

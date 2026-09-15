@@ -1210,6 +1210,25 @@ async def test_scope_remove_of_an_unknown_target_says_so(tmp_path, monkeypatch) 
     await agent.aclose()
 
 
+async def test_scope_add_then_remove_different_case_round_trips(tmp_path, monkeypatch) -> None:
+    """Regression test: parse_scope must lowercase domain tokens so that
+    an entry added with one case can be removed with another. Before the
+    fix, /scope add Example.COM stored "Example.COM" verbatim, so
+    /scope remove example.com (lowercased by EngagementScope.without)
+    never found it — the entry was permanently unremovable."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = _live_tools_agent(EngagementScope())
+
+    await agent.submit("/scope add Example.COM")
+    added = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(added, ScopeChanged) and added.action == "add"
+
+    await agent.submit("/scope remove example.com")
+    removed = await asyncio.wait_for(agent.events.get(), timeout=1)
+    assert isinstance(removed, ScopeChanged) and removed.action == "remove"
+    await agent.aclose()
+
+
 async def test_scope_unknown_subcommand_reports_an_error(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     agent = _live_tools_agent()

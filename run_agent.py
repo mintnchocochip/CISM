@@ -32,14 +32,12 @@ and ``docs/superpowers/specs/2026-09-08-live-tools-and-guardrail-wiring-design.m
 from __future__ import annotations
 
 import argparse
-import ipaddress
 import shutil
 import sys
 
 from cism.agent import LangGraphAgent
 from cism.agent.guardrails import (
     DangerousFlagGuardStage,
-    EngagementScope,
     GuardrailChain,
     GuardrailSeam,
     PassThroughStage,
