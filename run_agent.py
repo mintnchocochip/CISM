@@ -13,7 +13,8 @@ server (llama.cpp, vLLM, LM Studio, OpenAI, Ollama's ``/v1``)::
 By default, tool calls run against ``dummy_nmap``/``dummy_msfconsole`` — no
 real subprocess ever runs. Pass ``--live-tools`` to run the real catalog
 sandboxed via ``bwrap``, checked by a real ScopeGuardStage/
-DangerousFlagGuardStage action chain; requires ``--scope`` and ``bwrap``::
+DangerousFlagGuardStage action chain plus input length capping, output
+redaction, and tool-output injection screening; requires ``--scope`` and ``bwrap``::
 
     python run_agent.py --live-tools --scope 10.0.0.0/24,example.internal \\
         --base-url http://localhost:11434/v1 --model qwen2.5:3b
@@ -30,14 +31,16 @@ from cism.agent.guardrails import (
     DangerousFlagGuardStage,
     GuardrailChain,
     GuardrailSeam,
-    PassThroughStage,
+    InputGuardStage,
+    OutputRedactionStage,
     ScopeGuardStage,
+    ToolOutputScreenStage,
     parse_scope,
 )
 from cism.agent.llm import build_chat_model
 from cism.agent.tools import CATALOG, ToolRegistry, build_toolkit, hydra
 from cism.agent.tools.sandbox import BubblewrapRunner, set_default_runner
-from cism.depg import EXTRACTORS
+from cism.depg import EXTRACTORS, ExtractorRegistry, GenericExtractor, LLMExtractor, LlamaCppExtractionBackend
 from cism.tui.app import CISMApp
 
 
@@ -56,6 +59,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--key-env-var",
         default="CISM_API_KEY",
         help="name of the env var holding the API key (default: CISM_API_KEY)",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help=(
+            "cap on completion tokens, passed through to the server. Reasoning "
+            "models (e.g. LFM2.5) spend tokens thinking before they answer, so "
+            "too low a cap truncates the reply before a tool call is emitted — "
+            "2048+ is a safe default for those."
+        ),
+    )
+    parser.add_argument(
+        "--backend",
+        default="openai",
+        choices=["openai", "llamacpp"],
+        help="how DEPG findings get extracted: 'openai' (default, needs function calling) or 'llamacpp' (json_schema-constrained /completion call)",
     )
     parser.add_argument(
         "--live-tools",
@@ -83,9 +103,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def _enable_live_tools(scope_spec: str) -> tuple[ToolRegistry, GuardrailSeam]:
     """Opts a live run into real tools: BubblewrapRunner as the default
-    Runner, the real CATALOG+hydra toolkit, and a real ScopeGuardStage/
-    DangerousFlagGuardStage action chain. Refuses (SystemExit) rather than
-    degrading silently if bwrap or a usable scope is missing."""
+    Runner, the real CATALOG+hydra toolkit, and a real guardrail seam —
+    ScopeGuardStage/DangerousFlagGuardStage on actions, a length cap on
+    input, redaction on the final answer, and injection screening on tool
+    output fed back to the model (C1, AUDIT.md). Refuses (SystemExit)
+    rather than degrading silently if bwrap or a usable scope is missing."""
     if shutil.which("bwrap") is None:
         raise SystemExit(
             "--live-tools requires bubblewrap (bwrap) to be installed — "
@@ -98,9 +120,10 @@ def _enable_live_tools(scope_spec: str) -> tuple[ToolRegistry, GuardrailSeam]:
     set_default_runner(BubblewrapRunner())
     tools, _ = build_toolkit(CATALOG, [hydra], EXTRACTORS)
     guardrails = GuardrailSeam(
-        input=GuardrailChain([PassThroughStage()]),
+        input=GuardrailChain([InputGuardStage()]),
         action=GuardrailChain([ScopeGuardStage(scope), DangerousFlagGuardStage()]),
-        output=GuardrailChain([PassThroughStage()]),
+        output=GuardrailChain([OutputRedactionStage()]),
+        tool_output=GuardrailChain([ToolOutputScreenStage()]),
     )
     print(
         f"LIVE TOOLS ENABLED — real nmap/curl/hydra will run, sandboxed via bwrap "
@@ -111,20 +134,32 @@ def _enable_live_tools(scope_spec: str) -> tuple[ToolRegistry, GuardrailSeam]:
     return tools, guardrails
 
 
+def _llamacpp_extractors(base_url: str) -> ExtractorRegistry:
+    """Same regex extractors LangGraphAgent defaults to, but the LLM
+    fallback goes through LlamaCppExtractionBackend."""
+    backend = LlamaCppExtractionBackend(base_url)
+    tool_extractors = {**EXTRACTORS, "dummy_nmap": EXTRACTORS["nmap"]}
+    return ExtractorRegistry(tool_extractors, LLMExtractor(backend))
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     tools, guardrails = _enable_live_tools(args.scope) if args.live_tools else (None, None)
 
     if args.base_url:
-        llm = build_chat_model(args.base_url, args.key_env_var, args.model)
+        llm_kwargs = {"max_tokens": args.max_tokens} if args.max_tokens else {}
+        llm = build_chat_model(args.base_url, args.key_env_var, args.model, **llm_kwargs)
+        extractors = _llamacpp_extractors(args.base_url) if args.backend == "llamacpp" else None
         agent = LangGraphAgent(
             llm=llm,
             tools=tools,
             guardrails=guardrails,
+            extractors=extractors,
             target=args.target,
             endpoint=args.base_url,
             model_name=args.model,
             key_env_var=args.key_env_var,
+            backend=args.backend,
         )
     else:
         agent = LangGraphAgent(tools=tools, guardrails=guardrails, target=args.target)
