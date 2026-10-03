@@ -9,6 +9,7 @@ tools involved.
 
 from __future__ import annotations
 
+import io
 import shutil
 import socket
 import sys
@@ -20,6 +21,7 @@ import pytest
 from cism.agent.tools.sandbox import (
     ToolExecutionError,
     ToolNotInstalledError,
+    ToolOutputReadError,
     ToolTimeoutError,
     run_sandboxed,
     scratch_dir,
@@ -85,6 +87,65 @@ def test_large_output_is_capped_but_keeps_the_final_summary_line() -> None:
     assert "END" in output
 
 
+def test_a_runaway_writer_is_killed_well_before_the_wall_clock_timeout() -> None:
+    """D3 (AUDIT.md): a tool that never stops writing must be aborted once
+    it's produced pathologically more output than max_output, not read to
+    EOF first — the old communicate()-based path buffered everything
+    before any cap applied, so a hostile/looping tool could OOM the parent."""
+    script = "import sys\nwhile True:\n    sys.stdout.write('x' * 65536)\n"
+    start = time.monotonic()
+
+    with pytest.raises(ToolTimeoutError):
+        run_sandboxed([sys.executable, "-c", script], timeout=30.0, max_output=1000)
+
+    assert time.monotonic() - start < 15
+
+
+class _CrashingStream:
+    """A stdout stand-in whose read1() returns a couple of real chunks then
+    raises, like a pipe fd closing out from under the reader thread."""
+
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = list(chunks)
+
+    def read1(self, size: int = -1) -> bytes:
+        if self._chunks:
+            return self._chunks.pop(0)
+        raise OSError("fd closed under the reader")
+
+
+class _FakePopenWithCrashingStdout:
+    """Enough of Popen's interface for _run_capped: a stream that crashes
+    mid-read, and a process that otherwise exits cleanly and promptly —
+    isolating the reader-thread failure from any timeout/kill-tree path."""
+
+    def __init__(self, argv, **kwargs) -> None:
+        self.stdout = _CrashingStream([b"partial output before the pipe dies"])
+        self.returncode = 0
+
+    def wait(self, timeout=None) -> int:
+        return self.returncode
+
+    def poll(self) -> int:
+        return self.returncode
+
+
+def test_a_reader_thread_crash_raises_instead_of_returning_the_partial_buffer(
+    monkeypatch,
+) -> None:
+    """Q3, CODE_REVIEW.md: the background reader thread used to have no
+    try/except — if stream.read1() itself raised, the thread just died and
+    result() silently handed back whatever had been buffered so far,
+    indistinguishable from a complete, successful read."""
+    from cism.agent.tools import sandbox as sandbox_module
+
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", _FakePopenWithCrashingStdout)
+    monkeypatch.setattr(sandbox_module, "_kill_tree", lambda proc: None)
+
+    with pytest.raises(ToolOutputReadError):
+        run_sandboxed([sys.executable, "-c", "pass"])
+
+
 def test_a_tool_writing_a_file_does_not_pollute_the_caller_working_directory(
     tmp_path, monkeypatch
 ) -> None:
@@ -112,7 +173,7 @@ class _FakeRunner:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
 
-    def run(self, argv: list[str], *, timeout: float, cwd) -> str:
+    def run(self, argv: list[str], *, timeout: float, cwd, max_output: int = 20_000) -> str:
         self.calls.append(argv)
         return "fake-output"
 
@@ -313,9 +374,13 @@ class _FakeCompletedPopen:
     def __init__(self, argv, **kwargs) -> None:
         type(self).captured_argv = argv
         self._kwargs = kwargs
+        self.stdout = io.BytesIO(b"fake bwrap output")
 
-    def communicate(self, timeout=None):
-        return (b"fake bwrap output", None)
+    def wait(self, timeout=None) -> int:
+        return self.returncode
+
+    def poll(self) -> int:
+        return self.returncode
 
 
 def test_bubblewrap_runner_binds_every_ro_bind_dir_and_etc_path(monkeypatch) -> None:
@@ -600,8 +665,14 @@ def test_bubblewrap_runner_does_not_leak_secret_environment_variables(tmp_path, 
 
 @requires_bwrap
 def test_bubblewrap_runner_raises_tool_execution_error_on_nonzero_exit(tmp_path) -> None:
+    """H2 (AUDIT.md): a sandboxed tool's non-zero exit was invisible in the audit log."""
+    import json
+    import logging
+
+    from cism.agent.logging import get_agent_logger
     from cism.agent.tools.sandbox import BubblewrapRunner, ToolExecutionError
 
+    get_agent_logger(log_dir=tmp_path)
     scratch = tmp_path / "scratch"
     scratch.mkdir()
 
@@ -613,6 +684,12 @@ def test_bubblewrap_runner_raises_tool_execution_error_on_nonzero_exit(tmp_path)
     assert exc_info.value.returncode == 3
     assert "real-output" in exc_info.value.output
 
+    for handler in logging.getLogger("cism.agent").handlers:
+        handler.flush()
+    records = [json.loads(line) for line in (tmp_path / "agent.log").read_text(encoding="utf-8").splitlines()]
+    logged = next(r for r in records if r["message"] == "tool exited non-zero")
+    assert logged["data"]["returncode"] == 3
+
 
 @requires_bwrap
 def test_bubblewrap_runner_kill_on_timeout_also_kills_a_detached_child(tmp_path) -> None:
@@ -621,8 +698,13 @@ def test_bubblewrap_runner_kill_on_timeout_also_kills_a_detached_child(tmp_path)
     still dies, because the whole PID namespace tears down when bwrap's
     own init-equivalent process is killed — not just because os.killpg
     happened to catch it."""
+    import json
+    import logging
+
+    from cism.agent.logging import get_agent_logger
     from cism.agent.tools.sandbox import BubblewrapRunner, ToolTimeoutError
 
+    get_agent_logger(log_dir=tmp_path)
     scratch = tmp_path / "scratch"
     scratch.mkdir()
     marker = scratch / "child-still-alive"
@@ -631,6 +713,11 @@ def test_bubblewrap_runner_kill_on_timeout_also_kills_a_detached_child(tmp_path)
 
     with pytest.raises(ToolTimeoutError):
         BubblewrapRunner().run(["sh", "-c", script], timeout=0.2, cwd=scratch)
+
+    for handler in logging.getLogger("cism.agent").handlers:
+        handler.flush()
+    records = [json.loads(line) for line in (tmp_path / "agent.log").read_text(encoding="utf-8").splitlines()]
+    assert any(r["message"] == "tool timed out" for r in records)
 
     time.sleep(1)  # longer than the detached child's own 0.5s delay
     assert not marker.exists()

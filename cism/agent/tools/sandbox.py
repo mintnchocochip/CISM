@@ -9,14 +9,21 @@ process tree. :class:`Runner` is the seam a stronger isolation layer
 
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import signal
 import subprocess
 import tempfile
+import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, Protocol
+
+#: Propagates into get_agent_logger()'s handler once an agent has started
+#: (that logger's name is a parent of this one) — no DI needed here.
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "BubblewrapRunner",
@@ -24,6 +31,7 @@ __all__ = [
     "SubprocessRunner",
     "ToolExecutionError",
     "ToolNotInstalledError",
+    "ToolOutputReadError",
     "ToolTimeoutError",
     "run_sandboxed",
     "scratch_dir",
@@ -32,6 +40,15 @@ __all__ = [
 
 _DEFAULT_TIMEOUT = 60.0
 _DEFAULT_MAX_OUTPUT = 20_000
+
+#: D3 (AUDIT.md): a tool writing far past max_output is aborted early rather
+#: than read to EOF. The multiplier alone isn't enough for a small max_output
+#: (an ordinary, finite, somewhat-larger-than-the-cap output would trip it) —
+#: the real point is bounding memory against a genuinely pathological/
+#: unbounded writer, so an absolute floor sets the real threshold in practice.
+_OVERFLOW_MULTIPLIER = 4
+_OVERFLOW_FLOOR = 10_000_000
+_POLL_INTERVAL = 0.1
 
 
 class ToolTimeoutError(Exception):
@@ -64,15 +81,30 @@ class ToolExecutionError(Exception):
         self.output = output
 
 
+class ToolOutputReadError(Exception):
+    """Raised instead of silently returning a partial buffer (Q3,
+    CODE_REVIEW.md) when the background stdout reader either crashed
+    mid-read or never finished within its join timeout — in both cases
+    ``result()`` would otherwise hand back less than the tool actually
+    wrote, indistinguishable from a complete, successful read."""
+
+    def __init__(self, argv: list[str], reason: str) -> None:
+        super().__init__(f"{argv[0]}: output reader {reason}")
+        self.argv = argv
+        self.reason = reason
+
+
 class Runner(Protocol):
-    def run(self, argv: list[str], *, timeout: float, cwd: Path) -> str: ...
+    def run(self, argv: list[str], *, timeout: float, cwd: Path, max_output: int) -> str: ...
 
 
 class SubprocessRunner:
     """Runs a tool as a real OS subprocess; ``shell=False`` always, so shell
     metacharacters in an argument value are inert."""
 
-    def run(self, argv: list[str], *, timeout: float, cwd: Path) -> str:
+    def run(
+        self, argv: list[str], *, timeout: float, cwd: Path, max_output: int = _DEFAULT_MAX_OUTPUT
+    ) -> str:
         if shutil.which(argv[0]) is None:
             raise ToolNotInstalledError(argv[0])
 
@@ -91,17 +123,7 @@ class SubprocessRunner:
             shell=False,
             **popen_kwargs,
         )
-        try:
-            stdout, _ = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _kill_tree(proc)
-            proc.communicate()  # reap, discard
-            raise ToolTimeoutError(argv, timeout) from None
-
-        output = stdout.decode("utf-8", errors="replace")
-        if proc.returncode != 0:
-            raise ToolExecutionError(argv, proc.returncode, output)
-        return output
+        return _run_capped(proc, argv, timeout, max_output)
 
 
 def _kill_tree(proc: subprocess.Popen) -> None:
@@ -117,6 +139,110 @@ def _kill_tree(proc: subprocess.Popen) -> None:
             check=False,
         )
         proc.kill()
+
+
+class _CappedReader:
+    """Reads a subprocess's stdout in a background thread, keeping only a
+    head+tail window in memory instead of buffering everything (what
+    ``communicate()`` used to do) — a hostile/runaway tool writing
+    gigabytes must not OOM the parent before the char cap ever applies
+    (D3, AUDIT.md). Sets ``.overflowed`` once far more than ``max_output``
+    has been seen, so the caller can kill the tool early instead of reading
+    to EOF."""
+
+    def __init__(self, stream, max_output: int) -> None:
+        self._half = max_output // 2
+        self._max_output = max_output
+        self._overflow_at = max(max_output * _OVERFLOW_MULTIPLIER, _OVERFLOW_FLOOR)
+        self._buf = bytearray()  # the head, while still under max_output
+        self._tail = bytearray()  # only grows once over budget
+        self._over_budget = False
+        self.total = 0
+        self.overflowed = False
+        #: Set from the reader thread if ``stream.read1()`` itself raises
+        #: (e.g. the fd closes under it) — distinct from a clean EOF (`None`
+        #: chunk), which is the normal, successful end of the stream.
+        self.error: BaseException | None = None
+        self._thread = threading.Thread(target=self._read, args=(stream,), daemon=True)
+        self._thread.start()
+
+    def _read(self, stream) -> None:
+        try:
+            while True:
+                chunk = stream.read1(65536)
+                if not chunk:
+                    return
+                self.total += len(chunk)
+                if not self._over_budget:
+                    self._buf += chunk
+                    if len(self._buf) > self._max_output:
+                        self._over_budget = True
+                        self._tail = bytearray(self._buf[self._half:])
+                        del self._buf[self._half:]  # now exactly the frozen head
+                else:
+                    self._tail += chunk
+                    if len(self._tail) > self._half * 2:
+                        del self._tail[: len(self._tail) - self._half]
+                if self.total > self._overflow_at:
+                    self.overflowed = True
+                    return
+        except Exception as exc:  # noqa: BLE001 — recorded, not swallowed; see .error
+            self.error = exc
+
+    @property
+    def failed(self) -> bool:
+        """True if the read ended abnormally: the thread crashed, or it's
+        still running after the caller's join timeout — either way,
+        ``result()`` reflects less than the tool actually wrote."""
+        return self.error is not None or self._thread.is_alive()
+
+    def join(self, timeout: float | None = None) -> None:
+        self._thread.join(timeout)
+
+    def result(self) -> str:
+        """Only meaningful after the reader has stopped (join'd)."""
+        if not self._over_budget:
+            return bytes(self._buf).decode("utf-8", errors="replace")
+        tail = self._tail[-self._half:] if len(self._tail) > self._half else self._tail
+        omitted = self.total - len(self._buf) - len(tail)
+        head_text = bytes(self._buf).decode("utf-8", errors="replace")
+        tail_text = bytes(tail).decode("utf-8", errors="replace")
+        return f"{head_text}\n... [{omitted} chars omitted] ...\n{tail_text}"
+
+
+def _run_capped(proc: subprocess.Popen, argv: list[str], timeout: float, max_output: int) -> str:
+    """Waits on ``proc`` while ``_CappedReader`` streams-and-caps its stdout
+    in the background, instead of ``communicate(timeout=timeout)`` (which
+    buffers the whole output before any cap applies). Replaces both
+    Runners' identical communicate()-based block."""
+    reader = _CappedReader(proc.stdout, max_output)
+    deadline = time.monotonic() + timeout
+    timed_out = False
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or reader.overflowed:
+            timed_out = True
+            break
+        try:
+            proc.wait(timeout=min(_POLL_INTERVAL, remaining))
+            break
+        except subprocess.TimeoutExpired:
+            continue
+
+    if timed_out:
+        _kill_tree(proc)
+        proc.wait()
+        reader.join(timeout=5.0)
+        raise ToolTimeoutError(argv, timeout)
+
+    reader.join(timeout=5.0)
+    if reader.failed:
+        reason = f"crashed: {reader.error}" if reader.error else "did not finish draining in time"
+        raise ToolOutputReadError(argv, reason)
+    output = reader.result()
+    if proc.returncode != 0:
+        raise ToolExecutionError(argv, proc.returncode, output)
+    return output
 
 
 @contextmanager
@@ -150,26 +276,16 @@ def run_sandboxed(
     ``cwd`` defaults to a fresh :func:`scratch_dir`; pass one explicitly
     for tools that pre-write files before running. ``runner`` defaults to
     whatever :func:`set_default_runner` last set; pass one explicitly to
-    inject a fake runner in tests without touching global state."""
+    inject a fake runner in tests without touching global state. The cap
+    is enforced by the Runner itself while streaming (D3, AUDIT.md), not
+    applied after the fact here — a hostile/runaway tool's full output is
+    never buffered in this process."""
     active_runner = runner or _default_runner
 
     if cwd is not None:
-        output = active_runner.run(argv, timeout=timeout, cwd=cwd)
-    else:
-        with scratch_dir() as tmp:
-            output = active_runner.run(argv, timeout=timeout, cwd=tmp)
-
-    return _cap(output, max_output)
-
-
-def _cap(text: str, limit: int) -> str:
-    """Head+tail truncation, not a plain tail cut, so a tool's final
-    summary line (e.g. nmap's "Nmap done...") isn't lost."""
-    if len(text) <= limit:
-        return text
-    half = limit // 2
-    omitted = len(text) - limit
-    return f"{text[:half]}\n... [{omitted} chars omitted] ...\n{text[-half:]}"
+        return active_runner.run(argv, timeout=timeout, cwd=cwd, max_output=max_output)
+    with scratch_dir() as tmp:
+        return active_runner.run(argv, timeout=timeout, cwd=tmp, max_output=max_output)
 
 
 def _etc_symlink_hops(path: Path) -> set[Path]:
@@ -241,7 +357,9 @@ class BubblewrapRunner:
     def __init__(self) -> None:
         self._etc_binds_cache: dict[str, frozenset[str]] = {}
 
-    def run(self, argv: list[str], *, timeout: float, cwd: Path) -> str:
+    def run(
+        self, argv: list[str], *, timeout: float, cwd: Path, max_output: int = _DEFAULT_MAX_OUTPUT
+    ) -> str:
         resolved_binary = shutil.which(argv[0])
         if resolved_binary is None:
             raise ToolNotInstalledError(argv[0])
@@ -294,13 +412,12 @@ class BubblewrapRunner:
             **popen_kwargs,
         )
         try:
-            stdout, _ = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            _kill_tree(proc)
-            proc.communicate()
-            raise ToolTimeoutError(argv, timeout) from None
-
-        output = stdout.decode("utf-8", errors="replace")
-        if proc.returncode != 0:
-            raise ToolExecutionError(argv, proc.returncode, output)  # argv, not bwrap_argv
-        return output
+            return _run_capped(proc, argv, timeout, max_output)
+        except ToolTimeoutError:
+            _log.warning("tool timed out", extra={"data": {"argv": argv, "timeout": timeout}})
+            raise
+        except ToolExecutionError as exc:
+            _log.warning(
+                "tool exited non-zero", extra={"data": {"argv": argv, "returncode": exc.returncode}}
+            )
+            raise
