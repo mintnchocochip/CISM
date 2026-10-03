@@ -10,7 +10,7 @@ from collections import deque
 from cism.depg.edge import Edge
 from cism.depg.evidence import Evidence
 from cism.depg.node import Node
-from cism.depg.reducer import BinarySupport, SupportPolicy, reduce_state
+from cism.depg.reducer import CONVERGENCE_EPSILON, BinarySupport, SupportPolicy, reduce_state
 from cism.tui.events import DEPGEdge, DEPGNode
 
 __all__ = ["Graph"]
@@ -30,6 +30,7 @@ class Graph:
         }
         self._children: dict[str, list[str]] = {}
         self._parents: dict[str, list[str]] = {}
+        self._edge_weight: dict[tuple[str, str], float] = {}
         self._dirty: set[str] = set()
         for edge in self.edges:
             self._index_edge(edge)
@@ -63,6 +64,7 @@ class Graph:
         for i, existing in enumerate(self.edges):
             if existing.parent == edge.parent and existing.child == edge.child:
                 self.edges[i] = edge
+                self._edge_weight[(edge.parent, edge.child)] = edge.weight
                 self._dirty.add(edge.child)
                 return
         if self._reaches(edge.child, edge.parent):
@@ -74,6 +76,7 @@ class Graph:
     def _index_edge(self, edge: Edge) -> None:
         self._children.setdefault(edge.parent, []).append(edge.child)
         self._parents.setdefault(edge.child, []).append(edge.parent)
+        self._edge_weight[(edge.parent, edge.child)] = edge.weight
 
     def _reaches(self, start: str, goal: str) -> bool:
         seen = {start}
@@ -90,9 +93,17 @@ class Graph:
 
     def settle(self, support: SupportPolicy | None = None) -> None:
         """Recomputes state only for nodes the dirty set can reach, stopping
-        a branch the instant a node's state doesn't change — cost is O(the
-        subgraph that actually moved), not O(the whole graph)."""
+        a branch the instant a node's state (and, under a graded policy,
+        reachability score) stops changing — cost is O(the subgraph that
+        actually moved), not O(the whole graph).
+
+        A policy with an ``evaluate`` method (GradedSupport) is detected by
+        duck typing and takes the continuous-score path, storing
+        ``node.reachability``; BinarySupport keeps going through
+        ``reduce_state`` exactly as before — this branch is the only thing
+        that changed for it."""
         support = support or BinarySupport()
+        graded = hasattr(support, "evaluate")
         frontier = deque(self._dirty)
         queued = set(frontier)
         self._dirty.clear()
@@ -102,9 +113,21 @@ class Graph:
             node = self.nodes.get(node_id)
             if node is None:
                 continue
-            parents = [self.nodes[p] for p in self._parents.get(node_id, []) if p in self.nodes]
-            new_state = reduce_state(node, parents, support)
-            if new_state == node.state:
+            parent_ids = self._parents.get(node_id, [])
+            if graded:
+                weighted_parents = [
+                    (self.nodes[p], self._edge_weight.get((p, node_id), 1.0))
+                    for p in parent_ids
+                    if p in self.nodes
+                ]
+                new_state, new_score = support.evaluate(node, weighted_parents)
+                changed = new_state != node.state or abs(new_score - node.reachability) >= CONVERGENCE_EPSILON
+                node.reachability = new_score
+            else:
+                parents = [self.nodes[p] for p in parent_ids if p in self.nodes]
+                new_state = reduce_state(node, parents, support)
+                changed = new_state != node.state
+            if not changed:
                 continue
             node.state = new_state
             for child in self._children.get(node_id, []):
@@ -163,6 +186,7 @@ class Graph:
                     tool="prune",
                     exit_signal=f"collapsed {len(members)} dead nodes: {', '.join(members)}",
                     tier="T3",
+                    source="deterministic",
                     verdict="dead",
                 )
             ],
@@ -187,6 +211,7 @@ class Graph:
 
         self._children = {}
         self._parents = {}
+        self._edge_weight = {}
         for e in self.edges:
             self._index_edge(e)
 
@@ -194,6 +219,48 @@ class Graph:
         """Nodes with no incoming edge."""
         children = {e.child for e in self.edges}
         return [n for node_id, n in self.nodes.items() if node_id not in children]
+
+    def _descendant_counts(self) -> dict[str, int]:
+        """Transitive descendant count per node, memoized over _children. A
+        diamond-shaped DAG must count a shared descendant once, so this
+        tracks descendant *sets*, not a per-child sum."""
+        memo: dict[str, set[str]] = {}
+
+        def descendants(node_id: str) -> set[str]:
+            if node_id in memo:
+                return memo[node_id]
+            memo[node_id] = set()
+            result: set[str] = set()
+            for child in self._children.get(node_id, []):
+                result.add(child)
+                result |= descendants(child)
+            memo[node_id] = result
+            return result
+
+        return {node_id: len(descendants(node_id)) for node_id in self.nodes}
+
+    def _generality_scores(self) -> dict[str, float]:
+        """Cross-target transfer fraction: what share of this run's targets
+        already produced this cause_class somewhere. Collapses to 1.0 on a
+        single-target run — only meaningful once there's more than one."""
+        total = len({n.target for n in self.nodes.values()}) or 1
+        targets_by_cause: dict[str, set[str]] = {}
+        for n in self.nodes.values():
+            targets_by_cause.setdefault(n.cause_class, set()).add(n.target)
+        return {
+            node_id: len(targets_by_cause[n.cause_class]) / total
+            for node_id, n in self.nodes.items()
+        }
+
+    def compute_metrics(self) -> None:
+        """Writes downstream/generality onto every node. Call after
+        settle()/prune() so a collapsed dead region doesn't inflate either
+        metric with nodes that no longer exist."""
+        downstream = self._descendant_counts()
+        generality = self._generality_scores()
+        for node_id, node in self.nodes.items():
+            node.downstream = downstream[node_id]
+            node.generality = generality[node_id]
 
     def to_event(self) -> tuple[tuple[DEPGNode, ...], tuple[DEPGEdge, ...]]:
         """The sole projection point from this mutable working copy to the

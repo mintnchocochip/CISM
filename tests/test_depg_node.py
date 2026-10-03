@@ -20,7 +20,7 @@ def test_node_to_event_maps_working_evidence_to_wire_evidence() -> None:
     node = Node(
         id="open-port:10.0.0.5:22/tcp", cause_class="open-port", target="10.0.0.5",
         signal="22/tcp",
-        evidence=[Evidence(timestamp="t", tool="nmap", exit_signal="22/tcp open ssh", tier="T2")],
+        evidence=[Evidence(timestamp="t", tool="nmap", exit_signal="22/tcp open ssh", tier="T2", source="deterministic")],
     )
     wire = node.to_event()
 

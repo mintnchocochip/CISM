@@ -23,8 +23,8 @@ def test_upserting_a_new_id_adds_it_to_the_graph() -> None:
 
 def test_upserting_an_existing_id_accumulates_evidence_instead_of_replacing_it() -> None:
     graph = Graph()
-    ev1 = Evidence(timestamp="12:00:00", tool="nmap", exit_signal="a", tier="T3")
-    ev2 = Evidence(timestamp="12:00:05", tool="nmap", exit_signal="b", tier="T3")
+    ev1 = Evidence(timestamp="12:00:00", tool="nmap", exit_signal="a", tier="T3", source="deterministic")
+    ev2 = Evidence(timestamp="12:00:05", tool="nmap", exit_signal="b", tier="T3", source="deterministic")
     graph.upsert_node(Node(id="n1", cause_class="c", target="t", signal="s", evidence=[ev1]))
     graph.upsert_node(Node(id="n1", cause_class="c", target="t", signal="s", evidence=[ev2]))
 
@@ -65,7 +65,7 @@ def test_to_event_projects_every_node_and_edge_to_wire_format() -> None:
 
 def test_settle_resolves_a_root_with_alive_evidence() -> None:
     graph = Graph()
-    ev = Evidence(timestamp="t", tool="nmap", exit_signal="x", tier="T2", verdict="alive")
+    ev = Evidence(timestamp="t", tool="nmap", exit_signal="x", tier="T2", source="deterministic", verdict="alive")
     graph.upsert_node(Node(id="a", cause_class="c", target="t", signal="s", evidence=[ev]))
 
     graph.settle()
@@ -75,7 +75,7 @@ def test_settle_resolves_a_root_with_alive_evidence() -> None:
 
 def test_settle_blocks_a_root_with_dead_evidence() -> None:
     graph = Graph()
-    ev = Evidence(timestamp="t", tool="nmap", exit_signal="x", tier="T3", verdict="dead")
+    ev = Evidence(timestamp="t", tool="nmap", exit_signal="x", tier="T3", source="deterministic", verdict="dead")
     graph.upsert_node(Node(id="a", cause_class="c", target="t", signal="s", evidence=[ev]))
 
     graph.settle()
@@ -85,8 +85,8 @@ def test_settle_blocks_a_root_with_dead_evidence() -> None:
 
 def test_a_strong_child_survives_a_dead_parent_as_contested() -> None:
     graph = Graph()
-    parent_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", verdict="dead")
-    child_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T1", verdict="alive")
+    parent_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", source="deterministic", verdict="dead")
+    child_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T1", source="deterministic", verdict="alive")
     graph.upsert_node(Node(id="a", cause_class="c", target="t", signal="a", evidence=[parent_ev]))
     graph.upsert_node(Node(id="b", cause_class="c", target="t", signal="b", evidence=[child_ev]))
     graph.add_edge(Edge(parent="a", child="b"))
@@ -99,7 +99,7 @@ def test_a_strong_child_survives_a_dead_parent_as_contested() -> None:
 
 def test_a_pure_inference_child_is_blocked_when_its_only_parent_dies() -> None:
     graph = Graph()
-    parent_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", verdict="dead")
+    parent_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", source="deterministic", verdict="dead")
     graph.upsert_node(Node(id="a", cause_class="c", target="t", signal="a", evidence=[parent_ev]))
     graph.upsert_node(Node(id="b", cause_class="c", target="t", signal="b"))
     graph.add_edge(Edge(parent="a", child="b"))
@@ -111,8 +111,8 @@ def test_a_pure_inference_child_is_blocked_when_its_only_parent_dies() -> None:
 
 def test_a_child_with_one_dead_and_one_live_parent_survives() -> None:
     graph = Graph()
-    dead_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", verdict="dead")
-    live_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", verdict="alive")
+    dead_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", source="deterministic", verdict="dead")
+    live_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", source="deterministic", verdict="alive")
     graph.upsert_node(Node(id="a", cause_class="c", target="t", signal="a", evidence=[dead_ev]))
     graph.upsert_node(Node(id="b", cause_class="c", target="t", signal="b", evidence=[live_ev]))
     graph.upsert_node(Node(id="x", cause_class="c", target="t", signal="x"))
@@ -126,14 +126,14 @@ def test_a_child_with_one_dead_and_one_live_parent_survives() -> None:
 
 def test_a_revived_parent_lets_a_blocked_inference_child_recover() -> None:
     graph = Graph()
-    dead_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", verdict="dead")
+    dead_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", source="deterministic", verdict="dead")
     graph.upsert_node(Node(id="a", cause_class="c", target="t", signal="a", evidence=[dead_ev]))
     graph.upsert_node(Node(id="b", cause_class="c", target="t", signal="b"))
     graph.add_edge(Edge(parent="a", child="b"))
     graph.settle()
     assert graph.nodes["b"].state == "blocked"
 
-    alive_ev = Evidence(timestamp="t2", tool="x", exit_signal="y", tier="T2", verdict="alive")
+    alive_ev = Evidence(timestamp="t2", tool="x", exit_signal="y", tier="T2", source="deterministic", verdict="alive")
     graph.upsert_node(Node(id="a", cause_class="c", target="t", signal="a", evidence=[alive_ev]))
     graph.settle()
 
@@ -143,9 +143,9 @@ def test_a_revived_parent_lets_a_blocked_inference_child_recover() -> None:
 
 def test_a_self_inflicted_block_survives_an_upstream_fix() -> None:
     graph = Graph()
-    alive_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", verdict="alive")
+    alive_ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", source="deterministic", verdict="alive")
     graph.upsert_node(Node(id="a", cause_class="c", target="t", signal="a", evidence=[alive_ev]))
-    own_failure = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T3", verdict="dead")
+    own_failure = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T3", source="deterministic", verdict="dead")
     graph.upsert_node(Node(id="d", cause_class="c", target="t", signal="d", evidence=[own_failure]))
     graph.add_edge(Edge(parent="a", child="d"))
 
@@ -161,7 +161,7 @@ def test_settle_only_walks_the_dirty_frontier() -> None:
     graph.settle()
     assert graph.nodes["untouched"].state == "untested"
 
-    ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", verdict="alive")
+    ev = Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", source="deterministic", verdict="alive")
     graph.upsert_node(Node(id="other", cause_class="c", target="t2", signal="o", evidence=[ev]))
     graph.settle()
 
@@ -243,3 +243,53 @@ def test_prune_rewires_a_live_ancestor_edge_onto_the_marker() -> None:
     assert Edge(parent="live", child=marker_id) in [
         Edge(parent=e.parent, child=e.child) for e in graph.edges
     ]
+
+
+def test_compute_metrics_counts_transitive_descendants_once_in_a_diamond() -> None:
+    graph = Graph()
+    for node_id in ("a", "b", "c", "d"):
+        graph.upsert_node(Node(id=node_id, cause_class="c", target="t", signal=node_id))
+    graph.add_edge(Edge(parent="a", child="b"))
+    graph.add_edge(Edge(parent="a", child="c"))
+    graph.add_edge(Edge(parent="b", child="d"))
+    graph.add_edge(Edge(parent="c", child="d"))
+
+    graph.compute_metrics()
+
+    assert graph.nodes["a"].downstream == 3
+    assert graph.nodes["b"].downstream == 1
+    assert graph.nodes["d"].downstream == 0
+
+
+def test_compute_metrics_generality_is_the_cross_target_transfer_fraction() -> None:
+    graph = Graph()
+    graph.upsert_node(Node(id="a1", cause_class="open-port", target="10.0.0.1", signal="a1"))
+    graph.upsert_node(Node(id="a2", cause_class="open-port", target="10.0.0.2", signal="a2"))
+    graph.upsert_node(Node(id="b1", cause_class="rare-finding", target="10.0.0.1", signal="b1"))
+
+    graph.compute_metrics()
+
+    assert graph.nodes["a1"].generality == 1.0
+    assert graph.nodes["a2"].generality == 1.0
+    assert graph.nodes["b1"].generality == 0.5
+
+
+def test_compute_metrics_generality_collapses_to_one_on_a_single_target_run() -> None:
+    graph = Graph()
+    graph.upsert_node(Node(id="a", cause_class="c", target="t", signal="a"))
+
+    graph.compute_metrics()
+
+    assert graph.nodes["a"].generality == 1.0
+
+
+def test_compute_metrics_ignores_nodes_a_prior_prune_already_collapsed() -> None:
+    graph = Graph()
+    graph.nodes = {"a": _blocked("a"), "b": _blocked("b")}
+    graph.add_edge(Edge(parent="a", child="b"))
+    graph.prune()
+
+    graph.compute_metrics()
+
+    (marker,) = graph.nodes.values()
+    assert marker.downstream == 0

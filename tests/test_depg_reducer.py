@@ -15,7 +15,7 @@ def _node(**kwargs) -> Node:
 
 
 def _ev(verdict: str) -> Evidence:
-    return Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", verdict=verdict)
+    return Evidence(timestamp="t", tool="x", exit_signal="y", tier="T2", source="deterministic", verdict=verdict)
 
 
 def test_own_dead_evidence_blocks_regardless_of_parents() -> None:

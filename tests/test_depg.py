@@ -30,7 +30,7 @@ def test_node_to_event_round_trips_scalar_fields() -> None:
 
 
 def test_node_to_event_carries_evidence_as_a_tuple() -> None:
-    ev = Evidence(timestamp="12:06:14", tool="nuclei", exit_signal="200", tier="T1")
+    ev = Evidence(timestamp="12:06:14", tool="nuclei", exit_signal="200", tier="T1", source="llm")
     node = Node(id="n1", cause_class="c", target="t", signal="s", evidence=[ev])
     event = node.to_event()
     assert event.evidence == (ev.to_event(),)

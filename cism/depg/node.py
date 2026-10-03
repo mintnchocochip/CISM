@@ -35,6 +35,10 @@ class Node:
     generality: float = 0.0
     downstream: int = 0
     phase: str = ""
+    #: GradedSupport's continuous score (reducer.py) — unused/stale under
+    #: BinarySupport. Default matches _UNTESTED_PRIOR: an ungraded node reads
+    #: as "unproven", not "impossible".
+    reachability: float = 0.3
 
     def to_event(self) -> DEPGNode:
         return DEPGNode(

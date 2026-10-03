@@ -9,9 +9,14 @@ from typing import Literal
 from cism.tui.events import Evidence as WireEvidence
 from cism.tui.events import Tier
 
-__all__ = ["Evidence", "Verdict"]
+__all__ = ["Evidence", "Source", "Verdict"]
 
 Verdict = Literal["alive", "dead", "inconclusive"]
+
+#: How the tier was assigned: "deterministic" (regex parser), "llm" (model
+#: judgment call, even if grounded), "unverified" (GenericExtractor's blind
+#: fallback). No default — every extractor must declare it.
+Source = Literal["deterministic", "llm", "unverified"]
 
 
 @dataclass(slots=True)
@@ -20,6 +25,7 @@ class Evidence:
     tool: str
     exit_signal: str
     tier: Tier
+    source: Source
     verdict: Verdict = "alive"
     call_id: str = ""
 

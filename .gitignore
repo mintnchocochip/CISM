@@ -222,3 +222,7 @@ snapshot_report.html
 
 # Subagent-driven-development progress ledger (scratch, not part of history)
 .superpowers/
+
+# graphify — regenerate with `graphify update .`
+/graphify-out/
+/cism/graphify-out/

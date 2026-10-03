@@ -62,6 +62,7 @@ class GenericExtractor:
                     tool=tool_name,
                     exit_signal=_summarize(content),
                     tier="T3",
+                    source="unverified",
                     verdict="dead" if failed else "alive",
                     call_id=call_id,
                 )

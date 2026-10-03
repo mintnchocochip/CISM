@@ -10,7 +10,7 @@ from cism.depg.node import Node
 
 def _node(id: str, target: str, signal: str, exit_signal: str = "") -> Node:
     evidence = (
-        [Evidence(timestamp="t", tool="nmap", exit_signal=exit_signal, tier="T2")]
+        [Evidence(timestamp="t", tool="nmap", exit_signal=exit_signal, tier="T2", source="deterministic")]
         if exit_signal
         else []
     )
