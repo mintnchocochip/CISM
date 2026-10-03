@@ -6,7 +6,11 @@ Proves the mechanism — ordering, short-circuiting, pass-through-by-default
 
 from __future__ import annotations
 
+import json
+import logging
+
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam, PassThroughStage
+from cism.agent.logging import get_agent_logger
 
 
 class _UpperCaseStage:
@@ -131,3 +135,31 @@ def test_a_stage_that_raises_short_circuits_later_stages_the_same_way_a_block_do
 
     assert result.allowed is False
     assert never_called.calls == 0
+
+
+def test_a_block_is_logged_to_the_audit_trail(tmp_path) -> None:
+    """H2 (AUDIT.md): guardrail blocks were invisible in the audit log."""
+    get_agent_logger(log_dir=tmp_path)
+    chain = GuardrailChain([_BlockingStage(reason="nope")])
+
+    chain.run("hello")
+
+    for handler in logging.getLogger("cism.agent").handlers:
+        handler.flush()
+    records = [json.loads(line) for line in (tmp_path / "agent.log").read_text(encoding="utf-8").splitlines()]
+    blocked = next(r for r in records if r["message"] == "guardrail blocked")
+    assert blocked["data"] == {"stage": "blocker", "reason": "nope"}
+
+
+def test_a_raising_stage_is_logged_to_the_audit_trail(tmp_path) -> None:
+    get_agent_logger(log_dir=tmp_path)
+    chain = GuardrailChain([_RaisingStage()])
+
+    chain.run("hello")
+
+    for handler in logging.getLogger("cism.agent").handlers:
+        handler.flush()
+    records = [json.loads(line) for line in (tmp_path / "agent.log").read_text(encoding="utf-8").splitlines()]
+    raised = next(r for r in records if r["message"] == "guardrail stage raised")
+    assert raised["data"]["stage"] == "raising-stage"
+    assert "could not parse this call" in raised["data"]["error"]

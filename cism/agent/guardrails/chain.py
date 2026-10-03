@@ -1,19 +1,21 @@
 """The guardrail seam: chain of responsibility.
 
-Three chains run through the graph — input, action, output — each a
-``GuardrailChain`` over its own payload type. Adding a guardrail means
-appending a stage to the relevant chain; the runner and graph shape never
-change. ``LangGraphAgent``'s default is ``GuardrailSeam.no_op()``;
-``run_agent.py --live-tools`` builds a real one (ScopeGuardStage +
-DangerousFlagGuardStage) and passes it in explicitly."""
+Four chains run through the graph — input, action, output, tool_output —
+each a ``GuardrailChain`` over its own payload type. Adding a guardrail
+means appending a stage to the relevant chain; the runner and graph shape
+never change. ``LangGraphAgent``'s default is ``GuardrailSeam.no_op()``;
+``run_agent.py --live-tools`` builds a real one and passes it in explicitly."""
 
 from __future__ import annotations
 
 import dataclasses
+import logging
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
 
 from langchain_core.messages.tool import ToolCall
+
+_log = logging.getLogger(__name__)
 
 __all__ = [
     "GuardrailChain",
@@ -65,13 +67,20 @@ class GuardrailChain(Generic[T]):
                 result = stage.check(current)
             except Exception as exc:
                 # A stage raising on a malformed call must not crash the graph node.
+                stage_name = getattr(stage, "name", "unknown")  # stage itself may be malformed
+                _log.warning(
+                    "guardrail stage raised", extra={"data": {"stage": stage_name, "error": str(exc)}}
+                )
                 return GuardrailResult(
                     allowed=False,
                     value=current,
                     reason=f"{type(exc).__name__}: {exc}",
-                    stage=getattr(stage, "name", "unknown"),  # stage itself may be malformed
+                    stage=stage_name,
                 )
             if not result.allowed:
+                _log.info(
+                    "guardrail blocked", extra={"data": {"stage": stage.name, "reason": result.reason}}
+                )
                 return dataclasses.replace(result, stage=stage.name)
             current = result.value
         return GuardrailResult(allowed=True, value=current)
@@ -88,11 +97,16 @@ class PassThroughStage(Generic[T]):
 
 @dataclass(frozen=True, slots=True)
 class GuardrailSeam:
-    """The three chains bundled into one dependency for the graph and agent."""
+    """The four chains bundled into one dependency for the graph and agent.
+    ``tool_output`` defaults to pass-through so existing callers that only
+    name input/action/output keep working unchanged."""
 
     input: GuardrailChain[str]
     action: GuardrailChain[ToolCall]
     output: GuardrailChain[str]
+    tool_output: GuardrailChain[str] = dataclasses.field(
+        default_factory=lambda: GuardrailChain([PassThroughStage()])
+    )
 
     @classmethod
     def no_op(cls) -> GuardrailSeam:
@@ -100,4 +114,5 @@ class GuardrailSeam:
             input=GuardrailChain([PassThroughStage()]),
             action=GuardrailChain([PassThroughStage()]),
             output=GuardrailChain([PassThroughStage()]),
+            tool_output=GuardrailChain([PassThroughStage()]),
         )
