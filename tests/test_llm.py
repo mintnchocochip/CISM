@@ -12,7 +12,7 @@ import pytest
 from langchain_openai import ChatOpenAI
 
 import cism.agent.llm as llm_module
-from cism.agent.llm import build_chat_model, discover_context_window
+from cism.agent.llm import build_chat_model, discover_context_window, discover_context_window_llamacpp
 
 
 def test_missing_api_key_env_var_raises_rather_than_silently_using_none(monkeypatch) -> None:
@@ -133,6 +133,12 @@ class _FakeAsyncClient:
             raise self.response
         return self.response
 
+    async def get(self, url: str) -> _FakeResponse:
+        type(self).last_url = url
+        if isinstance(self.response, Exception):
+            raise self.response
+        return self.response
+
 
 async def test_discover_context_window_returns_none_for_a_non_v1_base_url() -> None:
     assert await discover_context_window("http://localhost:8080", "some-model") is None
@@ -165,3 +171,64 @@ async def test_discover_context_window_returns_none_on_request_failure(monkeypat
     monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
 
     assert await discover_context_window("http://localhost:11434/v1", "gemma3:4b") is None
+
+
+async def test_discover_context_window_llamacpp_parses_props(monkeypatch) -> None:
+    _FakeAsyncClient.response = _FakeResponse({"default_generation_settings": {"n_ctx": 4096}})
+    monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    result = await discover_context_window_llamacpp("http://localhost:8080")
+
+    assert result == 4096
+    assert _FakeAsyncClient.last_url == "http://localhost:8080/props"
+
+
+async def test_discover_context_window_llamacpp_strips_a_v1_suffix(monkeypatch) -> None:
+    """--base-url is normally given with a trailing /v1 (the OpenAI-compatible
+    chat path); /props lives one level up, at the server root."""
+    _FakeAsyncClient.response = _FakeResponse({"default_generation_settings": {"n_ctx": 4096}})
+    monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    await discover_context_window_llamacpp("http://localhost:8080/v1")
+
+    assert _FakeAsyncClient.last_url == "http://localhost:8080/props"
+
+
+async def test_discover_context_window_llamacpp_returns_none_when_the_field_is_missing(
+    monkeypatch,
+) -> None:
+    _FakeAsyncClient.response = _FakeResponse({"default_generation_settings": {}})
+    monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    assert await discover_context_window_llamacpp("http://localhost:8080") is None
+
+
+async def test_discover_context_window_llamacpp_returns_none_on_request_failure(monkeypatch) -> None:
+    import httpx
+
+    _FakeAsyncClient.response = httpx.ConnectError("refused")
+    monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    assert await discover_context_window_llamacpp("http://localhost:8080") is None
+
+
+async def test_a_context_window_probe_failure_is_logged(monkeypatch, tmp_path) -> None:
+    """H2 (AUDIT.md): a failed context-window probe was invisible in the audit log."""
+    import json
+    import logging
+
+    import httpx
+
+    from cism.agent.logging import get_agent_logger
+
+    get_agent_logger(log_dir=tmp_path)
+    _FakeAsyncClient.response = httpx.ConnectError("refused")
+    monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    await discover_context_window("http://localhost:11434/v1", "gemma3:4b")
+
+    for handler in logging.getLogger("cism.agent").handlers:
+        handler.flush()
+    records = [json.loads(line) for line in (tmp_path / "agent.log").read_text(encoding="utf-8").splitlines()]
+    logged = next(r for r in records if r["message"] == "context-window probe failed")
+    assert "api/show" in logged["data"]["url"]

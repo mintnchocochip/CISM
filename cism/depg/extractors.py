@@ -1,14 +1,20 @@
 """Real cause-class extractors: regex-based NmapExtractor/HydraExtractor
 parsing each tool's default plain-text output, plus LLMExtractor as the
 fallback for any tool without a hand-written parser, and EXTRACTORS, the
-tool-name -> extractor dict for the two regex-based ones."""
+tool-name -> extractor dict for the two regex-based ones.
+
+LLMExtractor's structured-output call is pluggable (ExtractionBackend):
+ChatModelExtractionBackend for LangChain models, LlamaCppExtractionBackend
+for a llama.cpp server via json_schema. See AUDIT.md G1."""
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Protocol
 
+import httpx
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.messages.tool import ToolCall
@@ -19,7 +25,17 @@ from cism.depg.extract import CauseExtractor, Extraction, GenericExtractor
 from cism.depg.graph import Graph
 from cism.depg.node import Node, derive_node_id
 
-__all__ = ["EXTRACTORS", "ExtractedFinding", "ExtractedFindings", "HydraExtractor", "LLMExtractor", "NmapExtractor"]
+__all__ = [
+    "EXTRACTORS",
+    "ChatModelExtractionBackend",
+    "ExtractedFinding",
+    "ExtractedFindings",
+    "ExtractionBackend",
+    "HydraExtractor",
+    "LLMExtractor",
+    "LlamaCppExtractionBackend",
+    "NmapExtractor",
+]
 
 _OPEN_PORT_RE = re.compile(r"^(\d+)/(tcp|udp)\s+open\s+(\S+)", re.MULTILINE)
 _HYDRA_SUCCESS_RE = re.compile(r"login:\s*(\S+)\s+password:\s*(\S+)")
@@ -57,6 +73,7 @@ class NmapExtractor:
                             tool="nmap",
                             exit_signal=f"{signal} {service}",
                             tier="T2",
+                            source="deterministic",
                             verdict="alive",
                             call_id=call_id,
                         )
@@ -94,6 +111,7 @@ class HydraExtractor:
                         tool="hydra",
                         exit_signal=content[:80],
                         tier="T1",
+                        source="deterministic",
                         verdict="alive",
                         call_id=call_id,
                     )
@@ -112,6 +130,7 @@ class HydraExtractor:
                         tool="hydra",
                         exit_signal=content[:80],
                         tier="T3",
+                        source="deterministic",
                         verdict="dead",
                         call_id=call_id,
                     )
@@ -168,16 +187,66 @@ class ExtractedFindings(BaseModel):
     findings: list[ExtractedFinding]
 
 
-class LLMExtractor:
-    """Fallback CauseExtractor for any tool without a hand-written one.
-    Grounding is mechanical (a substring check), never another LLM call: a
-    finding whose evidence_quote isn't in the tool's own output gets its
-    tier clamped to T3 rather than dropped. Any exception falls back to
-    GenericExtractor's plain one-weak-T3-node behavior."""
+class ExtractionBackend(Protocol):
+    """Turns a prompt into ExtractedFindings, or None on failure."""
+
+    def extract(self, prompt: str) -> ExtractedFindings | None: ...
+
+
+class ChatModelExtractionBackend:
+    """Wraps a BaseChatModel's with_structured_output — the pre-existing
+    behavior, now behind the ExtractionBackend seam."""
 
     def __init__(self, llm: BaseChatModel) -> None:
         self._llm = llm
+
+    def extract(self, prompt: str) -> ExtractedFindings | None:
+        try:
+            structured = self._llm.with_structured_output(ExtractedFindings)
+            return structured.invoke([HumanMessage(content=prompt)])
+        except Exception:
+            return None
+
+
+class LlamaCppExtractionBackend:
+    """Posts to a llama.cpp server's /completion with a json_schema
+    constraint, so an unconstrained/non-tool-calling model still can't
+    emit anything but valid ExtractedFindings JSON. Not live-tested — no
+    llama.cpp server was reachable while building this."""
+
+    def __init__(self, base_url: str, *, n_predict: int = 1024, timeout: float = 30.0) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._n_predict = n_predict
+        self._timeout = timeout
+
+    def extract(self, prompt: str) -> ExtractedFindings | None:
+        try:
+            response = httpx.post(
+                f"{self._base_url}/completion",
+                json={
+                    "prompt": prompt,
+                    "json_schema": ExtractedFindings.model_json_schema(),
+                    "n_predict": self._n_predict,
+                },
+                timeout=self._timeout,
+            )
+            response.raise_for_status()
+            content = response.json().get("content", "")
+            return ExtractedFindings.model_validate_json(content)
+        except (httpx.HTTPError, ValueError):
+            return None
+
+
+class LLMExtractor:
+    """Fallback CauseExtractor for any tool without a hand-written one.
+    Grounding is mechanical (a substring check), not another LLM call. A
+    backend returning None falls back to GenericExtractor — logged, not
+    swallowed."""
+
+    def __init__(self, backend: ExtractionBackend, *, logger: logging.Logger | None = None) -> None:
+        self._backend = backend
         self._fallback = GenericExtractor()
+        self._log = logger
 
     def extract(
         self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
@@ -190,11 +259,14 @@ class LLMExtractor:
             prompt_output = prompt_output[:_MAX_PROMPT_CHARS]
             truncated_note = " (truncated)"
 
-        try:
-            structured = self._llm.with_structured_output(ExtractedFindings)
-            prompt = _PROMPT.format(tool=tool, truncated_note=truncated_note, output=prompt_output)
-            result = structured.invoke([HumanMessage(content=prompt)])
-        except Exception:
+        prompt = _PROMPT.format(tool=tool, truncated_note=truncated_note, output=prompt_output)
+        result = self._backend.extract(prompt)
+        if result is None:
+            if self._log is not None:
+                self._log.warning(
+                    "extraction backend unavailable, falling back to GenericExtractor",
+                    extra={"data": {"tool": tool}},
+                )
             return self._fallback.extract(call, message, graph, target)
 
         call_id = call["id"] if call else message.tool_call_id
@@ -213,6 +285,7 @@ class LLMExtractor:
                             tool=message.name or "unknown-tool",
                             exit_signal=finding.summary,
                             tier=tier,
+                            source="llm",
                             verdict=finding.verdict,
                             call_id=call_id,
                         )

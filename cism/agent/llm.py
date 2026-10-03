@@ -7,6 +7,7 @@ network-capable ``BaseChatModel`` counterpart."""
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import uuid
@@ -19,9 +20,15 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_openai import ChatOpenAI
 
-__all__ = ["DummyChatModel", "build_chat_model", "discover_context_window"]
+__all__ = [
+    "DummyChatModel",
+    "build_chat_model",
+    "discover_context_window",
+    "discover_context_window_llamacpp",
+]
 
 _SHOW_TIMEOUT = 3.0
+_log = logging.getLogger(__name__)
 
 _IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _DEFAULT_TARGET = "0.0.0.0"
@@ -149,7 +156,8 @@ async def discover_context_window(base_url: str, model: str) -> int | None:
             response = await client.post(show_url, json={"model": model})
             response.raise_for_status()
             payload = response.json()
-    except (httpx.HTTPError, ValueError):
+    except (httpx.HTTPError, ValueError) as exc:
+        _log.warning("context-window probe failed", extra={"data": {"url": show_url, "error": str(exc)}})
         return None
 
     model_info = payload.get("model_info")
@@ -159,3 +167,27 @@ async def discover_context_window(base_url: str, model: str) -> int | None:
         if key.endswith(".context_length") and isinstance(value, int):
             return value
     return None
+
+
+async def discover_context_window_llamacpp(base_url: str) -> int | None:
+    """llama.cpp counterpart to discover_context_window — GETs {base}/props.
+    Not live-tested (no llama.cpp server was reachable while building this)."""
+    trimmed = base_url.rstrip("/")
+    if trimmed.endswith("/v1"):
+        trimmed = trimmed[: -len("/v1")]
+    props_url = f"{trimmed}/props"
+
+    try:
+        async with httpx.AsyncClient(timeout=_SHOW_TIMEOUT) as client:
+            response = await client.get(props_url)
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        _log.warning("context-window probe failed", extra={"data": {"url": props_url, "error": str(exc)}})
+        return None
+
+    settings = payload.get("default_generation_settings")
+    if not isinstance(settings, dict):
+        return None
+    n_ctx = settings.get("n_ctx")
+    return n_ctx if isinstance(n_ctx, int) else None

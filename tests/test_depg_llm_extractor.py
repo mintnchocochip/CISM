@@ -12,7 +12,12 @@ from langchain_core.messages import ToolMessage
 
 from cism.agent.llm import DummyChatModel
 from cism.depg.extract import GenericExtractor
-from cism.depg.extractors import ExtractedFinding, ExtractedFindings, LLMExtractor
+from cism.depg.extractors import (
+    ChatModelExtractionBackend,
+    ExtractedFinding,
+    ExtractedFindings,
+    LLMExtractor,
+)
 from cism.depg.graph import Graph
 
 
@@ -53,7 +58,7 @@ def test_a_grounded_finding_keeps_its_declared_tier() -> None:
             )
         ]
     )
-    extractor = LLMExtractor(_FakeStructuredLLM(findings=findings))
+    extractor = LLMExtractor(ChatModelExtractionBackend(_FakeStructuredLLM(findings=findings)))
     message = _tool_message("Server: Apache/2.2.8 (Ubuntu)\nX-Powered-By: PHP/5.2.4")
 
     extraction = extractor.extract(None, message, Graph(), "10.0.0.5")
@@ -79,7 +84,7 @@ def test_an_ungrounded_finding_is_clamped_to_t3() -> None:
             )
         ]
     )
-    extractor = LLMExtractor(_FakeStructuredLLM(findings=findings))
+    extractor = LLMExtractor(ChatModelExtractionBackend(_FakeStructuredLLM(findings=findings)))
     message = _tool_message("Server: Apache/2.2.8 (Ubuntu)")
 
     extraction = extractor.extract(None, message, Graph(), "10.0.0.5")
@@ -88,7 +93,7 @@ def test_an_ungrounded_finding_is_clamped_to_t3() -> None:
 
 
 def test_an_empty_findings_list_falls_back_to_generic_extractor() -> None:
-    extractor = LLMExtractor(_FakeStructuredLLM(findings=ExtractedFindings(findings=[])))
+    extractor = LLMExtractor(ChatModelExtractionBackend(_FakeStructuredLLM(findings=ExtractedFindings(findings=[]))))
     message = _tool_message("nothing interesting here", name="whatweb")
 
     extraction = extractor.extract(None, message, Graph(), "10.0.0.5")
@@ -103,7 +108,7 @@ def test_a_model_without_structured_output_support_falls_back_to_generic_extract
     with_structured_output() raises NotImplementedError synchronously (no
     network) — LLMExtractor must catch that and produce exactly what
     GenericExtractor would."""
-    extractor = LLMExtractor(DummyChatModel())
+    extractor = LLMExtractor(ChatModelExtractionBackend(DummyChatModel()))
     message = _tool_message("raw output", name="nikto")
 
     extraction = extractor.extract(None, message, Graph(), "10.0.0.5")
@@ -111,3 +116,37 @@ def test_a_model_without_structured_output_support_falls_back_to_generic_extract
 
     assert extraction.nodes[0].cause_class == generic.nodes[0].cause_class
     assert extraction.nodes[0].id == generic.nodes[0].id
+
+
+class _RecordingLogger:
+    """Enough of logging.Logger's interface for LLMExtractor's one call."""
+
+    def __init__(self) -> None:
+        self.warnings: list[tuple[str, dict]] = []
+
+    def warning(self, message: str, *, extra: dict) -> None:
+        self.warnings.append((message, extra))
+
+
+def test_a_fallback_is_logged_not_silently_swallowed() -> None:
+    """The bug this replaces: a broken/unavailable backend used to degrade
+    to GenericExtractor with no trace anywhere that it happened."""
+    log = _RecordingLogger()
+    extractor = LLMExtractor(ChatModelExtractionBackend(DummyChatModel()), logger=log)
+    message = _tool_message("raw output", name="nikto")
+
+    extractor.extract(None, message, Graph(), "10.0.0.5")
+
+    assert len(log.warnings) == 1
+    assert log.warnings[0][1]["data"]["tool"] == "nikto"
+
+
+def test_no_logger_means_no_crash_on_fallback() -> None:
+    """logger is optional — the default (None) construction path (as used
+    by tests elsewhere in this file) must not require one."""
+    extractor = LLMExtractor(ChatModelExtractionBackend(DummyChatModel()))
+    message = _tool_message("raw output", name="nikto")
+
+    extraction = extractor.extract(None, message, Graph(), "10.0.0.5")
+
+    assert extraction.nodes
