@@ -4,7 +4,8 @@ whether the model/tools/guardrails behind it are dummy or real.
 
 ::
 
-    entry -> think ── llm.astream(), accumulated into one message (input guardrail already ran in core.py)
+    entry -> think ── llm.astream(), accumulated into one message (input guardrail already ran
+               │       in core.py; tool_output_chain screens prior ToolMessages in the prompt only)
                │
        tool_calls in response, under the turn cap?
                │no ──▶ respond ── output_chain runs on final text ──▶ END
@@ -60,7 +61,7 @@ def build_graph(
 ) -> CompiledStateGraph:
     graph = StateGraph(AgentState)
 
-    graph.add_node("think", make_think_node(llm, tools, profiles))
+    graph.add_node("think", make_think_node(llm, tools, profiles, guardrails.tool_output))
     graph.add_node("act", make_act_node(tools, guardrails.action, profiles))
     graph.add_node("depg_update", make_depg_update_node(extractors))
     graph.add_node("phase_router", make_phase_router())

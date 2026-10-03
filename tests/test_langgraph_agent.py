@@ -185,6 +185,36 @@ async def test_every_emitted_event_is_also_written_to_the_audit_log(
     assert run_started["data"]["run_id"] == events[1].run_id
 
 
+async def test_a_graph_loop_failure_logs_a_traceback(tmp_path, monkeypatch) -> None:
+    """B5 (AUDIT.md): the audit log used to get only str(exc), no traceback."""
+
+    class _RaisingChatModel(BaseChatModel):
+        @property
+        def _llm_type(self) -> str:
+            return "test-raising-chat-model"
+
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            raise RuntimeError("boom")
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent(
+        llm=_RaisingChatModel(),
+        endpoint="http://fake",
+        model_name="fake",
+        target="10.0.0.5",
+    )
+    await _run_to_completion(agent, "scan it")
+    await agent.aclose()
+
+    log_path = tmp_path / ".cism" / "logs" / "agent.log"
+    records = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()]
+    failure = next(r for r in records if r["message"] == "run failed")
+    assert "RuntimeError: boom" in failure["traceback"]
+
+
 async def test_every_tool_started_has_a_matching_finish_by_call_id(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     agent = LangGraphAgent(target="10.0.0.5")
@@ -250,6 +280,50 @@ async def test_interrupt_cancels_the_run_and_is_the_last_event(tmp_path, monkeyp
 
     assert events
     assert isinstance(events[-1], Interrupted)
+    await agent.aclose()
+
+
+async def test_a_new_submit_emits_interrupted_for_the_run_it_superseded() -> None:
+    """B3 (AUDIT.md): a cancelled run used to emit no terminal event."""
+    agent = LangGraphAgent()
+    await agent.submit("scan it")
+    # Wait for it to actually start — cancelling before that runs no code at all.
+    first_events: list = []
+    while not any(isinstance(e, RunStarted) for e in first_events):
+        first_events.extend(await asyncio.wait_for(drain(agent.events), timeout=1.0))
+
+    await agent.submit("scan it again")
+
+    events = list(first_events)
+    try:
+        while True:
+            events.extend(await asyncio.wait_for(drain(agent.events), timeout=0.3))
+    except asyncio.TimeoutError:
+        pass
+
+    superseded = [e for e in events if isinstance(e, Interrupted) and e.reason == "superseded by new submission"]
+    assert len(superseded) == 1
+    await agent.aclose()
+
+
+async def test_history_overflowing_the_context_window_narrates_the_compaction(
+    tmp_path, monkeypatch
+) -> None:
+    """B2 (AUDIT.md): once accumulated history no longer fits the model's
+    context window, think() drops older turns from the prompt and this
+    must be visible to the operator, not silent."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    agent = LangGraphAgent(llm=_RecordingChatModel(), target="10.0.0.5")
+    agent._context_window = 600
+    await agent.start()
+
+    await _run_to_completion(agent, "x" * 2000)
+    events = await _run_to_completion(agent, "second turn")
+
+    compacted = [
+        e for e in events if isinstance(e, Narration) and "context window" in e.text
+    ]
+    assert compacted
     await agent.aclose()
 
 

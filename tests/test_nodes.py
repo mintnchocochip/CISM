@@ -6,6 +6,9 @@ what earlier steps already found.
 
 from __future__ import annotations
 
+import asyncio
+import time
+
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
@@ -19,11 +22,11 @@ from langchain_core.tools import StructuredTool
 
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam
 from cism.agent.llm import DummyChatModel
-from cism.agent.nodes import make_act_node, make_depg_update_node, make_think_node
+from cism.agent.nodes import _compact_history, make_act_node, make_depg_update_node, make_think_node
 from cism.agent.profiles import PhaseProfile, PhaseProfiles
 from cism.agent.state import Phase
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
-from cism.depg import ExtractorRegistry, GenericExtractor
+from cism.depg import Extraction, ExtractorRegistry, GenericExtractor, Node
 
 #: The three plain think-node tests below don't care about phase-scoped
 #: prompts/tools, just that make_think_node's streaming accumulation works
@@ -67,6 +70,37 @@ def _tool_round(call_id: str, name: str, content: str, *, error: bool = False):
 
 def _depg_update():
     return make_depg_update_node(ExtractorRegistry({}, GenericExtractor()))
+
+
+class _BlockingExtractor:
+    """extract() blocks synchronously, standing in for a real ~20s LLM
+    round-trip — proves depg_update's asyncio.to_thread wrap actually keeps
+    the event loop free during that time (B6, AUDIT.md), not just that the
+    node is declared async."""
+
+    def extract(self, call, message, graph, target) -> Extraction:
+        time.sleep(0.3)
+        return Extraction(nodes=[], edges=[])
+
+
+async def test_depg_update_does_not_block_the_event_loop_during_extraction() -> None:
+    depg_update = make_depg_update_node(ExtractorRegistry({}, _BlockingExtractor()))
+    ai, result = _tool_round("call-1", "dummy_nmap", "ok")
+    state = _state([HumanMessage(content="scan it"), ai, result])
+
+    ticks = 0
+
+    async def _tick_counter() -> None:
+        nonlocal ticks
+        while True:
+            ticks += 1
+            await asyncio.sleep(0.01)
+
+    counter = asyncio.create_task(_tick_counter())
+    await depg_update(state)
+    counter.cancel()
+
+    assert ticks > 5  # loop kept running concurrently instead of freezing for 0.3s
 
 
 class _StreamingChatModel(BaseChatModel):
@@ -146,11 +180,11 @@ async def test_think_node_still_works_against_a_non_streaming_model() -> None:
     assert update["messages"][0].tool_calls[0]["name"] == "dummy_nmap"
 
 
-def test_a_successful_tool_call_produces_a_depg_node_for_the_target() -> None:
+async def test_a_successful_tool_call_produces_a_depg_node_for_the_target() -> None:
     ai, result = _tool_round("call-1", "dummy_nmap", "[dummy] nmap -sV 10.0.0.5 -> 3 open ports")
     state = _state([HumanMessage(content="scan it"), ai, result])
 
-    update = _depg_update()(state)
+    update = await _depg_update()(state)
 
     assert len(update["depg_nodes"]) == 1
     node = next(iter(update["depg_nodes"].values()))
@@ -158,16 +192,16 @@ def test_a_successful_tool_call_produces_a_depg_node_for_the_target() -> None:
     assert node.evidence
 
 
-def test_an_errored_tool_call_now_produces_a_node_instead_of_being_dropped() -> None:
+async def test_an_errored_tool_call_now_produces_a_node_instead_of_being_dropped() -> None:
     ai, result = _tool_round("call-1", "dummy_nmap", "boom", error=True)
     state = _state([HumanMessage(content="scan it"), ai, result])
 
-    update = _depg_update()(state)
+    update = await _depg_update()(state)
 
     assert len(update["depg_nodes"]) == 1
 
 
-def test_multiple_tool_calls_in_one_step_each_produce_their_own_node() -> None:
+async def test_multiple_tool_calls_in_one_step_each_produce_their_own_node() -> None:
     ai = AIMessage(
         content="",
         tool_calls=[
@@ -179,15 +213,15 @@ def test_multiple_tool_calls_in_one_step_each_produce_their_own_node() -> None:
     r2 = ToolMessage(content="ok-2", tool_call_id="call-2", name="dummy_msfconsole")
     state = _state([HumanMessage(content="scan it"), ai, r1, r2])
 
-    update = _depg_update()(state)
+    update = await _depg_update()(state)
 
     assert len(update["depg_nodes"]) == 2
 
 
-def test_nodes_found_on_an_earlier_step_survive_a_step_with_no_new_evidence() -> None:
+async def test_nodes_found_on_an_earlier_step_survive_a_step_with_no_new_evidence() -> None:
     depg_update = _depg_update()
     ai1, result1 = _tool_round("call-1", "dummy_nmap", "ok")
-    first = depg_update(_state([HumanMessage(content="scan it"), ai1, result1]))
+    first = await depg_update(_state([HumanMessage(content="scan it"), ai1, result1]))
 
     ai2, result2 = _tool_round("call-2", "dummy_msfconsole", "boom", error=True)
     second_state = _state(
@@ -196,23 +230,23 @@ def test_nodes_found_on_an_earlier_step_survive_a_step_with_no_new_evidence() ->
         depg_edges=first["depg_edges"],
     )
 
-    update = depg_update(second_state)
+    update = await depg_update(second_state)
 
     assert update["depg_nodes"].keys() >= first["depg_nodes"].keys()
 
 
-def test_a_failed_tool_call_now_produces_a_blocked_tombstone_node() -> None:
+async def test_a_failed_tool_call_now_produces_a_blocked_tombstone_node() -> None:
     ai, result = _tool_round("call-1", "dummy_nmap", "boom", error=True)
     state = _state([HumanMessage(content="scan it"), ai, result])
 
-    update = _depg_update()(state)
+    update = await _depg_update()(state)
 
     assert len(update["depg_nodes"]) == 1
     node = next(iter(update["depg_nodes"].values()))
     assert node.state == "blocked"
 
 
-def test_differently_formatted_targets_normalize_onto_the_same_node() -> None:
+async def test_differently_formatted_targets_normalize_onto_the_same_node() -> None:
     """"ssh://10.0.0.5:22" and "10.0.0.5" must merge onto the same node
     family instead of fragmenting into two — a host is one host regardless
     of scheme/port/case, per cism/depg/normalize.py."""
@@ -220,28 +254,28 @@ def test_differently_formatted_targets_normalize_onto_the_same_node() -> None:
     state = _state([HumanMessage(content="scan it"), ai, result])
     state["target"] = "ssh://10.0.0.5:22"
 
-    update = _depg_update()(state)
+    update = await _depg_update()(state)
 
     node = next(iter(update["depg_nodes"].values()))
     assert node.target == "10.0.0.5"
 
 
-def test_a_second_call_on_the_same_target_gets_an_edge_from_the_first() -> None:
+async def test_a_second_call_on_the_same_target_gets_an_edge_from_the_first() -> None:
     depg_update = _depg_update()
     ai1, result1 = _tool_round("call-1", "dummy_nmap", "ok")
-    first = depg_update(_state([HumanMessage(content="scan it"), ai1, result1]))
+    first = await depg_update(_state([HumanMessage(content="scan it"), ai1, result1]))
 
     ai2, result2 = _tool_round("call-2", "dummy_msfconsole", "ok too")
     second_state = _state(
         [HumanMessage(content="scan it"), ai1, result1, ai2, result2],
         depg_nodes=first["depg_nodes"], depg_edges=first["depg_edges"],
     )
-    update = depg_update(second_state)
+    update = await depg_update(second_state)
 
     assert len(update["depg_edges"]) == 1
 
 
-def test_nodes_produced_in_the_same_step_do_not_link_to_each_other() -> None:
+async def test_nodes_produced_in_the_same_step_do_not_link_to_each_other() -> None:
     """Two sibling ports from one nmap-shaped call must not chain A -> B."""
     from cism.depg import ExtractorRegistry
     from cism.depg.extractors import NmapExtractor
@@ -258,26 +292,53 @@ def test_nodes_produced_in_the_same_step_do_not_link_to_each_other() -> None:
     )
     state = _state([HumanMessage(content="scan it"), ai, result])
 
-    update = depg_update(state)
+    update = await depg_update(state)
 
     assert len(update["depg_nodes"]) == 2
     assert update["depg_edges"] == []
 
 
-def test_phase_router_reports_when_it_actually_moved() -> None:
+def _resolved_node(cause_class: str, *, phase: str, target: str = "10.0.0.5", signal: str = "x") -> Node:
+    return Node(
+        id=f"{cause_class}:{target}:{signal}",
+        cause_class=cause_class,
+        target=target,
+        signal=signal,
+        phase=phase,
+        state="resolved",
+    )
+
+
+def test_phase_router_advances_when_recon_found_an_open_port() -> None:
     from cism.agent.nodes import make_phase_router
 
     router = make_phase_router()
+    nodes = {"n1": _resolved_node("open-port", phase="recon")}
     state = _state(
-        [
-            HumanMessage(content="x"),
-            ToolMessage(content="ok", tool_call_id="c1", name="dummy_nmap"),
-        ]
+        [HumanMessage(content="x"), ToolMessage(content="ok", tool_call_id="c1", name="nmap")],
+        depg_nodes=nodes,
     )
 
     update = router(state)
 
     assert update["phase_changed"] is True
+    assert update["phase"] == Phase.ENUMERATION
+
+
+def test_phase_router_does_not_advance_on_a_successful_call_with_no_findings() -> None:
+    """The bug this replaces: DEFAULT_NEXT_PHASE advanced on any successful
+    tool call, so a scan that found nothing still moved the phase along."""
+    from cism.agent.nodes import make_phase_router
+
+    router = make_phase_router()
+    state = _state(
+        [HumanMessage(content="x"), ToolMessage(content="ok", tool_call_id="c1", name="nmap")],
+        depg_nodes={},
+    )
+
+    update = router(state)
+
+    assert update["phase_changed"] is False
 
 
 def test_phase_router_reports_no_change_when_it_stays_put() -> None:
@@ -290,6 +351,59 @@ def test_phase_router_reports_no_change_when_it_stays_put() -> None:
     update = router(state)
 
     assert update["phase_changed"] is False
+
+
+def test_phase_router_exploitation_requires_a_found_credential_not_just_an_attempt() -> None:
+    from cism.agent.nodes import make_phase_router
+
+    router = make_phase_router()
+    nodes = {"n1": _resolved_node("credential-attempt", phase="exploitation")}
+    state = _state(
+        [HumanMessage(content="x"), ToolMessage(content="fail", tool_call_id="c1", name="hydra")],
+        depg_nodes=nodes,
+    )
+    state["phase"] = Phase.EXPLOITATION
+
+    update = router(state)
+
+    assert update["phase_changed"] is False
+
+
+def test_phase_router_advances_exploitation_on_a_found_credential() -> None:
+    from cism.agent.nodes import make_phase_router
+
+    router = make_phase_router()
+    nodes = {"n1": _resolved_node("credential-found", phase="exploitation")}
+    state = _state(
+        [HumanMessage(content="x"), ToolMessage(content="found it", tool_call_id="c1", name="hydra")],
+        depg_nodes=nodes,
+    )
+    state["phase"] = Phase.EXPLOITATION
+
+    update = router(state)
+
+    assert update["phase_changed"] is True
+    assert update["phase"] == Phase.POST_EXPLOITATION
+
+
+def test_phase_router_enumeration_accepts_any_resolved_in_phase_node() -> None:
+    """Enumeration/vuln-discovery/post-exploitation have no fixed cause_class
+    vocabulary (LLM-extracted free text), so any resolved node tagged with
+    the current phase is enough — unlike RECON/EXPLOITATION above."""
+    from cism.agent.nodes import make_phase_router
+
+    router = make_phase_router()
+    nodes = {"n1": _resolved_node("whatweb", phase="enumeration")}
+    state = _state(
+        [HumanMessage(content="x"), ToolMessage(content="Apache/2.2.8", tool_call_id="c1", name="whatweb")],
+        depg_nodes=nodes,
+    )
+    state["phase"] = Phase.ENUMERATION
+
+    update = router(state)
+
+    assert update["phase_changed"] is True
+    assert update["phase"] == Phase.VULNERABILITY_DISCOVERY
 
 
 def _memory_state(messages, depg_nodes=None, phase_changed=False) -> dict:
@@ -310,7 +424,7 @@ def test_memory_update_records_a_successful_finding_from_this_step() -> None:
         evidence=[
             Evidence(
                 timestamp="t", tool="nmap", exit_signal="22/tcp open ssh",
-                tier="T2", call_id="c1",
+                tier="T2", source="deterministic", call_id="c1",
             )
         ],
     )
@@ -330,7 +444,7 @@ def test_memory_update_ignores_depg_nodes_from_an_earlier_step() -> None:
     old_node = Node(
         id="n1", cause_class="open-port", target="10.0.0.5", signal="22/tcp",
         evidence=[
-            Evidence(timestamp="t", tool="nmap", exit_signal="x", tier="T2", call_id="old-call")
+            Evidence(timestamp="t", tool="nmap", exit_signal="x", tier="T2", source="deterministic", call_id="old-call")
         ],
     )
     ai, result = _tool_round("c2", "hydra", "no creds", error=True)
@@ -454,6 +568,202 @@ async def test_think_always_binds_tool_help_even_when_the_profile_declares_no_to
     await think({"messages": [HumanMessage(content="go")], "phase": Phase.REPORTING, "target": "10.0.0.5"})
 
     assert [t.name for t in recorded[0]] == ["tool_help"]
+
+
+class _TextOnlyChatModel(BaseChatModel):
+    """No native tool-calling — always answers in prose, like a small local
+    model without function-calling support."""
+
+    text: str = ""
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-text-only-model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=self.text))])
+
+
+def _recon_profile_with(*tool_names: str) -> PhaseProfiles:
+    return PhaseProfiles({
+        Phase.RECON: PhaseProfile(
+            phase=Phase.RECON, system_prompt="p", tool_names=frozenset(tool_names)
+        ),
+    })
+
+
+async def test_think_falls_back_to_a_text_tool_call_when_native_tool_calls_are_empty() -> None:
+    llm = _TextOnlyChatModel(
+        text='Running a scan.\nTOOL_CALL: {"name": "dummy_nmap", "args": {"target": "10.0.0.5"}}'
+    )
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _recon_profile_with("dummy_nmap"))
+    state = _state([HumanMessage(content="scan it")])
+
+    update = await think(state)
+
+    call = update["messages"][0].tool_calls[0]
+    assert call["name"] == "dummy_nmap"
+    assert call["args"] == {"target": "10.0.0.5"}
+
+
+async def test_think_text_fallback_accepts_tool_and_arguments_aliases_and_trailing_prose() -> None:
+    llm = _TextOnlyChatModel(
+        text='TOOL_CALL: {"tool": "dummy_nmap", "arguments": {"target": "10.0.0.5"}} — running it now.'
+    )
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _recon_profile_with("dummy_nmap"))
+    state = _state([HumanMessage(content="scan it")])
+
+    update = await think(state)
+
+    call = update["messages"][0].tool_calls[0]
+    assert call["name"] == "dummy_nmap"
+    assert call["args"] == {"target": "10.0.0.5"}
+
+
+async def test_think_ignores_a_malformed_text_tool_call() -> None:
+    llm = _TextOnlyChatModel(text="TOOL_CALL: not-json-at-all")
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _recon_profile_with("dummy_nmap"))
+    state = _state([HumanMessage(content="scan it")])
+
+    update = await think(state)
+
+    assert update["messages"][0].tool_calls == []
+
+
+async def test_think_skips_the_text_fallback_when_the_phase_offers_no_tools() -> None:
+    profiles = PhaseProfiles(
+        {Phase.REPORTING: PhaseProfile(phase=Phase.REPORTING, system_prompt="p", tool_names=frozenset())}
+    )
+    llm = _TextOnlyChatModel(text='TOOL_CALL: {"name": "dummy_nmap", "args": {}}')
+    think = make_think_node(llm, ToolRegistry([]), profiles)
+    state = {"messages": [HumanMessage(content="go")], "phase": Phase.REPORTING, "target": "10.0.0.5"}
+
+    update = await think(state)
+
+    assert update["messages"][0].tool_calls == []
+
+
+async def test_think_prefers_native_tool_calls_over_the_text_fallback() -> None:
+    class _NativeAndTextChatModel(BaseChatModel):
+        @property
+        def _llm_type(self) -> str:
+            return "test-native-and-text-model"
+
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+            message = AIMessage(
+                content='TOOL_CALL: {"name": "dummy_msfconsole", "args": {}}',
+                tool_calls=[{"id": "call-1", "name": "dummy_nmap", "args": {"target": "10.0.0.5"}}],
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
+    think = make_think_node(
+        _NativeAndTextChatModel(),
+        ToolRegistry([dummy_nmap, dummy_msfconsole]),
+        _recon_profile_with("dummy_nmap", "dummy_msfconsole"),
+    )
+    state = _state([HumanMessage(content="scan it")])
+
+    update = await think(state)
+
+    assert [c["name"] for c in update["messages"][0].tool_calls] == ["dummy_nmap"]
+
+
+class _RecordingMessagesChatModel(BaseChatModel):
+    """Records the exact message list sent to the model each call, so a
+    test can inspect what think() actually put on the wire (B2, AUDIT.md)."""
+
+    seen: list = []
+
+    @property
+    def _llm_type(self) -> str:
+        return "records-messages"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        self.seen.append(list(messages))
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content="done"))])
+
+
+async def test_think_leaves_history_untouched_when_it_fits_the_budget() -> None:
+    llm = _RecordingMessagesChatModel(seen=[])
+    think = make_think_node(llm, ToolRegistry([]), _NO_OP_PROFILES)
+    state = _state([HumanMessage(content="short")])
+    state["context_window"] = 32_768
+
+    update = await think(state)
+
+    assert update["compacted"] == 0
+    assert sum(1 for m in llm.seen[-1] if isinstance(m, HumanMessage)) == 1
+
+
+async def test_think_drops_the_oldest_turns_when_history_overflows_the_budget() -> None:
+    llm = _RecordingMessagesChatModel(seen=[])
+    think = make_think_node(llm, ToolRegistry([]), _NO_OP_PROFILES)
+    old = HumanMessage(content="x" * 2000)
+    recent = HumanMessage(content="the most recent turn")
+    state = _state([old, old, old, recent])
+    state["context_window"] = 1200
+
+    update = await think(state)
+
+    assert update["compacted"] > 0
+    sent = llm.seen[-1]
+    assert sent[-1] is recent
+    assert any("omitted" in str(m.content) for m in sent if isinstance(m, SystemMessage))
+
+
+def test_compact_history_counts_fat_tool_calls_not_just_empty_content() -> None:
+    """Q2, CODE_REVIEW.md: cost used to be estimated from .content alone, so
+    an AIMessage with empty content but a large tool_calls payload (e.g. an
+    nmap call with a long `extra` arg) estimated as ~0 tokens and never
+    triggered compaction — exactly the multi-tool run B2 exists to bound."""
+    fat_call = AIMessage(
+        content="",
+        tool_calls=[{"id": "c1", "name": "nmap", "args": {"extra": "x" * 4000}, "type": "tool_call"}],
+    )
+    messages = [fat_call] * 50
+
+    kept, dropped = _compact_history(messages, "sys", 1000)
+
+    assert dropped > 0
+    assert len(kept) < len(messages)
+
+
+async def test_think_wraps_tool_output_for_the_model_without_touching_state() -> None:
+    """C1 (AUDIT.md): a ToolMessage is untrusted data (host-controlled scan
+    output) — the model must see it marked as such, but depg_update's regex
+    extractors and the audit log need the raw content, so state is untouched."""
+    from cism.agent.guardrails import GuardrailChain, ToolOutputScreenStage
+
+    llm = _RecordingMessagesChatModel(seen=[])
+    think = make_think_node(
+        llm, ToolRegistry([]), _NO_OP_PROFILES, GuardrailChain([ToolOutputScreenStage()])
+    )
+    tool_msg = ToolMessage(content="22/tcp open ssh", tool_call_id="c1", name="dummy_nmap")
+    state = _state([HumanMessage(content="scan it"), tool_msg])
+
+    update = await think(state)
+
+    sent = llm.seen[-1]
+    sent_tool_message = next(m for m in sent if isinstance(m, ToolMessage))
+    assert "UNTRUSTED TOOL OUTPUT" in str(sent_tool_message.content)
+    assert "22/tcp open ssh" in str(sent_tool_message.content)
+    assert tool_msg.content == "22/tcp open ssh"  # untouched in state
+    assert update["compacted"] == 0
+
+
+async def test_think_defaults_to_no_screening_when_no_chain_is_given() -> None:
+    llm = _RecordingMessagesChatModel(seen=[])
+    think = make_think_node(llm, ToolRegistry([]), _NO_OP_PROFILES)
+    tool_msg = ToolMessage(content="22/tcp open ssh", tool_call_id="c1", name="dummy_nmap")
+    state = _state([HumanMessage(content="scan it"), tool_msg])
+
+    await think(state)
+
+    sent_tool_message = next(m for m in llm.seen[-1] if isinstance(m, ToolMessage))
+    assert sent_tool_message.content == "22/tcp open ssh"
 
 
 class _AlwaysBlockStage:

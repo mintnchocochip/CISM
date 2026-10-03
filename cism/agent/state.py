@@ -95,3 +95,7 @@ class AgentState(TypedDict):
     memory_items: dict[str, MemoryItem]
     run_id: str
     target: str
+    context_window: int
+    #: set by think() each turn; how many older messages it dropped from the
+    #: prompt to fit context_window (B2, AUDIT.md) — 0 when nothing was dropped.
+    compacted: int

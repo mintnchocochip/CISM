@@ -68,6 +68,31 @@ def test_omits_the_data_field_when_none_was_given(tmp_path: Path) -> None:
     assert "data" not in record
 
 
+def test_exception_calls_include_a_traceback_field(tmp_path: Path) -> None:
+    logger = get_agent_logger(name="test.logging.7", log_dir=tmp_path)
+    try:
+        raise ValueError("boom")
+    except ValueError:
+        logger.exception("run failed")
+    for handler in logger.handlers:
+        handler.flush()
+
+    content = (tmp_path / "agent.log").read_text(encoding="utf-8").strip()
+    record = json.loads(content)
+    assert "ValueError: boom" in record["traceback"]
+
+
+def test_omits_the_traceback_field_for_a_plain_log_call(tmp_path: Path) -> None:
+    logger = get_agent_logger(name="test.logging.8", log_dir=tmp_path)
+    logger.info("plain message")
+    for handler in logger.handlers:
+        handler.flush()
+
+    content = (tmp_path / "agent.log").read_text(encoding="utf-8").strip()
+    record = json.loads(content)
+    assert "traceback" not in record
+
+
 def test_sweep_ignores_files_without_a_parseable_date_suffix(tmp_path: Path) -> None:
     junk = tmp_path / "agent.log.not-a-date"
     _touch(junk)

@@ -5,6 +5,9 @@ cism.agent.core, before the graph starts — not here."""
 
 from __future__ import annotations
 
+import asyncio
+import json
+import uuid
 from typing import Awaitable, Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -15,7 +18,7 @@ from cism.agent.guardrails import GuardrailChain
 from cism.agent.profiles import PhaseProfiles
 from cism.agent.state import AgentState, IllegalPhaseTransition, Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry
-from cism.depg import Edge, ExtractorRegistry, Graph
+from cism.depg import Edge, ExtractorRegistry, Graph, Node
 from cism.depg.linking import find_precondition
 from cism.depg.normalize import normalize_target
 from cism.memory import MemoryStore, memory_key
@@ -34,9 +37,67 @@ __all__ = [
 #: HumanMessage, not the whole persisted session — otherwise it'd exhaust once, ever.
 MAX_AI_TURNS = 6
 
-#: Placeholder progression heuristic — advance one phase on a successful tool
-#: call. Not real phase logic; just gives the router something to validate against.
-DEFAULT_NEXT_PHASE: dict[Phase, Phase] = {
+#: No local-model tokenizer is available generically, so this is a rough
+#: chars-per-token estimate (B2, AUDIT.md) — good enough for a budget, not billing.
+_CHARS_PER_TOKEN = 4
+_RESPONSE_RESERVE_TOKENS = 512
+DEFAULT_CONTEXT_WINDOW = 32_768
+
+#: Flat per-message overhead (role wrapper, message-boundary tokens a chars/4
+#: count on content alone can't see) — small, but keeps a long run of
+#: near-empty messages from estimating as free.
+_PER_MESSAGE_OVERHEAD_TOKENS = 4
+
+
+def _estimate_tokens(text: str) -> int:
+    return len(text) // _CHARS_PER_TOKEN
+
+
+def _message_cost(message) -> int:
+    """Cost of one message as it actually goes on the wire — not just
+    ``.content``. An AIMessage's ``tool_calls`` (Q2, CODE_REVIEW.md: a large
+    call like ``nmap`` with a long ``extra`` arg) and a ToolMessage's
+    ``tool_call_id`` carry real tokens too; counting content alone means
+    exactly the multi-tool run B2 exists to bound is under-counted and never
+    compacted."""
+    content = str(getattr(message, "content", ""))
+    tool_calls = getattr(message, "tool_calls", None)
+    extra = str(tool_calls) if tool_calls else ""
+    tool_call_id = getattr(message, "tool_call_id", None)
+    if tool_call_id:
+        extra += str(tool_call_id)
+    return _estimate_tokens(content) + _estimate_tokens(extra) + _PER_MESSAGE_OVERHEAD_TOKENS
+
+
+def _compact_history(messages: list, system_prompt: str, context_window: int) -> tuple[list, int]:
+    """Keeps the most recent messages that fit the budget; drops older ones
+    and, if any were dropped, prepends one summary line in their place.
+    Full history stays in state — this only shapes what's sent to the model."""
+    budget = context_window - _RESPONSE_RESERVE_TOKENS - _estimate_tokens(system_prompt)
+    kept: list = []
+    used = 0
+    for message in reversed(messages):
+        cost = _message_cost(message)
+        if kept and used + cost > budget:
+            break
+        kept.append(message)
+        used += cost
+    kept.reverse()
+    dropped = len(messages) - len(kept)
+    if dropped:
+        note = SystemMessage(content=f"[{dropped} earlier turn(s) omitted to fit the context window]")
+        kept = [note, *kept]
+    return kept, dropped
+
+#: The two extractors with a fixed, non-LLM vocabulary — the only
+#: cause_class literals _phase_ready can safely match on directly.
+_OPEN_PORT_CAUSE = "open-port"
+_CREDENTIAL_FOUND_CAUSE = "credential-found"
+
+#: The phase a ready phase moves into next. Every value here is a legal
+#: PHASE_TRANSITIONS move, so machine.transition in phase_router never
+#: actually raises for a phase drawn from this map.
+_FORWARD_PHASE: dict[Phase, Phase] = {
     Phase.RECON: Phase.ENUMERATION,
     Phase.ENUMERATION: Phase.VULNERABILITY_DISCOVERY,
     Phase.VULNERABILITY_DISCOVERY: Phase.EXPLOITATION,
@@ -44,6 +105,35 @@ DEFAULT_NEXT_PHASE: dict[Phase, Phase] = {
     Phase.POST_EXPLOITATION: Phase.REPORTING,
     Phase.REPORTING: Phase.REPORTING,
 }
+
+
+def _phase_ready(phase: Phase, nodes: dict[str, Node]) -> bool:
+    """Whether this phase's own objective has real DEPG evidence behind it —
+    not "some tool call exited zero", which is what the old placeholder
+    (advance on any successful call) actually checked. Looks at nodes
+    tagged with this phase (Node.phase, set in depg_update from the phase
+    active when they were extracted) that reached "resolved" — alive
+    verdict *and* supported, per reduce_state. depg_update always runs
+    before phase_router in the graph, so this step's own extraction is
+    already reflected.
+
+    RECON and EXPLOITATION gate on their phase's one deterministic
+    cause_class (nmap's open-port, hydra's credential-found) so a scan
+    that finds nothing, or a credential attempt that fails, correctly
+    doesn't count as done. The other phases have no fixed cause_class
+    vocabulary to match against — LLM-extracted, free text — so they
+    accept any resolved node produced while in that phase: still real
+    evidence, just not a named-finding requirement.
+    """
+    phase_tag = phase.to_wire()
+    in_phase_resolved = [
+        node for node in nodes.values() if node.phase == phase_tag and node.state == "resolved"
+    ]
+    if phase is Phase.RECON:
+        return any(node.cause_class == _OPEN_PORT_CAUSE for node in in_phase_resolved)
+    if phase is Phase.EXPLOITATION:
+        return any(node.cause_class == _CREDENTIAL_FOUND_CAUSE for node in in_phase_resolved)
+    return bool(in_phase_resolved)
 
 
 def _bind_tools_if_supported(llm: BaseChatModel, tools: list) -> BaseChatModel:
@@ -58,9 +148,72 @@ def _bind_tools_if_supported(llm: BaseChatModel, tools: list) -> BaseChatModel:
         return llm
 
 
+#: Marker a model without real tool-calling support can emit instead, e.g.
+#: 'TOOL_CALL: {"name": "nmap", "args": {"target": "10.0.0.5"}}'.
+_TOOL_CALL_MARKER = "TOOL_CALL:"
+
+_FALLBACK_HINT = (
+    "\n\nIf you can't make a structured tool call, end your reply with a "
+    f'line starting with {_TOOL_CALL_MARKER} followed by a JSON object like '
+    '{"name": "<tool>", "args": {...}}.'
+)
+
+
+def _extract_balanced_json(text: str, start: int) -> str | None:
+    """The first balanced {...} object in text at or after start."""
+    open_idx = text.find("{", start)
+    if open_idx == -1:
+        return None
+    depth = 0
+    for i in range(open_idx, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[open_idx : i + 1]
+    return None
+
+
+def _parse_text_tool_call(content: str) -> ToolCall | None:
+    """Recovers a tool call a model without native tool-calling wrote as
+    text instead — see _FALLBACK_HINT. None if nothing usable is found."""
+    marker_idx = content.find(_TOOL_CALL_MARKER)
+    if marker_idx == -1:
+        return None
+    raw = _extract_balanced_json(content, marker_idx + len(_TOOL_CALL_MARKER))
+    if raw is None:
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    name = payload.get("name") or payload.get("tool")
+    args = payload.get("args") or payload.get("arguments") or {}
+    if not isinstance(name, str) or not name.strip() or not isinstance(args, dict):
+        return None
+    return {
+        "name": name.strip(),
+        "args": args,
+        "id": f"call_{uuid.uuid4().hex[:8]}",
+        "type": "tool_call",
+    }
+
+
 def make_think_node(
-    llm: BaseChatModel, tools: ToolRegistry, profiles: PhaseProfiles
+    llm: BaseChatModel,
+    tools: ToolRegistry,
+    profiles: PhaseProfiles,
+    tool_output_chain: GuardrailChain | None = None,
 ) -> Callable[[AgentState], dict]:
+    # C1 (AUDIT.md): screened here, at prompt-build time, not when act()
+    # appends the ToolMessage to state — depg_update's regex extractors and
+    # the audit log both need the raw tool output; only what the model sees
+    # needs the untrusted-data wrapper.
+    screen = tool_output_chain or GuardrailChain([])
+
     async def think(state: AgentState) -> dict:
         profile = profiles.get(state["phase"])
         # tool_help is exempt from phase gating — knowing what a tool does carries
@@ -75,10 +228,16 @@ def make_think_node(
         # never mentions it — without this, the model has no way to know
         # what "the target" or "our target" refers to.
         target_line = f"Target: {state['target']}" if state["target"] else "No target configured yet."
-        messages = [
-            SystemMessage(content=f"{target_line}\n\n{profile.system_prompt}"),
-            *state["messages"],
+        hint = _FALLBACK_HINT if phase_tools else ""
+        system_prompt = f"{target_line}\n\n{profile.system_prompt}{hint}"
+        context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
+        history, dropped = _compact_history(state["messages"], system_prompt, context_window)
+        history = [
+            m.model_copy(update={"content": screen.run(str(m.content)).value})
+            if isinstance(m, ToolMessage) else m
+            for m in history
         ]
+        messages = [SystemMessage(content=system_prompt), *history]
         response = None
         async for chunk in bound.astream(messages):
             response = chunk if response is None else response + chunk
@@ -86,7 +245,13 @@ def make_think_node(
             # A provider that errors or returns nothing leaves zero chunks;
             # an empty answer is a better default than a later crash on None.
             response = AIMessage(content="")
-        return {"messages": [response]}
+        if phase_tools and not response.tool_calls:
+            # Weak/non-tool-calling models often describe the call in prose
+            # instead of the API's structured field — recover it from text.
+            parsed = _parse_text_tool_call(str(response.content))
+            if parsed is not None:
+                response = response.model_copy(update={"tool_calls": [parsed]})
+        return {"messages": [response], "compacted": dropped}
 
     return think
 
@@ -190,8 +355,8 @@ def _trailing_tool_results(messages: list) -> list[tuple[ToolCall | None, ToolMe
     return [(calls_by_id.get(m.tool_call_id), m) for m in results]
 
 
-def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState], dict]:
-    def depg_update(state: AgentState) -> dict:
+def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState], Awaitable[dict]]:
+    async def depg_update(state: AgentState) -> dict:
         graph = Graph.from_state(state["depg_nodes"], state["depg_edges"])
         phase_tag = state["phase"].to_wire()
         # Normalized once, here — an identity key can't depend on incidental
@@ -199,9 +364,12 @@ def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState
         target = normalize_target(state["target"])
 
         for call, message in _trailing_tool_results(state["messages"]):
-            extraction = extractors.get(message.name or "").extract(
-                call, message, graph, target
-            )
+            extractor = extractors.get(message.name or "")
+            # to_thread: extraction can be a ~20s blocking LLM call, off the
+            # loop thread so it doesn't freeze the TUI. Stays sequential
+            # (not gathered) — find_precondition needs each call's nodes
+            # upserted before the next call links against them.
+            extraction = await asyncio.to_thread(extractor.extract, call, message, graph, target)
             # Resolved before any of this message's own nodes land, or two
             # siblings from one call (nmap's two ports) would chain onto each other.
             preconditions = {
@@ -218,6 +386,7 @@ def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState
 
         graph.settle()
         graph.prune()
+        graph.compute_metrics()
         # No reducer on these keys — must return the full merged graph, never just a delta.
         return {"depg_nodes": graph.nodes, "depg_edges": graph.edges}
 
@@ -227,12 +396,10 @@ def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState
 def make_phase_router() -> Callable[[AgentState], dict]:
     def phase_router(state: AgentState) -> dict:
         machine = PhaseStateMachine(current=state["phase"])
-        last = state["messages"][-1]
-        succeeded = isinstance(last, ToolMessage) and last.status != "error"
         before = machine.current
 
-        if succeeded:
-            target = DEFAULT_NEXT_PHASE[machine.current]
+        if _phase_ready(machine.current, state["depg_nodes"]):
+            target = _FORWARD_PHASE[machine.current]
             try:
                 machine.transition(target)
             except IllegalPhaseTransition:

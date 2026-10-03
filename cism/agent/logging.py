@@ -38,6 +38,8 @@ class _JsonlFormatter(logging.Formatter):
         data = getattr(record, "data", None)
         if data is not None:
             base["data"] = data
+        if record.exc_info:
+            base["traceback"] = self.formatException(record.exc_info)
         return json.dumps(base, default=str)
 
 

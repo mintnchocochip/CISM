@@ -20,8 +20,19 @@ __all__ = ["dummy_msfconsole", "dummy_nmap"]
 
 @tool
 def dummy_nmap(target: str, options: str = "-sV") -> str:
-    """Run a dummy nmap scan against a target and return canned output."""
-    return f"[dummy] nmap {options} {target} -> 3 open ports (22,80,443)"
+    """Run a dummy nmap scan against a target and return canned output.
+
+    The port lines are real nmap grep-able format (``PORT/proto  open  service``),
+    not just a summary sentence, so NmapExtractor parses this the same way it
+    would parse live nmap output — the offline path produces genuine
+    "open-port" DEPG evidence instead of an opaque stand-in.
+    """
+    return (
+        f"[dummy] nmap {options} {target}\n"
+        "22/tcp   open  ssh\n"
+        "80/tcp   open  http\n"
+        "443/tcp  open  https\n"
+    )
 
 
 @tool

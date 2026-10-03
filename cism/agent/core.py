@@ -18,12 +18,25 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from cism.agent.graph import build_graph
 from cism.agent.guardrails import GuardrailChain, GuardrailSeam, ScopeGuardStage, parse_scope
-from cism.agent.llm import DummyChatModel, build_chat_model, discover_context_window
+from cism.agent.llm import (
+    DummyChatModel,
+    build_chat_model,
+    discover_context_window,
+    discover_context_window_llamacpp,
+)
 from cism.agent.logging import get_agent_logger, read_run_events
 from cism.agent.profiles import PhaseProfiles, default_profiles
 from cism.agent.state import IllegalPhaseTransition, Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
-from cism.depg import EXTRACTORS, ExtractorRegistry, GenericExtractor, LLMExtractor
+from cism.depg import (
+    EXTRACTORS,
+    CauseExtractor,
+    ChatModelExtractionBackend,
+    ExtractorRegistry,
+    GenericExtractor,
+    LLMExtractor,
+    NmapExtractor,
+)
 from cism.memory import DEFAULT_SALIENCE_TERMS
 from cism.tui.events import (
     AgentEvent,
@@ -54,6 +67,13 @@ __all__ = ["LangGraphAgent"]
 #: Pacing between /replay events — readable, not the original run's real gaps.
 _REPLAY_STEP_DELAY = 0.05
 
+#: dummy_nmap's canned output is real nmap open-port-line format (see
+#: cism.agent.tools.dummy), so it extracts the same way a live nmap result
+#: would — the offline/dummy path exercises genuine "open-port" evidence
+#: instead of a GenericExtractor stand-in, which phase_router's RECON gate
+#: (cism.agent.nodes._phase_ready) specifically requires.
+_DEFAULT_TOOL_EXTRACTORS: dict[str, CauseExtractor] = {**EXTRACTORS, "dummy_nmap": NmapExtractor()}
+
 
 def _llm_from_env() -> tuple[BaseChatModel, str, str, str]:
     """Real connector if the environment describes one, Dummy otherwise.
@@ -83,6 +103,7 @@ class LangGraphAgent:
         endpoint: str = "",
         model_name: str = "",
         key_env_var: str = "",
+        backend: str = "openai",
     ) -> None:
         self.events: asyncio.Queue[AgentEvent] = asyncio.Queue()
         if llm is None:
@@ -92,12 +113,16 @@ class LangGraphAgent:
             self._endpoint = endpoint
             self._model_name = model_name
             self._key_env_var = key_env_var
+        #: "openai" or "llamacpp" — picks the context-window probe below.
+        self._backend_kind = backend
         self._tools = tools or ToolRegistry([dummy_nmap, dummy_msfconsole])
         self._guardrails = guardrails or GuardrailSeam.no_op()
         default_extractor = (
-            GenericExtractor() if self._endpoint == "local (dummy)" else LLMExtractor(self._llm)
+            GenericExtractor()
+            if self._endpoint == "local (dummy)"
+            else LLMExtractor(ChatModelExtractionBackend(self._llm), logger=get_agent_logger())
         )
-        self._extractors = extractors or ExtractorRegistry(EXTRACTORS, default_extractor)
+        self._extractors = extractors or ExtractorRegistry(_DEFAULT_TOOL_EXTRACTORS, default_extractor)
         self._profiles = profiles or default_profiles(self._tools)
         #: In-process session memory only, not restart-survival. A fixed
         #: thread_id so a graph rebuilt mid-session (/ablate) still shares it.
@@ -131,7 +156,10 @@ class LangGraphAgent:
         """Best-effort; a stale value from a prior model is harmless."""
         if self._endpoint == "local (dummy)" or not self._model_name:
             return
-        discovered = await discover_context_window(self._endpoint, self._model_name)
+        if self._backend_kind == "llamacpp":
+            discovered = await discover_context_window_llamacpp(self._endpoint)
+        else:
+            discovered = await discover_context_window(self._endpoint, self._model_name)
         if discovered:
             self._context_window = discovered
 
@@ -552,6 +580,7 @@ class LangGraphAgent:
             "phase_changed": False,
             "run_id": run_id,
             "target": self._target,
+            "context_window": self._context_window,
         }
         if not self._thread_seeded:
             # Seed once only — no reducer, so resupplying `{}` every run would wipe checkpointed state.
@@ -601,8 +630,12 @@ class LangGraphAgent:
                     if not update:
                         continue
                     await self._translate(node, update, run_id, pending_calls, streamed)
+        except asyncio.CancelledError:  # submit() cancelled us for a new run — mirror interrupt()
+            await self._emit(Interrupted(reason="superseded by new submission"))
+            raise
         except Exception as exc:  # a graph-loop failure is content, not a crash
             ok = False
+            self._log.exception("run failed", extra={"data": {"run_id": run_id}})
             await self._emit(
                 Narration(entry_id=f"{run_id}-error", text=f"run failed: {exc}", done=True)
             )
@@ -618,6 +651,15 @@ class LangGraphAgent:
         streamed: dict[str, str],
     ) -> None:
         if node == "think":
+            dropped = update.get("compacted") or 0
+            if dropped:
+                await self._emit(
+                    Narration(
+                        entry_id=f"{run_id}-compacted-{uuid.uuid4().hex[:8]}",
+                        text=f"context window nearly full — dropped {dropped} earlier turn(s) from the prompt",
+                        done=True,
+                    )
+                )
             for message in update.get("messages", []):
                 had_calls = False
                 for call in getattr(message, "tool_calls", None) or []:
