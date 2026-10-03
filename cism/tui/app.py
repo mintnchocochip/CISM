@@ -9,6 +9,7 @@ state mutates; user actions go back out via :meth:`Agent.submit` /
 from __future__ import annotations
 
 import time
+import traceback
 from collections import deque
 from pathlib import Path
 
@@ -176,6 +177,9 @@ class CISMApp(App[None]):
             event = await self.agent.events.get()
             try:
                 self._apply(event)
+            except Exception:
+                self.log.error(f"_apply failed for {type(event).__name__}", traceback.format_exc())
+                self.unknown_events += 1
             finally:
                 self.agent.events.task_done()
 

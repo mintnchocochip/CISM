@@ -35,6 +35,29 @@ async def test_unknown_events_are_dropped_not_raised(quiet_app) -> None:
         assert app.transcript.query_one(NarrationEntry).text == "still alive"
 
 
+async def test_a_handler_that_raises_does_not_kill_the_pump(quiet_app) -> None:
+    """E1 (AUDIT.md): _apply raising used to escape try/finally with no
+    except, permanently freezing the UI after one bad event."""
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        real_apply = app._apply
+        calls = []
+
+        def _flaky_apply(event):
+            calls.append(event)
+            if len(calls) == 1:
+                raise RuntimeError("boom")
+            return real_apply(event)
+
+        app._apply = _flaky_apply
+        agent.events.put_nowait(Narration("e1", "first — will raise"))
+        agent.events.put_nowait(Narration("e2", "second — must still land"))
+        await settle(pilot)
+
+        assert app.unknown_events == 1
+        assert app.transcript.query_one(NarrationEntry).text == "second — must still land"
+
+
 async def test_output_for_an_unknown_call_id_is_ignored(quiet_app) -> None:
     from cism.tui.events import ToolFinished, ToolOutput
 

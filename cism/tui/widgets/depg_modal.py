@@ -45,8 +45,15 @@ class DEPGTree(Tree[DEPGNode]):
         self.show_root = False
         self.guide_depth = 3
 
-    def node_label(self, node: DEPGNode, weight: float | None) -> Text:
-        """``[cause-class] target (signal) — generality γ=0.72 (3 downstream)``.
+    def node_label(
+        self,
+        node: DEPGNode,
+        weight: float | None,
+        extra_parents: list[tuple[DEPGNode, float]] | None = None,
+    ) -> Text:
+        """``[cause-class] target (signal) — generality γ=0.72 (3 downstream)``,
+        plus ``(+2 more: web@0.41, dns@0.30)`` when this node has other
+        incoming edges beyond the one it's nested under (E2, AUDIT.md).
 
         The signal is what distinguishes siblings sharing a cause_class and
         target (e.g. one open-port node per port on the same host) — without
@@ -64,6 +71,9 @@ class DEPGTree(Tree[DEPGNode]):
             f" — generality γ={node.generality:.2f} ({node.downstream} downstream)",
             style=gamma,
         )
+        if extra_parents:
+            joined = ", ".join(f"{p.cause_class}@{w:.2f}" for p, w in extra_parents)
+            label.append(f" (+{len(extra_parents)} more: {joined})", style=weight_style)
         return label
 
 
@@ -84,7 +94,22 @@ class DEPGModal(ModalScreen[None]):
         self.nodes = nodes
         self.edges = edges
         self._by_id = {node.id: node for node in nodes}
-        self._parent_of = {edge.child: edge.parent for edge in edges}
+
+        # E2: a child can have several incoming edges; keep all of them,
+        # deterministically ranked (highest weight first, parent id as
+        # tiebreak) instead of whichever edge happened to come last.
+        incoming: dict[str, list[tuple[str, float]]] = {}
+        for edge in edges:
+            incoming.setdefault(edge.child, []).append((edge.parent, edge.weight))
+        self._parent_of: dict[str, str] = {}
+        self._primary_weight: dict[str, float] = {}
+        self._extra_parents: dict[str, list[tuple[str, float]]] = {}
+        for child, parents in incoming.items():
+            ranked = sorted(parents, key=lambda pw: (-pw[1], pw[0]))
+            self._parent_of[child] = ranked[0][0]
+            self._primary_weight[child] = ranked[0][1]
+            if len(ranked) > 1:
+                self._extra_parents[child] = ranked[1:]
 
     DECISION_COLUMNS = ("time", "chose", "over", "Δ", "cost")
 
@@ -142,21 +167,24 @@ class DEPGModal(ModalScreen[None]):
         tree = self.query_one(DEPGTree)
         tree.clear()
         children: dict[str, list[tuple[str, float]]] = {}
-        has_parent: set[str] = set()
-        for edge in self.edges:
-            # A node with two incoming edges must nest under the same single
-            # parent _parent_of resolves it to, or the tree and the path_to() breadcrumb disagree.
-            if self._parent_of.get(edge.child) != edge.parent:
-                continue
-            children.setdefault(edge.parent, []).append((edge.child, edge.weight))
-            has_parent.add(edge.child)
+        for child, parent in self._parent_of.items():
+            children.setdefault(parent, []).append((child, self._primary_weight[child]))
 
-        roots = [node for node in self.nodes if node.id not in has_parent]
+        roots = [node for node in self.nodes if node.id not in self._parent_of]
         seen: set[str] = set()
         for node in roots:
             self._add_node(tree, tree.root, node, None, children, seen)
-        tree.root.expand_all()
 
+        # E3: a component with no in-degree-0 node (a pure cycle) has every
+        # member in self._parent_of, so it's never reached from a root —
+        # attach whatever's left under a synthetic root instead of dropping it.
+        orphaned = [node for node in self.nodes if node.id not in seen]
+        if orphaned:
+            marker = tree.root.add(f"⟲ orphaned / cyclic ({len(orphaned)})")
+            for node in orphaned:
+                self._add_node(tree, marker, node, None, children, seen)
+
+        tree.root.expand_all()
         if tree.root.children:
             tree.cursor_line = 0
             self._show_node(roots[0] if roots else self.nodes[0])
@@ -174,7 +202,12 @@ class DEPGModal(ModalScreen[None]):
         if node.id in seen:
             return
         seen.add(node.id)
-        label = tree.node_label(node, weight)
+        extra = [
+            (self._by_id[p], w)
+            for p, w in self._extra_parents.get(node.id, [])
+            if p in self._by_id
+        ]
+        label = tree.node_label(node, weight, extra or None)
         kids = children.get(node.id, ())
         branch = parent.add(label, data=node) if kids else parent.add_leaf(
             label, data=node
