@@ -31,14 +31,21 @@ __all__ = [
     "ExtractedFinding",
     "ExtractedFindings",
     "ExtractionBackend",
+    "GobusterExtractor",
     "HydraExtractor",
     "LLMExtractor",
     "LlamaCppExtractionBackend",
     "NmapExtractor",
+    "SqlmapExtractor",
 ]
 
 _OPEN_PORT_RE = re.compile(r"^(\d+)/(tcp|udp)\s+open\s+(\S+)", re.MULTILINE)
 _HYDRA_SUCCESS_RE = re.compile(r"login:\s*(\S+)\s+password:\s*(\S+)")
+#: sqlmap's own grammar for a confirmed injection point — "Parameter: id
+#: (GET)" followed by a "Type: ..." line (with or without a blank line
+#: between them, hence the optional \n\s* rather than a fixed gap).
+_SQLMAP_PARAM_RE = re.compile(r"Parameter:\s*(\S+)\s*\((\w+)\)\s*\n\s*Type:\s*(.+)")
+_GOBUSTER_HIT_RE = re.compile(r"^(/\S+)\s+\(Status:\s*(\d+)\)", re.MULTILINE)
 
 
 def _now() -> str:
@@ -137,6 +144,94 @@ class HydraExtractor:
                 ],
             )
         return Extraction(nodes=[node])
+
+
+class SqlmapExtractor:
+    """One node per confirmed injectable parameter (T1 — sqlmap only reports
+    "Parameter: X" after actually confirming injection, not on a guess).
+    No match becomes a single dead tombstone, same anti-retry purpose as
+    HydraExtractor's failure case."""
+
+    def extract(
+        self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
+    ) -> Extraction:
+        content = str(message.content)
+        call_id = _call_id(call, message)
+        matches = _SQLMAP_PARAM_RE.findall(content)
+        if not matches:
+            signal = "no-injection-found"
+            return Extraction(nodes=[
+                Node(
+                    id=derive_node_id("sql-injection-attempt", target, signal),
+                    cause_class="sql-injection-attempt",
+                    target=target,
+                    signal=signal,
+                    evidence=[
+                        Evidence(
+                            timestamp=_now(), tool="sqlmap", exit_signal=content[:80],
+                            tier="T3", source="deterministic", verdict="dead", call_id=call_id,
+                        )
+                    ],
+                )
+            ])
+        nodes = []
+        for param, method, inj_type in matches:
+            signal = f"{param} ({method})"
+            nodes.append(
+                Node(
+                    id=derive_node_id("sql-injection", target, signal),
+                    cause_class="sql-injection",
+                    target=target,
+                    signal=signal,
+                    evidence=[
+                        Evidence(
+                            timestamp=_now(), tool="sqlmap",
+                            exit_signal=f"{signal}: {inj_type.strip()}",
+                            tier="T1", source="deterministic", verdict="alive", call_id=call_id,
+                        )
+                    ],
+                )
+            )
+        return Extraction(nodes=nodes)
+
+
+#: gobuster's default status-code filter already excludes 404, but that
+#: default isn't guaranteed (an operator can widen it with -s), so this
+#: extractor never trusts the tool's own filtering for what counts as
+#: "found" — a 404 is explicitly not a finding here either way.
+_GOBUSTER_NOT_FOUND = frozenset({"404"})
+
+
+class GobusterExtractor:
+    """One node per discovered path. Nothing found is not itself a fact
+    worth tracking (unlike hydra/sqlmap, there's no single "the attempt
+    failed" claim to tombstone against retrying)."""
+
+    def extract(
+        self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
+    ) -> Extraction:
+        content = str(message.content)
+        call_id = _call_id(call, message)
+        nodes = []
+        for path, status in _GOBUSTER_HIT_RE.findall(content):
+            if status in _GOBUSTER_NOT_FOUND:
+                continue
+            signal = f"{path} ({status})"
+            nodes.append(
+                Node(
+                    id=derive_node_id("exposed-path", target, signal),
+                    cause_class="exposed-path",
+                    target=target,
+                    signal=signal,
+                    evidence=[
+                        Evidence(
+                            timestamp=_now(), tool="gobuster", exit_signal=signal,
+                            tier="T2", source="deterministic", verdict="alive", call_id=call_id,
+                        )
+                    ],
+                )
+            )
+        return Extraction(nodes=nodes)
 
 
 _MAX_PROMPT_CHARS = 6000
@@ -310,4 +405,6 @@ class LLMExtractor:
 EXTRACTORS: dict[str, CauseExtractor] = {
     "nmap": NmapExtractor(),
     "hydra": HydraExtractor(),
+    "sqlmap": SqlmapExtractor(),
+    "gobuster": GobusterExtractor(),
 }

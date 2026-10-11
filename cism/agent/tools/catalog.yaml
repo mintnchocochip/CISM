@@ -58,3 +58,34 @@ curl:
   # through a tool the model thinks only hits the network.
   forced_flags: ["--proto", "-all,+http,+https"]
   phases: [recon, enumeration, vulnerability-discovery, exploitation, post-exploitation]
+
+# §4.1 (BACKLOG.md): next tools picked by target-type gap against DVWA —
+# sqlmap for SQLi coverage, gobuster for directory/endpoint discovery that
+# nikto only partially covers.
+
+sqlmap:
+  binary: sqlmap
+  capability: executes
+  description: >-
+    Test a URL for SQL injection and, if found, enumerate what's behind it.
+    --batch makes every prompt take sqlmap's own default answer instead of
+    hanging on stdin (there is no interactive session to answer it here).
+  target: "-u"
+  forced_flags: ["--batch"]
+  allow_raw: true
+  timeout: 90.0
+  # Explicit, like nmap/curl: this is an active-exploitation-capable tool,
+  # not a passive read — it should never fall under the reads-only default.
+  phases: [enumeration, vulnerability-discovery, exploitation]
+
+gobuster:
+  binary: gobuster
+  capability: reads
+  description: >-
+    Brute-force a web server's directories/files from a wordlist. "dir"
+    mode is forced — gobuster also has vhost/dns/s3/etc. modes this catalog
+    row doesn't support.
+  target: "-u"
+  forced_flags: ["dir", "-w", "/usr/share/wordlists/common-dirs.txt"]
+  allow_raw: true
+  timeout: 60.0

@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     whatweb=0.5.5-1 \
     dnsenum=1.3.2-1 \
     hydra=9.5-3 \
+    sqlmap=1.9.6-1 \
+    gobuster=3.6.0-1+b10 \
     bubblewrap=0.12.0-1~deb13u1 \
     git=1:2.47.3-0+deb13u1 \
     perl=5.40.1-6+deb13u1 \
@@ -28,7 +30,9 @@ RUN git clone --branch 2.6.1 --depth 1 https://github.com/sullo/nikto.git /opt/n
 
 RUN install -d /usr/share/wordlists && \
     printf 'wronguser\nadmin\nmsfadmin\n' > /usr/share/wordlists/common-users.txt && \
-    printf 'wrongpass\ntoor\nmsfadmin\n' > /usr/share/wordlists/common-passwords.txt
+    printf 'wrongpass\ntoor\nmsfadmin\n' > /usr/share/wordlists/common-passwords.txt && \
+    printf 'admin\nlogin\nconfig\ndocs\nbackup\nuploads\nimages\nincludes\nsetup.php\nphpinfo.php\nrobots.txt\n.git\ntest\napi\ndashboard\n' \
+        > /usr/share/wordlists/common-dirs.txt
 
 WORKDIR /cism
 COPY pyproject.toml .

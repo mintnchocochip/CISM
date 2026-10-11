@@ -35,6 +35,15 @@ _PER_TOOL_DANGEROUS_TOKENS: dict[str, frozenset[str]] = {
         "--etag-save", "--etag-compare", "-J", "--remote-header-name",
         "--remote-name-all", "--cert", "--key", "--cacert",
     }),
+    # §4.1: sqlmap's RCE/file-primitive flags are the catastrophic case
+    # allow_raw exists to guard against — these turn "test for SQLi" into
+    # "get a shell" / "read or write an arbitrary file" on the DB host.
+    "sqlmap": frozenset({
+        "--os-shell", "--os-cmd", "--os-pwn", "--sql-shell",
+        "--file-read", "--file-write", "--file-dest", "--eval",
+        "-c", "--config", "--tamper",
+    }),
+    "gobuster": frozenset({"-o", "--output"}),
 }
 
 

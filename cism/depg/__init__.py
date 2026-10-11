@@ -20,10 +20,12 @@ from .extractors import (
     EXTRACTORS,
     ChatModelExtractionBackend,
     ExtractionBackend,
+    GobusterExtractor,
     HydraExtractor,
     LlamaCppExtractionBackend,
     LLMExtractor,
     NmapExtractor,
+    SqlmapExtractor,
 )
 from .graph import Graph
 from .node import Node
@@ -39,6 +41,7 @@ __all__ = [
     "ExtractionBackend",
     "ExtractorRegistry",
     "GenericExtractor",
+    "GobusterExtractor",
     "GradedSupport",
     "Graph",
     "HydraExtractor",
@@ -46,6 +49,7 @@ __all__ = [
     "LlamaCppExtractionBackend",
     "Node",
     "NmapExtractor",
+    "SqlmapExtractor",
     "SupportPolicy",
     "reduce_state",
 ]

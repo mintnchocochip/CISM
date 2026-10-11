@@ -5,8 +5,28 @@ from __future__ import annotations
 
 from langchain_core.messages import ToolMessage
 
-from cism.depg.extractors import HydraExtractor, NmapExtractor
+from cism.depg.extractors import GobusterExtractor, HydraExtractor, NmapExtractor, SqlmapExtractor
 from cism.depg.graph import Graph
+
+_SQLMAP_VULNERABLE = """
+sqlmap identified the following injection point(s):
+---
+Parameter: id (GET)
+    Type: boolean-based blind
+    Title: AND boolean-based blind - WHERE or HAVING clause
+    Payload: id=1 AND 1=1
+---
+"""
+
+_SQLMAP_CLEAN = "all tested parameters do not appear to be injectable"
+
+_GOBUSTER_OUTPUT = """
+===============================================================
+/admin                (Status: 301) [Size: 315] [--> /admin/]
+/login.php            (Status: 200) [Size: 1234]
+/doesnotexist          (Status: 404) [Size: 12]
+===============================================================
+"""
 
 _NMAP_OUTPUT = """
 Starting Nmap 7.94
@@ -81,6 +101,41 @@ def test_hydra_extractor_treats_an_error_status_as_a_failed_attempt() -> None:
     (node,) = extraction.nodes
     assert node.cause_class == "credential-attempt"
     assert node.evidence[0].verdict == "dead"
+
+
+def test_sqlmap_extractor_confirmed_injection_is_a_t1_node() -> None:
+    message = ToolMessage(content=_SQLMAP_VULNERABLE, tool_call_id="c1", name="sqlmap")
+    call = {"id": "c1", "name": "sqlmap", "args": {"target": "http://10.0.0.5/"}}
+
+    extraction = SqlmapExtractor().extract(call, message, Graph(), "10.0.0.5")
+
+    (node,) = extraction.nodes
+    assert node.cause_class == "sql-injection"
+    assert node.signal == "id (GET)"
+    assert node.evidence[0].tier == "T1"
+    assert node.evidence[0].verdict == "alive"
+
+
+def test_sqlmap_extractor_no_injection_is_a_t3_tombstone() -> None:
+    message = ToolMessage(content=_SQLMAP_CLEAN, tool_call_id="c1", name="sqlmap")
+    call = {"id": "c1", "name": "sqlmap", "args": {"target": "http://10.0.0.5/"}}
+
+    extraction = SqlmapExtractor().extract(call, message, Graph(), "10.0.0.5")
+
+    (node,) = extraction.nodes
+    assert node.cause_class == "sql-injection-attempt"
+    assert node.evidence[0].verdict == "dead"
+
+
+def test_gobuster_extractor_one_node_per_hit_excluding_404() -> None:
+    message = ToolMessage(content=_GOBUSTER_OUTPUT, tool_call_id="c1", name="gobuster")
+    call = {"id": "c1", "name": "gobuster", "args": {"target": "http://10.0.0.5/"}}
+
+    extraction = GobusterExtractor().extract(call, message, Graph(), "10.0.0.5")
+
+    signals = {n.signal for n in extraction.nodes}
+    assert signals == {"/admin (301)", "/login.php (200)"}
+    assert all(n.cause_class == "exposed-path" for n in extraction.nodes)
 
 
 def test_extractors_dict_keys_are_known_tool_names() -> None:
