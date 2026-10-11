@@ -371,6 +371,13 @@ class Transcript(VerticalScroll):
             self.mount(entry)
         return entry
 
+    def existing_narration(self, entry_id: str) -> NarrationEntry | None:
+        """Look up ``entry_id`` without creating one (E9) — for a redaction
+        arriving for an entry that was never added, or was removed by
+        ``clear_entries()``; that should no-op, not mount a phantom,
+        already-redacted entry with no narration of its own."""
+        return self._narrations.get(entry_id)
+
     def add_tool(self, call_id: str, tool: str, args: str) -> ToolEntry:
         entry = ToolEntry(call_id, tool, args)
         self._tools[call_id] = entry

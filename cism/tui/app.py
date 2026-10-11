@@ -206,7 +206,11 @@ class CISMApp(App[None]):
             self.status.phase = event.phase
             self.indicator.start(event.phase, token_base=self.token_total)
             self._last_run_id = event.run_id
-            self._phase_history = [PhaseTransition(timestamp=_now_iso(), phase=event.phase)]
+            if not self._phase_history:
+                # Accumulates across the whole session, not reset per turn —
+                # a report pulled after several submits should show the
+                # engagement's full progression, not just the latest turn's.
+                self._phase_history = [PhaseTransition(timestamp=_now_iso(), phase=event.phase)]
 
         elif isinstance(event, RunFinished):
             self.indicator.stop()
@@ -228,7 +232,9 @@ class CISMApp(App[None]):
                 entry.finish()
 
         elif isinstance(event, NarrationRedacted):
-            transcript.narration(event.entry_id).redact(event.reason)
+            entry = transcript.existing_narration(event.entry_id)
+            if entry is not None:
+                entry.redact(event.reason)
 
         elif isinstance(event, ToolStarted):
             transcript.add_tool(event.call_id, event.tool, event.args)
@@ -344,7 +350,12 @@ class CISMApp(App[None]):
     async def send(self, text: str) -> None:
         await self.agent.submit(text)
 
-    @work(group="agent-step", exclusive=True, thread=False)
+    # E10: a separate group from "agent-step" — interrupt must run
+    # *alongside* an in-flight send, not cancel it outright the way
+    # Textual's exclusive-group semantics would if they shared one. The
+    # agent's own interrupt() is what cooperatively unwinds the run; a
+    # worker-level cancel of send() here would race it instead.
+    @work(group="agent-interrupt", exclusive=True, thread=False)
     async def interrupt(self) -> None:
         await self.agent.interrupt()
 

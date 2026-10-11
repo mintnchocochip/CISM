@@ -519,7 +519,7 @@ async def test_depg_tree_is_built_from_the_edges(app_and_agent) -> None:
         assert [node.data.id for node in roots] == ["n-http", "n-ssh", "n-jetty"]
         admin = roots[0].children[0]
         assert admin.data.id == "n-admin"
-        assert "0.61" in admin.label.plain
+        assert "w=0.61" in admin.label.plain  # E6: tagged, not a bare number
         assert admin.data.state == "blocked"
 
 

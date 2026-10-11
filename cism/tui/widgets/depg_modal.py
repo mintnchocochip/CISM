@@ -64,7 +64,7 @@ class DEPGTree(Tree[DEPGNode]):
 
         label = Text()
         if weight is not None:
-            label.append(f"{weight:.2f} ", style=weight_style)
+            label.append(f"w={weight:.2f} ", style=weight_style)
         target = f"{node.target} ({node.signal})" if node.signal else node.target
         label.append(f"[{node.cause_class}] {target}", style=style)
         label.append(
@@ -72,7 +72,10 @@ class DEPGTree(Tree[DEPGNode]):
             style=gamma,
         )
         if extra_parents:
-            joined = ", ".join(f"{p.cause_class}@{w:.2f}" for p, w in extra_parents)
+            # E6: every incoming edge's weight is shown, not just the
+            # surviving parent's bare number above — same w= tag, so the
+            # two read as the same kind of value at a glance.
+            joined = ", ".join(f"{p.cause_class}@w={w:.2f}" for p, w in extra_parents)
             label.append(f" (+{len(extra_parents)} more: {joined})", style=weight_style)
         return label
 

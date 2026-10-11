@@ -149,6 +149,21 @@ async def test_narration_redacted_replaces_the_shown_text(quiet_app) -> None:
         assert entry.redacted is True
 
 
+async def test_narration_redacted_for_an_unknown_entry_id_is_a_no_op(quiet_app) -> None:
+    """E9: a redaction for an entry_id that was never added (e.g. a late
+    event after /clear) must not create a phantom entry."""
+    from cism.tui.events import NarrationRedacted
+
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        before = len(app.transcript.children)
+        agent.events.put_nowait(NarrationRedacted("never-seen", "blocked"))
+        await settle(pilot)
+
+        assert len(app.transcript.children) == before
+        assert app.transcript.existing_narration("never-seen") is None
+
+
 async def test_last_collapsible_picks_the_more_recent_of_tool_and_narration(
     quiet_app,
 ) -> None:
