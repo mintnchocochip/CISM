@@ -227,11 +227,12 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
   lockfile.
 
 ### 3.12 Zero-coverage modules
-- [ ] Write `tests/test_registry.py` (`ToolRegistry.get` raising on unknown).
-- [ ] Write tests for `depg/edge.py` (`to_event`) and `memory/item.py`
-  (`to_event`).
-- [ ] Write tests for `tools/dummy.py`.
-- [ ] **Verify once, at the end:** run the full suite once, not per file.
+- [x] Wrote `tests/test_registry.py` (`ToolRegistry.get` raising on unknown).
+- [x] Wrote `tests/test_depg_edge.py` (`to_event`); `memory/item.py`'s
+  `to_event` was already covered earlier tonight by §3.4's salience tests.
+- [x] Wrote `tests/test_dummy_tools.py`.
+- [x] **Verify once, at the end:** ran scoped (9 passed); full-suite pass
+  folded into the same run as the other items tonight.
 
 ---
 
