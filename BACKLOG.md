@@ -115,14 +115,19 @@ sqlmap/browser automation to say anything interesting.
 
 ### 3.1 D4 — network egress not scoped
 - [ ] Get Docker-host root access (this is the actual blocker — nothing
-  else here can proceed without it).
-- [ ] Add a `DOCKER-USER` iptables rule scoping `cism-egress`'s egress to
-  the `cism-lab` subnet + Ollama's host:port only, dropping everything
-  else.
+  else here can proceed without it). **Still blocked tonight**: no
+  passwordless sudo in this session, and — found while writing the
+  runbook — on Docker Desktop the real blocker isn't "root in WSL" at
+  all, it's root inside the Docker Desktop VM that actually owns the
+  DOCKER-USER chain; a WSL-level sudo wouldn't reach it anyway.
+- [x] Wrote `docker/scope-egress.sh` — a runbook script (not run) that adds
+  the `DOCKER-USER` rule scoping `cism-egress` to the `cism-lab` subnet +
+  a given LLM host:port, with a note on how to actually get root in the
+  daemon's netns on Docker Desktop.
 - [ ] **Verify once, at the end:** from inside a `cism-runner` container,
-  confirm `curl https://1.1.1.1` fails, `curl <ollama host>:11434`
-  succeeds, and a live engagement against the DVWA target still completes
-  normally.
+  confirm `curl https://1.1.1.1` fails, `curl <llm host>:<port>` succeeds,
+  and a live engagement against the DVWA target still completes normally.
+  (pending someone with real Docker-daemon-host root running the script)
 
 ### 3.2 E7 — modal double-stacking
 - [x] In `cism/tui/app.py`, add `if len(self.screen_stack) > 1: return` as
