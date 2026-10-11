@@ -23,8 +23,10 @@ redaction, and tool-output injection screening; requires ``--scope`` and ``bwrap
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
+from pathlib import Path
 
 from cism.agent import LangGraphAgent
 from cism.agent.guardrails import (
@@ -38,6 +40,7 @@ from cism.agent.guardrails import (
     parse_scope,
 )
 from cism.agent.llm import build_chat_model
+from cism.agent.logging import get_agent_logger
 from cism.agent.tools import CATALOG, ToolRegistry, build_toolkit, hydra
 from cism.agent.tools.sandbox import BubblewrapRunner, set_default_runner
 from cism.depg import EXTRACTORS, ExtractorRegistry, GenericExtractor, LLMExtractor, LlamaCppExtractionBackend
@@ -59,6 +62,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--key-env-var",
         default="CISM_API_KEY",
         help="name of the env var holding the API key (default: CISM_API_KEY)",
+    )
+    parser.add_argument(
+        "--key-file",
+        default="",
+        help=(
+            "path to a file containing the API key, read at startup into "
+            "--key-env-var. Prefer this over -e/--env-file in a container run: "
+            "those bake the literal value into Config.Env, which `docker "
+            "inspect` shows in full; a bind-mounted secret file only ever "
+            "exposes its path there, never its contents"
+        ),
     )
     parser.add_argument(
         "--max-tokens",
@@ -139,11 +153,15 @@ def _llamacpp_extractors(base_url: str) -> ExtractorRegistry:
     fallback goes through LlamaCppExtractionBackend."""
     backend = LlamaCppExtractionBackend(base_url)
     tool_extractors = {**EXTRACTORS, "dummy_nmap": EXTRACTORS["nmap"]}
-    return ExtractorRegistry(tool_extractors, LLMExtractor(backend))
+    return ExtractorRegistry(
+        tool_extractors, LLMExtractor(backend, logger=get_agent_logger())
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.key_file:
+        os.environ[args.key_env_var] = Path(args.key_file).read_text().strip()
     tools, guardrails = _enable_live_tools(args.scope) if args.live_tools else (None, None)
 
     if args.base_url:

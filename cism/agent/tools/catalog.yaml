@@ -54,4 +54,7 @@ curl:
   capability: reads
   description: Fetch a URL and return its response.
   allow_raw: true
+  # D7: without this, "curl file:///etc/passwd" is a live local-file read
+  # through a tool the model thinks only hits the network.
+  forced_flags: ["--proto", "-all,+http,+https"]
   phases: [recon, enumeration, vulnerability-discovery, exploitation, post-exploitation]

@@ -342,7 +342,12 @@ class BubblewrapRunner:
     #: /opt because not every tool comes from apt — e.g. nikto (a git clone
     #: to /opt/nikto with a symlink into /usr/local/bin) needs its actual
     #: install tree readable, not just the symlink.
-    _RO_BIND_DIRS: tuple[str, ...] = ("/usr", "/bin", "/lib", "/lib64", "/sbin", "/opt")
+    #: /opt bound wholesale would expose every other /opt-installed package
+    #: on the host, not just nikto's — narrow to the one subtree a catalog
+    #: tool actually needs (D7).
+    _RO_BIND_DIRS: tuple[str, ...] = (
+        "/usr", "/bin", "/lib", "/lib64", "/sbin", "/opt/nikto",
+    )
 
     #: Explicitly justified, never a wholesale /etc bind (which would expose
     #: /etc/shadow, SSH host keys, etc.): resolv.conf/nsswitch.conf/hosts for

@@ -18,7 +18,11 @@ run.
 
 from __future__ import annotations
 
-from cism.agent.guardrails.dangerous_flags import DangerousFlagGuardStage
+from cism.agent.guardrails.dangerous_flags import (
+    _PER_TOOL_DANGEROUS_TOKENS,
+    DangerousFlagGuardStage,
+)
+from cism.agent.tools.catalog import CATALOG
 
 
 def _call(name: str = "nmap", **args) -> dict:
@@ -27,6 +31,18 @@ def _call(name: str = "nmap", **args) -> dict:
 
 def _stage() -> DangerousFlagGuardStage:
     return DangerousFlagGuardStage()
+
+
+def test_every_allow_raw_catalog_tool_has_a_dangerous_token_denylist_entry() -> None:
+    """C2: allow_raw lets a tool's `extra` through almost unfiltered, so the
+    per-tool denylist is the only thing standing between that and real
+    sandbox escape. Nothing currently enforces the two stay coupled — this
+    is that enforcement. A future allow_raw tool added to catalog.yaml with
+    no matching _PER_TOOL_DANGEROUS_TOKENS entry fails this test instead of
+    silently shipping unguarded."""
+    raw_tools = {name for name, spec in CATALOG.items() if spec.allow_raw}
+    missing = raw_tools - _PER_TOOL_DANGEROUS_TOKENS.keys()
+    assert not missing, f"allow_raw tool(s) with no dangerous-token denylist: {missing}"
 
 
 def test_a_call_with_no_extra_argument_is_allowed() -> None:

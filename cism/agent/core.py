@@ -147,6 +147,10 @@ class LangGraphAgent:
         self._last_depg: tuple[tuple[DEPGNode, ...], tuple[DEPGEdge, ...]] = ((), ())
         #: Running session total; never reset (unlike ctx_used, a snapshot).
         self._token_total = 0
+        #: H3: lightweight per-run counters, reset in _run() and logged
+        #: alongside RunFinished so a run's health is grep-able from the
+        #: JSONL log without reconstructing it from every individual event.
+        self._metrics = {"tool_calls": 0, "tool_failures": 0, "guardrail_blocks": 0}
         #: Refreshed by _refresh_context_window(); falls back to StatusBar's default.
         self._context_window = 32_768
         #: Tool/guardrail-stage names to skip for the next _run() only (see _ablate).
@@ -550,6 +554,7 @@ class LangGraphAgent:
                 checkpointer=self._checkpointer,
             )
 
+        self._metrics = {"tool_calls": 0, "tool_failures": 0, "guardrail_blocks": 0}
         await self._emit(
             RunStarted(run_id=run_id, phase=self._phase.current.to_wire())
         )
@@ -571,6 +576,7 @@ class LangGraphAgent:
                     done=True,
                 )
             )
+            self._log.info("RunMetrics", extra={"data": self._run_metrics(run_id)})
             await self._emit(RunFinished(run_id=run_id, ok=False))
             return
 
@@ -640,7 +646,18 @@ class LangGraphAgent:
                 Narration(entry_id=f"{run_id}-error", text=f"run failed: {exc}", done=True)
             )
 
+        self._log.info("RunMetrics", extra={"data": self._run_metrics(run_id)})
         await self._emit(RunFinished(run_id=run_id, ok=ok))
+
+    def _run_metrics(self, run_id: str) -> dict[str, Any]:
+        default_extractor = getattr(self._extractors, "_default", None)
+        extraction_fallbacks = getattr(default_extractor, "fallback_count", 0)
+        return {
+            "run_id": run_id,
+            "tokens_total": self._token_total,
+            "extraction_fallbacks": extraction_fallbacks,
+            **self._metrics,
+        }
 
     async def _translate(
         self,
@@ -677,8 +694,14 @@ class LangGraphAgent:
                 tool_name = message.name or (call["name"] if call else "unknown")
                 args = str(call["args"]) if call else ""
                 await self._emit(ToolStarted(call_id=call_id, tool=tool_name, args=args))
+                self._metrics["tool_calls"] += 1
                 if getattr(message, "status", "success") == "error":
-                    detail = message.additional_kwargs.get("guardrail_detail") or str(message.content)
+                    guardrail_detail = message.additional_kwargs.get("guardrail_detail")
+                    detail = guardrail_detail or str(message.content)
+                    if guardrail_detail:
+                        self._metrics["guardrail_blocks"] += 1
+                    else:
+                        self._metrics["tool_failures"] += 1
                     await self._emit(ToolFailed(call_id=call_id, reason=detail))
                 else:
                     await self._emit(
@@ -688,7 +711,13 @@ class LangGraphAgent:
         elif node == "phase_router":
             new_phase = update.get("phase")
             if new_phase is not None and new_phase != self._phase.current:
-                self._phase.transition(new_phase)
+                # The graph's own phase_router node already validated this
+                # move's legality against its own PhaseStateMachine; mirroring
+                # it here via .transition() would re-validate against a
+                # separate instance that can legitimately be out of step
+                # (e.g. right after a replay) and raise on an already-legal
+                # move. This mirror only ever needs to record what happened.
+                self._phase.current = new_phase
                 await self._emit(PhaseChanged(phase=new_phase.to_wire()))
 
         elif node == "depg_update":

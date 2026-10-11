@@ -63,6 +63,8 @@ Replaces the old `--cap-add=SYS_ADMIN --security-opt seccomp=unconfined
 ```bash
 docker build -t cism-runner -f cism-runner.Dockerfile .
 
+echo -n dummy > /tmp/cism_api_key && chmod 600 /tmp/cism_api_key
+
 docker run --rm -it \
   --cap-drop=ALL \
   --cap-add=SYS_ADMIN \
@@ -70,9 +72,16 @@ docker run --rm -it \
   --security-opt no-new-privileges \
   --network cism-lab \
   --network cism-egress \
-  -e CISM_API_KEY=dummy \
-  cism-runner --live-tools --target <target>
+  -v /tmp/cism_api_key:/run/secrets/cism_api_key:ro \
+  cism-runner --live-tools --target <target> --key-file /run/secrets/cism_api_key
 ```
+
+D6: the key is passed as a **mounted file**, not `-e`. `-e`/`--env-file`
+both end up as a literal value in the container's `Config.Env`, which
+`docker inspect` prints in full for anyone who can inspect the container —
+neither actually hides it. A bind-mounted file only ever exposes its
+*path* via `docker inspect`; `run_agent.py --key-file` reads the real
+value from inside the container instead.
 
 Notes:
 - `--cap-drop=ALL` removes every capability Docker grants by default
@@ -142,8 +151,8 @@ docker run --rm -it \
   --memory=2g --memory-swap=2g --cpus=2 --pids-limit=512 \
   --network cism-lab \
   --network cism-egress \
-  -e CISM_API_KEY=dummy \
-  cism-runner --live-tools --target <target>
+  -v /tmp/cism_api_key:/run/secrets/cism_api_key:ro \
+  cism-runner --live-tools --target <target> --key-file /run/secrets/cism_api_key
 ```
 
 Net change from the original (pre-audit) command: **root → non-root**,

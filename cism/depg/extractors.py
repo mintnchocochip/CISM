@@ -247,6 +247,10 @@ class LLMExtractor:
         self._backend = backend
         self._fallback = GenericExtractor()
         self._log = logger
+        #: H3: how many times this extractor has dropped to GenericExtractor
+        #: because the real backend returned None — read by LangGraphAgent
+        #: into its per-run metrics line.
+        self.fallback_count = 0
 
     def extract(
         self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
@@ -262,6 +266,7 @@ class LLMExtractor:
         prompt = _PROMPT.format(tool=tool, truncated_note=truncated_note, output=prompt_output)
         result = self._backend.extract(prompt)
         if result is None:
+            self.fallback_count += 1
             if self._log is not None:
                 self._log.warning(
                     "extraction backend unavailable, falling back to GenericExtractor",

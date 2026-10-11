@@ -123,57 +123,65 @@ sqlmap/browser automation to say anything interesting.
   normally.
 
 ### 3.2 E7 — modal double-stacking
-- [ ] In `cism/tui/app.py`, add `if len(self.screen_stack) > 1: return` as
+- [x] In `cism/tui/app.py`, add `if len(self.screen_stack) > 1: return` as
   the first line of both `action_show_depg` and `action_show_memory`.
-- [ ] **Verify once, at the end:** manually mash `ctrl+d` twice in a row in
-  the running TUI, confirm only one modal is pushed.
+- [x] **Verify once, at the end:** automated instead of manual — added
+  `test_ctrl_d_twice_in_a_row_pushes_only_one_modal`/`..._ctrl_m...` to
+  `tests/test_app.py`; full `test_app.py` run (41 tests) passes.
 
 ### 3.3 A5 — IPv6 normalize bug
-- [ ] In `cism/depg/normalize.py`, guard the `rpartition(":")` branch:
+- [x] In `cism/depg/normalize.py`, guard the `rpartition(":")` branch:
   only strip a trailing port if `value.count(":") == 1` (a single colon
   means `host:port`, not an IPv6 literal); add a bracketed-IPv6 case
   (`[::1]:80` → strip the bracket + port, keep `::1`).
-- [ ] **Verify once, at the end:** run the existing normalize tests plus
-  new cases for `::1`, `[::1]:80`, `fe80::1` added in the same pass —
-  write the test cases alongside the fix, run once together.
+- [x] **Verify once, at the end:** ran the existing normalize tests plus
+  new cases for `::1`, `[::1]:80`, `fe80::1`, `[::1]` (no port) — all pass.
 
 ### 3.4 A4 — memory salience is a constant
-- [ ] In `cism/memory/item.py`/`cism/memory/store.py`, map `source_type` →
+- [x] In `cism/memory/item.py`/`cism/memory/store.py`, map `source_type` →
   a base salience value at `upsert` time instead of hardcoding
-  `_BASE_SALIENCE`.
-- [ ] Store that derived value on `MemoryItem`; have `to_event` emit it.
-- [ ] **Verify once, at the end:** run `tests/test_memory*.py`.
+  `_BASE_SALIENCE`. Vocabulary: `depg_node` (1.2), `tool-failure`/
+  `phase-change` (1.0), `narration` (0.8), unknown falls back to 1.0.
+- [x] Store that derived value on `MemoryItem`; have `to_event` emit it.
+- [x] **Verify once, at the end:** ran `tests/test_memory_store.py` +
+  `tests/test_nodes.py` — pass.
 
 ### 3.5 B4 — dual `PhaseStateMachine` desync risk
-- [ ] In `core.py`'s `_translate`, replace the `self._phase.transition(...)`
+- [x] In `core.py`'s `_translate`, replace the `self._phase.transition(...)`
   mirror call with a direct `self._phase.current = new_phase` assignment
   (the graph node already validated legality).
-- [ ] Keep `transition()` only for the user-driven `/phase` command path.
+- [x] Keep `transition()` only for the user-driven `/phase` command path.
 - [ ] **Verify once, at the end:** run `tests/test_langgraph_agent.py` and
-  `tests/test_agent_graph.py`.
+  `tests/test_agent_graph.py`. (pending batch test pass)
 
 ### 3.6 C2 — `allow_raw` fail-open denylist coupling
-- [ ] Add a test asserting every catalog tool with `allow_raw: true` has a
+- [x] Add a test asserting every catalog tool with `allow_raw: true` has a
   matching `_PER_TOOL_DANGEROUS_TOKENS` entry in `dangerous_flags.py`.
-- [ ] **Verify once, at the end:** that test is the verification — it
-  should fail today (confirming the gap) and pass once any future
-  `allow_raw` tool gets a denylist entry.
+- [ ] **Verify once, at the end:** passes today (both existing allow_raw
+  tools — nmap, curl — already have denylist entries); real value is as a
+  regression guard for the *next* allow_raw tool. (pending batch test pass)
 
 ### 3.7 D6 — API key visible via `docker inspect`
-- [ ] Switch `-e CISM_API_KEY=…` to `--env-file` or a mounted secret file
-  read inside `run_agent.py`.
-- [ ] Update `docker/README.md`'s run command accordingly.
+- [x] Added `run_agent.py --key-file <path>` (reads the key from a mounted
+  file into the env var at startup) instead of `--env-file` — confirmed
+  `--env-file` would *not* actually fix this (Docker puts `--env-file`
+  values into `Config.Env` exactly like `-e`, so `docker inspect` would
+  still show them); a bind-mounted secret file is the only thing that
+  keeps the real value out of `Config.Env`.
+- [x] Updated `docker/README.md`'s run commands to `-v
+  /tmp/cism_api_key:/run/secrets/cism_api_key:ro` + `--key-file
+  /run/secrets/cism_api_key`, with a note explaining why.
 - [ ] **Verify once, at the end:** `docker inspect` on a running container
-  no longer shows the real key value.
+  no longer shows the real key value. (pending live docker run tonight)
 
 ### 3.8 D7 — `/opt` bound wholesale + curl `file://`
-- [ ] In `cism/agent/tools/sandbox.py`'s `_RO_BIND_DIRS`, replace `/opt`
+- [x] In `cism/agent/tools/sandbox.py`'s `_RO_BIND_DIRS`, replace `/opt`
   with `/opt/nikto` specifically.
-- [ ] Add `--proto -all,+http,+https` to curl's `forced_flags` in
+- [x] Add `--proto -all,+http,+https` to curl's `forced_flags` in
   `catalog.yaml` to block `file://`.
 - [ ] **Verify once, at the end:** a live nikto run still works (bind
   narrowing didn't break its own install path); `curl file:///etc/passwd`
-  through the tool now fails.
+  through the tool now fails. (pending live DVWA run tonight)
 
 ### 3.9 E4/E5/E6/E8/E9/E10 — TUI polish batch
 Group these — same file (`app.py`/modal widgets), do them in one pass:
@@ -193,10 +201,15 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
   double-submit, redact after entry removal) — single pass, not six.
 
 ### 3.10 H3 — no metrics surface
-- [ ] Add lightweight counters (tool calls, guardrail blocks, extraction
-  fallbacks, tokens) emitted to the existing JSONL log.
+- [x] Added `tool_calls`/`tool_failures`/`guardrail_blocks`/
+  `extraction_fallbacks`/`tokens_total` counters, logged as one
+  `"RunMetrics"` JSONL line per run (`cism/agent/core.py`). Also fixed a
+  real bug found along the way: `run_agent.py`'s `--backend llamacpp` path
+  built `LLMExtractor` with no `logger=`, so the G1 fallback-warning fix
+  was silently inert for that backend specifically — the one backend
+  §2.2 exists to test. Fixed (`logger=get_agent_logger()`).
 - [ ] **Verify once, at the end:** grep a run's log for the new counter
-  fields.
+  fields. (pending live run tonight)
 
 ### 3.11 D5 remainder — pip hash-pinning
 - [ ] Generate a hash-pinned `requirements.txt` via `pip-compile` or `uv`.
