@@ -308,12 +308,16 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
   tools into groups first.
 
 ### 6.2 Promote `/scope` flags to CLI flags
-- [ ] Add `--focus`/`--exclude`/`--noise` flags to `run_agent.py` that map
-  onto the existing `parse_scope`/`EngagementScope` machinery already
-  backing `/scope`.
-- [ ] **Verify once, at the end:** one run using each new flag, confirming
-  it produces the same `EngagementScope` state as the equivalent
-  `/scope add` command would.
+- [x] Added `--focus`/`--exclude`/`--noise` to `run_agent.py`. Scoping note:
+  `EngagementScope` has no denylist/exclusion concept today — it only ever
+  grows an allowlist (`cidrs`/`domains`) — so there's no existing "exclude"
+  or "noise" *behavior* to promote; all three flags fold additively into
+  the same scope string `--scope`/`/scope add` would, per this item's own
+  verify criterion. A real exclusion semantic (actually blocking a subset
+  of an otherwise-in-scope CIDR) would be new `EngagementScope` behavior,
+  out of scope for "promote an existing flag."
+- [x] **Verify once, at the end:** `tests/test_run_agent.py` — merged
+  `args.scope` matches what `--scope` alone / `/scope add` would produce.
 
 ### 6.3 Standard benchmark harness
 - [ ] Pick a fixed scoring method (findings count, time-to-first-finding,

@@ -130,7 +130,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "e.g. 10.0.0.0/24,example.internal"
         ),
     )
+    # 6.2: CLI-startup equivalents of the TUI's `/scope add` — same
+    # comma-separated CIDR/domain format as --scope, just split across
+    # three labeled flags for readability at the command line. All three
+    # fold into the same EngagementScope --scope would produce; there is
+    # no separate "exclude"/"noise" mechanism in EngagementScope today
+    # (it only ever grows an allowlist), so --exclude/--noise are
+    # currently additive like --focus, not a denylist — a real exclusion
+    # semantic would be new EngagementScope behavior, not "promoting an
+    # existing flag."
+    parser.add_argument(
+        "--focus", default="", help="additional in-scope CIDRs/domains to prioritize"
+    )
+    parser.add_argument(
+        "--exclude", default="", help="additional CIDRs/domains, same format as --scope"
+    )
+    parser.add_argument(
+        "--noise", default="", help="additional CIDRs/domains, same format as --scope"
+    )
     args = parser.parse_args(argv)
+    args.scope = ",".join(
+        part for part in (args.scope, args.focus, args.exclude, args.noise) if part.strip()
+    )
     if args.base_url and not args.model:
         parser.error("--base-url requires --model")
     if args.live_tools and not args.scope.strip():

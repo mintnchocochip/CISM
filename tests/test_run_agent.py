@@ -64,6 +64,18 @@ def test_no_flags_leaves_live_tools_false_and_scope_empty() -> None:
     assert args.scope == ""
 
 
+def test_focus_exclude_noise_fold_into_scope() -> None:
+    args = parse_args(
+        ["--scope", "10.0.0.0/24", "--focus", "10.0.0.5", "--exclude", "10.0.0.6", "--noise", "noisy.internal"]
+    )
+    assert args.scope == "10.0.0.0/24,10.0.0.5,10.0.0.6,noisy.internal"
+
+
+def test_live_tools_with_only_focus_is_not_an_error() -> None:
+    args = parse_args(["--live-tools", "--focus", "10.0.0.5"])
+    assert args.scope == "10.0.0.5"
+
+
 def test_parse_scope_single_cidr() -> None:
     scope = parse_scope("10.0.0.0/24")
     assert scope.cidrs == (ipaddress.ip_network("10.0.0.0/24"),)
