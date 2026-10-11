@@ -14,7 +14,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.messages.tool import ToolCall
 
-from cism.agent.guardrails import GuardrailChain
+from cism.agent.guardrails import GuardrailChain, PrivacyGateway
 from cism.agent.profiles import PhaseProfiles
 from cism.agent.state import AgentState, IllegalPhaseTransition, Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry
@@ -207,6 +207,8 @@ def make_think_node(
     tools: ToolRegistry,
     profiles: PhaseProfiles,
     tool_output_chain: GuardrailChain | None = None,
+    *,
+    privacy: PrivacyGateway | None = None,
 ) -> Callable[[AgentState], dict]:
     # C1 (AUDIT.md): screened here, at prompt-build time, not when act()
     # appends the ToolMessage to state — depg_update's regex extractors and
@@ -232,11 +234,18 @@ def make_think_node(
         system_prompt = f"{target_line}\n\n{profile.system_prompt}{hint}"
         context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
         history, dropped = _compact_history(state["messages"], system_prompt, context_window)
+
+        def _for_model(text: str) -> str:
+            screened = screen.run(text).value
+            return privacy.anonymize(screened) if privacy is not None else screened
+
         history = [
-            m.model_copy(update={"content": screen.run(str(m.content)).value})
+            m.model_copy(update={"content": _for_model(str(m.content))})
             if isinstance(m, ToolMessage) else m
             for m in history
         ]
+        if privacy is not None:
+            system_prompt = privacy.anonymize(system_prompt)
         messages = [SystemMessage(content=system_prompt), *history]
         response = None
         async for chunk in bound.astream(messages):

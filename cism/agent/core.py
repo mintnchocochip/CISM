@@ -17,7 +17,13 @@ from langchain_core.messages.tool import ToolCall
 from langgraph.checkpoint.memory import MemorySaver
 
 from cism.agent.graph import build_graph
-from cism.agent.guardrails import GuardrailChain, GuardrailSeam, ScopeGuardStage, parse_scope
+from cism.agent.guardrails import (
+    GuardrailChain,
+    GuardrailSeam,
+    PrivacyGateway,
+    ScopeGuardStage,
+    parse_scope,
+)
 from cism.agent.llm import (
     DummyChatModel,
     build_chat_model,
@@ -105,6 +111,7 @@ class LangGraphAgent:
         key_env_var: str = "",
         backend: str = "openai",
         graded_propagation: bool = False,
+        privacy: PrivacyGateway | None = None,
     ) -> None:
         self.events: asyncio.Queue[AgentEvent] = asyncio.Queue()
         if llm is None:
@@ -120,6 +127,8 @@ class LangGraphAgent:
         #: cism.depg.reducer.GradedSupport. Off by default; one DVWA pass is
         #: the minimum validation bar per AUDIT.md, not the finish line.
         self._graded_propagation = graded_propagation
+        #: Privacy Gateway (5.1) — None means no anonymization, the default.
+        self._privacy = privacy
         self._tools = tools or ToolRegistry([dummy_nmap, dummy_msfconsole])
         self._guardrails = guardrails or GuardrailSeam.no_op()
         default_extractor = (
@@ -144,6 +153,7 @@ class LangGraphAgent:
             self._profiles,
             checkpointer=self._checkpointer,
             graded_propagation=self._graded_propagation,
+            privacy=self._privacy,
         )
         self._phase = PhaseStateMachine(Phase.RECON)
         self._target = target
@@ -504,6 +514,7 @@ class LangGraphAgent:
                 self._profiles,
                 checkpointer=self._checkpointer,
                 graded_propagation=self._graded_propagation,
+                privacy=self._privacy,
             )
             await self._refresh_context_window()
 
@@ -560,6 +571,7 @@ class LangGraphAgent:
                 profiles,
                 checkpointer=self._checkpointer,
                 graded_propagation=self._graded_propagation,
+                privacy=self._privacy,
             )
 
         self._metrics = {"tool_calls": 0, "tool_failures": 0, "guardrail_blocks": 0}

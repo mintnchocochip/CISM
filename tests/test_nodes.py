@@ -528,6 +528,50 @@ async def test_think_binds_only_the_current_phases_tools() -> None:
     assert [t.name for t in recorded[0]] == ["dummy_nmap"]
 
 
+async def test_think_anonymizes_the_target_line_when_a_privacy_gateway_is_given() -> None:
+    from cism.agent.guardrails.privacy import PrivacyGateway
+
+    recorded_messages: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+            recorded_messages.extend(messages)
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    profiles = PhaseProfiles({
+        Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="p", tool_names=frozenset())
+    })
+    gateway = PrivacyGateway()
+    think = make_think_node(_Recording(), ToolRegistry([]), profiles, privacy=gateway)
+    state = _state([HumanMessage(content="x")])  # target: 10.0.0.5
+
+    await think(state)
+
+    system = next(m for m in recorded_messages if isinstance(m, SystemMessage))
+    assert "10.0.0.5" not in str(system.content)
+    assert "<ip-1>" in str(system.content)
+
+
+async def test_think_leaves_the_target_line_real_with_no_privacy_gateway() -> None:
+    recorded_messages: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+            recorded_messages.extend(messages)
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    profiles = PhaseProfiles({
+        Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="p", tool_names=frozenset())
+    })
+    think = make_think_node(_Recording(), ToolRegistry([]), profiles)
+    state = _state([HumanMessage(content="x")])
+
+    await think(state)
+
+    system = next(m for m in recorded_messages if isinstance(m, SystemMessage))
+    assert "10.0.0.5" in str(system.content)
+
+
 async def test_think_prepends_the_phases_system_prompt_without_mutating_state() -> None:
     profiles = PhaseProfiles({
         Phase.RECON: PhaseProfile(

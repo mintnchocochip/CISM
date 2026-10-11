@@ -33,7 +33,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from cism.agent.guardrails import GuardrailSeam
+from cism.agent.guardrails import GuardrailSeam, PrivacyGateway
 from cism.agent.profiles import PhaseProfiles
 from cism.agent.nodes import (
     make_act_node,
@@ -60,10 +60,13 @@ def build_graph(
     checkpointer: BaseCheckpointSaver | None = None,
     *,
     graded_propagation: bool = False,
+    privacy: PrivacyGateway | None = None,
 ) -> CompiledStateGraph:
     graph = StateGraph(AgentState)
 
-    graph.add_node("think", make_think_node(llm, tools, profiles, guardrails.tool_output))
+    graph.add_node(
+        "think", make_think_node(llm, tools, profiles, guardrails.tool_output, privacy=privacy)
+    )
     graph.add_node("act", make_act_node(tools, guardrails.action, profiles))
     graph.add_node(
         "depg_update", make_depg_update_node(extractors, graded_propagation=graded_propagation)

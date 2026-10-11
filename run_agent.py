@@ -35,6 +35,8 @@ from cism.agent.guardrails import (
     GuardrailSeam,
     InputGuardStage,
     OutputRedactionStage,
+    PrivacyGateway,
+    PrivacySwapOutStage,
     ScopeGuardStage,
     ToolOutputScreenStage,
     parse_scope,
@@ -102,6 +104,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--anonymize",
+        action="store_true",
+        help=(
+            "Privacy Gateway (opt-in): the model only ever sees <ip-N>/<host-N> "
+            "placeholders for the target's real IP/scope domains, in its prompt "
+            "and in tool output fed back to it. The operator (this TUI) and the "
+            "actual sandboxed tool calls still see/use the real values the whole "
+            "time — this only ever changes what the model reads and writes."
+        ),
+    )
+    parser.add_argument(
         "--live-tools",
         action="store_true",
         help=(
@@ -125,7 +138,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def _enable_live_tools(scope_spec: str) -> tuple[ToolRegistry, GuardrailSeam]:
+def _enable_live_tools(
+    scope_spec: str, privacy: PrivacyGateway | None = None
+) -> tuple[ToolRegistry, GuardrailSeam]:
     """Opts a live run into real tools: BubblewrapRunner as the default
     Runner, the real CATALOG+hydra toolkit, and a real guardrail seam —
     ScopeGuardStage/DangerousFlagGuardStage on actions, a length cap on
@@ -143,9 +158,16 @@ def _enable_live_tools(scope_spec: str) -> tuple[ToolRegistry, GuardrailSeam]:
 
     set_default_runner(BubblewrapRunner())
     tools, _ = build_toolkit(CATALOG, [hydra], EXTRACTORS)
+    # Privacy Gateway's swap-out, if enabled, must run first — scope/
+    # dangerous-flag checks need the real value a call will actually run
+    # against, not a placeholder that means nothing outside the gateway.
+    action_stages = []
+    if privacy is not None:
+        action_stages.append(PrivacySwapOutStage(privacy))
+    action_stages += [ScopeGuardStage(scope), DangerousFlagGuardStage()]
     guardrails = GuardrailSeam(
         input=GuardrailChain([InputGuardStage()]),
-        action=GuardrailChain([ScopeGuardStage(scope), DangerousFlagGuardStage()]),
+        action=GuardrailChain(action_stages),
         output=GuardrailChain([OutputRedactionStage()]),
         tool_output=GuardrailChain([ToolOutputScreenStage()]),
     )
@@ -172,7 +194,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.key_file:
         os.environ[args.key_env_var] = Path(args.key_file).read_text().strip()
-    tools, guardrails = _enable_live_tools(args.scope) if args.live_tools else (None, None)
+
+    privacy = None
+    if args.anonymize:
+        domains = parse_scope(args.scope).domains if args.scope.strip() else frozenset()
+        privacy = PrivacyGateway(domains=domains)
+
+    tools, guardrails = (
+        _enable_live_tools(args.scope, privacy) if args.live_tools else (None, None)
+    )
 
     if args.base_url:
         llm_kwargs = {"max_tokens": args.max_tokens} if args.max_tokens else {}
@@ -189,9 +219,12 @@ def main(argv: list[str] | None = None) -> int:
             key_env_var=args.key_env_var,
             backend=args.backend,
             graded_propagation=args.graded_propagation,
+            privacy=privacy,
         )
     else:
-        agent = LangGraphAgent(tools=tools, guardrails=guardrails, target=args.target)
+        agent = LangGraphAgent(
+            tools=tools, guardrails=guardrails, target=args.target, privacy=privacy
+        )
 
     if agent._endpoint == "local (dummy)":
         print(
