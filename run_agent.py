@@ -130,28 +130,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "e.g. 10.0.0.0/24,example.internal"
         ),
     )
-    # 6.2: CLI-startup equivalents of the TUI's `/scope add` — same
-    # comma-separated CIDR/domain format as --scope, just split across
-    # three labeled flags for readability at the command line. All three
-    # fold into the same EngagementScope --scope would produce; there is
-    # no separate "exclude"/"noise" mechanism in EngagementScope today
-    # (it only ever grows an allowlist), so --exclude/--noise are
-    # currently additive like --focus, not a denylist — a real exclusion
-    # semantic would be new EngagementScope behavior, not "promoting an
-    # existing flag."
+    # 6.2: CLI-startup equivalents of the TUI's `/scope add`/`/scope
+    # remove`. --focus is a readability-only alias that folds into the
+    # same allowlist --scope would; --exclude is a real denylist (see
+    # EngagementScope.excluded_cidrs/excluded_domains) — a flag named
+    # "exclude" that only ever widened the allowlist would be an active
+    # footgun for a scope guard. --noise had no existing concept in this
+    # codebase to map onto (no relevance/suppression mechanism exists) and
+    # was dropped rather than guessed at.
     parser.add_argument(
         "--focus", default="", help="additional in-scope CIDRs/domains to prioritize"
     )
     parser.add_argument(
-        "--exclude", default="", help="additional CIDRs/domains, same format as --scope"
-    )
-    parser.add_argument(
-        "--noise", default="", help="additional CIDRs/domains, same format as --scope"
+        "--exclude",
+        default="",
+        help="CIDRs/domains to explicitly deny, even if covered by --scope/--focus",
     )
     args = parser.parse_args(argv)
-    args.scope = ",".join(
-        part for part in (args.scope, args.focus, args.exclude, args.noise) if part.strip()
-    )
+    args.scope = ",".join(part for part in (args.scope, args.focus) if part.strip())
     if args.base_url and not args.model:
         parser.error("--base-url requires --model")
     if args.live_tools and not args.scope.strip():
@@ -160,7 +156,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _enable_live_tools(
-    scope_spec: str, privacy: PrivacyGateway | None = None
+    scope_spec: str, privacy: PrivacyGateway | None = None, exclude_spec: str = ""
 ) -> tuple[ToolRegistry, GuardrailSeam]:
     """Opts a live run into real tools: BubblewrapRunner as the default
     Runner, the real CATALOG+hydra toolkit, and a real guardrail seam —
@@ -176,6 +172,8 @@ def _enable_live_tools(
     scope = parse_scope(scope_spec)
     if not scope.cidrs and not scope.domains:
         raise SystemExit(f"--scope {scope_spec!r} contained no usable CIDR or domain")
+    if exclude_spec.strip():
+        scope = scope.excluding(parse_scope(exclude_spec))
 
     set_default_runner(BubblewrapRunner())
     tools, _ = build_toolkit(CATALOG, [hydra], EXTRACTORS)
@@ -222,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
         privacy = PrivacyGateway(domains=domains)
 
     tools, guardrails = (
-        _enable_live_tools(args.scope, privacy) if args.live_tools else (None, None)
+        _enable_live_tools(args.scope, privacy, args.exclude) if args.live_tools else (None, None)
     )
 
     if args.base_url:

@@ -33,6 +33,49 @@ def test_an_out_of_scope_ip_target_is_blocked() -> None:
     assert "192.168.1.5" in result.reason
 
 
+def test_an_excluded_host_is_blocked_even_though_its_cidr_is_in_scope() -> None:
+    """6.2: a real denylist — a host matching both the allowlist and the
+    denylist is out of scope. Guards against --exclude silently behaving
+    like another --focus."""
+    scope = EngagementScope(
+        cidrs=(ipaddress.ip_network("10.0.0.0/24"),),
+        excluded_cidrs=(ipaddress.ip_network("10.0.0.5/32"),),
+    )
+    assert scope.contains_host("10.0.0.6") is True
+    assert scope.contains_host("10.0.0.5") is False
+
+
+def test_an_excluded_domain_is_blocked_even_as_a_subdomain_of_an_included_one() -> None:
+    scope = EngagementScope(domains=("example.com",), excluded_domains=("internal.example.com",))
+    assert scope.contains_host("app.example.com") is True
+    assert scope.contains_host("db.internal.example.com") is False
+
+
+def test_excluding_folds_another_scopes_entries_into_the_denylist_not_the_allowlist() -> None:
+    base = EngagementScope(cidrs=(ipaddress.ip_network("10.0.0.0/24"),))
+    exclusions = EngagementScope(cidrs=(ipaddress.ip_network("10.0.0.5/32"),))
+
+    combined = base.excluding(exclusions)
+
+    assert combined.cidrs == base.cidrs  # allowlist unchanged
+    assert combined.contains_host("10.0.0.5") is False
+    assert combined.contains_host("10.0.0.6") is True
+
+
+def test_add_unions_both_scopes_denylists_too() -> None:
+    a = EngagementScope(
+        cidrs=(ipaddress.ip_network("10.0.0.0/24"),),
+        excluded_cidrs=(ipaddress.ip_network("10.0.0.5/32"),),
+    )
+    b = EngagementScope(excluded_cidrs=(ipaddress.ip_network("10.0.0.6/32"),))
+
+    combined = a.add(b)
+
+    assert combined.contains_host("10.0.0.5") is False
+    assert combined.contains_host("10.0.0.6") is False
+    assert combined.contains_host("10.0.0.7") is True
+
+
 def test_an_exact_domain_match_is_allowed() -> None:
     result = _stage().check(_call("curl", target="https://example.com/"))
     assert result.allowed is True

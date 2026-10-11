@@ -121,17 +121,37 @@ def _is_always_denied(host: str) -> bool:
 class EngagementScope:
     cidrs: tuple[IPNetwork, ...] = ()
     domains: tuple[str, ...] = ()
+    #: 6.2: a real denylist, checked *first* in contains_host/
+    #: contains_network — a host matching both an included and an excluded
+    #: entry is out of scope. Without this, a flag named "exclude" that
+    #: only ever added to the allowlist would be an active footgun: an
+    #: operator typing --exclude <host> reasonably expects that host
+    #: blocked, not newly allowed.
+    excluded_cidrs: tuple[IPNetwork, ...] = ()
+    excluded_domains: tuple[str, ...] = ()
 
-    def contains_host(self, host: str) -> bool:
+    def _host_matches(self, host: str, cidrs: tuple[IPNetwork, ...], domains: tuple[str, ...]) -> bool:
         try:
             addr = ipaddress.ip_address(host)
         except ValueError:
             pass
         else:
-            return any(addr in net for net in self.cidrs)
-
+            return any(addr in net for net in cidrs)
         lowered = host.lower()
-        return any(lowered == d or lowered.endswith(f".{d}") for d in self.domains)
+        return any(lowered == d or lowered.endswith(f".{d}") for d in domains)
+
+    def contains_host(self, host: str) -> bool:
+        if self._host_matches(host, self.excluded_cidrs, self.excluded_domains):
+            return False
+        return self._host_matches(host, self.cidrs, self.domains)
+
+    def _network_matches(self, network: IPNetwork, cidrs: tuple[IPNetwork, ...]) -> bool:
+        for net in cidrs:
+            if network.version != net.version:
+                continue
+            if network.subnet_of(net):
+                return True
+        return False
 
     def contains_network(self, network_str: str) -> bool:
         """Whether a whole CIDR is a subnet of (or equal to) a declared
@@ -141,20 +161,39 @@ class EngagementScope:
             network = ipaddress.ip_network(network_str, strict=False)
         except ValueError:
             return False
-
-        for net in self.cidrs:
-            if network.version != net.version:
-                continue
-            if network.subnet_of(net):
-                return True
-        return False
+        if self._network_matches(network, self.excluded_cidrs):
+            return False
+        return self._network_matches(network, self.cidrs)
 
     def add(self, other: EngagementScope) -> EngagementScope:
         """Union of both scopes, de-duplicated, order-preserving.
         Immutable — returns a new EngagementScope."""
         cidrs = self.cidrs + tuple(c for c in other.cidrs if c not in self.cidrs)
         domains = self.domains + tuple(d for d in other.domains if d not in self.domains)
-        return replace(self, cidrs=cidrs, domains=domains)
+        excluded_cidrs = self.excluded_cidrs + tuple(
+            c for c in other.excluded_cidrs if c not in self.excluded_cidrs
+        )
+        excluded_domains = self.excluded_domains + tuple(
+            d for d in other.excluded_domains if d not in self.excluded_domains
+        )
+        return replace(
+            self,
+            cidrs=cidrs,
+            domains=domains,
+            excluded_cidrs=excluded_cidrs,
+            excluded_domains=excluded_domains,
+        )
+
+    def excluding(self, exclusions: EngagementScope) -> EngagementScope:
+        """Returns a new scope with ``exclusions``' cidrs/domains folded
+        into this scope's denylist (not its allowlist)."""
+        return replace(
+            self,
+            excluded_cidrs=self.excluded_cidrs
+            + tuple(c for c in exclusions.cidrs if c not in self.excluded_cidrs),
+            excluded_domains=self.excluded_domains
+            + tuple(d for d in exclusions.domains if d not in self.excluded_domains),
+        )
 
     def without(self, token: str) -> tuple[EngagementScope, bool]:
         """Removes one exact CIDR/domain (same parsing as parse_scope).

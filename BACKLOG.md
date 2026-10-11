@@ -192,16 +192,17 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
   diff-update it in place instead of rebuild, preserving cursor position.
 - [ ] E5: give the agent-side queue a `maxsize`; `await asyncio.sleep(0)`
   every N events in the pump; coalesce repeated event types.
-- [ ] E6: show per-incoming-edge weight (`w=`) in the node label, not just
+- [x] E6: show per-incoming-edge weight (`w=`) in the node label, not just
   the surviving parent's.
 - [ ] E8: move `/export`'s `write_text` to `asyncio.to_thread`, wrap in
   `try/except OSError`.
-- [ ] E9: add an `existing_narration()` lookup; no-op the redaction if the
+- [x] E9: add an `existing_narration()` lookup; no-op the redaction if the
   `entry_id` isn't found.
-- [ ] E10: move `interrupt` off the `send` worker's exclusive group.
+- [x] E10: move `interrupt` off the `send` worker's exclusive group.
 - [ ] **Verify once, at the end:** one full TUI session exercising all six
   paths (open/close modals repeatedly during a run, trigger `/export`,
   double-submit, redact after entry removal) — single pass, not six.
+  (E6/E9/E10 done + unit-tested; E4/E5/E8 remaining.)
 
 ### 3.10 H3 — no metrics surface
 - [x] Added `tool_calls`/`tool_failures`/`guardrail_blocks`/
@@ -308,16 +309,23 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
   tools into groups first.
 
 ### 6.2 Promote `/scope` flags to CLI flags
-- [x] Added `--focus`/`--exclude`/`--noise` to `run_agent.py`. Scoping note:
-  `EngagementScope` has no denylist/exclusion concept today — it only ever
-  grows an allowlist (`cidrs`/`domains`) — so there's no existing "exclude"
-  or "noise" *behavior* to promote; all three flags fold additively into
-  the same scope string `--scope`/`/scope add` would, per this item's own
-  verify criterion. A real exclusion semantic (actually blocking a subset
-  of an otherwise-in-scope CIDR) would be new `EngagementScope` behavior,
-  out of scope for "promote an existing flag."
-- [x] **Verify once, at the end:** `tests/test_run_agent.py` — merged
-  `args.scope` matches what `--scope` alone / `/scope add` would produce.
+- [x] Added `--focus`/`--exclude` to `run_agent.py`. Revised after a
+  security review caught the first pass: shipping `--exclude` as purely
+  *additive* (folding into the allowlist, same as `--focus`) was an
+  active footgun — a flag named "exclude" that only ever widens the
+  allowlist is the opposite of what an operator would reasonably expect
+  from a scope guard. Fixed properly: `EngagementScope` now has a real
+  denylist (`excluded_cidrs`/`excluded_domains`, checked first in
+  `contains_host`/`contains_network`) and an `.excluding()` method;
+  `--exclude` builds a separate `EngagementScope` and folds it into the
+  denylist via that method, not into the allowlist string. `--noise` was
+  dropped rather than guessed at — no existing relevance/suppression
+  concept in this codebase to map it onto.
+- [x] **Verify once, at the end:** `tests/test_scope_guard.py` (denylist
+  beats allowlist, `.excluding()`/`.add()` behavior) and
+  `tests/test_run_agent.py` (`--focus` folds into `--scope`, `--exclude`
+  stays separate) — full suite: 748 passed (1 snapshot test regenerated
+  for E6's intentional label-text change, not a regression).
 
 ### 6.3 Standard benchmark harness
 - [ ] Pick a fixed scoring method (findings count, time-to-first-finding,

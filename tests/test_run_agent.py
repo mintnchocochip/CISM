@@ -64,11 +64,12 @@ def test_no_flags_leaves_live_tools_false_and_scope_empty() -> None:
     assert args.scope == ""
 
 
-def test_focus_exclude_noise_fold_into_scope() -> None:
+def test_focus_folds_into_scope_but_exclude_stays_separate() -> None:
     args = parse_args(
-        ["--scope", "10.0.0.0/24", "--focus", "10.0.0.5", "--exclude", "10.0.0.6", "--noise", "noisy.internal"]
+        ["--scope", "10.0.0.0/24", "--focus", "10.0.0.5", "--exclude", "10.0.0.6"]
     )
-    assert args.scope == "10.0.0.0/24,10.0.0.5,10.0.0.6,noisy.internal"
+    assert args.scope == "10.0.0.0/24,10.0.0.5"
+    assert args.exclude == "10.0.0.6"
 
 
 def test_live_tools_with_only_focus_is_not_an_error() -> None:
