@@ -11,12 +11,15 @@ from __future__ import annotations
 import time
 import traceback
 from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import TextArea
+
+from cism.report import PhaseTransition, RunMetrics, build_report, write_report
 
 from .events import (
     Agent,
@@ -59,8 +62,12 @@ RATE_WINDOW = 4.0
 #: Below this span a rate is noise, not a measurement.
 MIN_RATE_SPAN = 0.5
 
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
 #: Commands the TUI answers itself. Everything else is forwarded to the agent.
-LOCAL_COMMANDS = frozenset({"depg", "mem", "clear", "help", "export", "models"})
+LOCAL_COMMANDS = frozenset({"depg", "mem", "clear", "help", "export", "models", "report"})
 
 HELP_TEXT = """\
 /model <name>    switch the inference model
@@ -74,6 +81,7 @@ HELP_TEXT = """\
 /replay <run_id> counterfactual replay from the output cache
 /ablate <part>   disable a component for the next run
 /export          write the transcript to disk
+/report          write a findings report (Markdown + JSON) from the DEPG/memory state
 /clear           clear the transcript
 /help            this list
 
@@ -115,6 +123,11 @@ class CISMApp(App[None]):
         self.depg_nodes: tuple[DEPGNode, ...] = ()
         self.depg_edges: tuple[DEPGEdge, ...] = ()
         self.memory_rows: tuple[MemoryRow, ...] = ()
+        #: For /report — accumulated live from the event stream rather than
+        #: re-read from a log, so cism.report never needs a cism.agent import.
+        self._last_run_id: str = ""
+        self._phase_history: list[PhaseTransition] = []
+        self._last_metrics: RunMetrics | None = None
         self.memory_terms: SalienceTerms | None = None
         self.token_total = 0
         self.unknown_events = 0
@@ -192,10 +205,20 @@ class CISMApp(App[None]):
             self.framework = event.framework
             self.status.phase = event.phase
             self.indicator.start(event.phase, token_base=self.token_total)
+            self._last_run_id = event.run_id
+            self._phase_history = [PhaseTransition(timestamp=_now_iso(), phase=event.phase)]
 
         elif isinstance(event, RunFinished):
             self.indicator.stop()
             self._clear_rate()
+            self._last_metrics = RunMetrics(
+                ok=event.ok,
+                tool_calls=event.tool_calls,
+                tool_failures=event.tool_failures,
+                guardrail_blocks=event.guardrail_blocks,
+                extraction_fallbacks=event.extraction_fallbacks,
+                tokens_total=event.tokens_total,
+            )
 
         elif isinstance(event, Narration):
             entry = transcript.narration(event.entry_id)
@@ -233,6 +256,7 @@ class CISMApp(App[None]):
             self.status.phase = event.phase
             self.indicator.set_phase(event.phase)
             transcript.add_phase_rule(event.framework, event.phase)
+            self._phase_history.append(PhaseTransition(timestamp=_now_iso(), phase=event.phase))
 
         elif isinstance(event, ScopeChanged):
             verb = "added" if event.action == "add" else "removed"
@@ -412,6 +436,8 @@ class CISMApp(App[None]):
             self.transcript.add_note(HELP_TEXT)
         elif name == "export":
             self._export(argument)
+        elif name == "report":
+            self._report(argument)
 
     def _api_command(self, argument: str) -> None:
         """Show the endpoint, or switch it. Never touches the key itself."""
@@ -451,6 +477,25 @@ class CISMApp(App[None]):
             lines.append(self._entry_as_text(child))
         target.write_text("\n".join(lines), encoding="utf-8")
         self.transcript.add_note(f"exported {len(lines)} entries → {target}")
+
+    def _report(self, argument: str) -> None:
+        if not self._last_run_id:
+            self.transcript.add_note("no run yet — nothing to report on")
+            return
+        out_dir = Path(argument) if argument else self.export_dir
+        report = build_report(
+            run_id=self._last_run_id,
+            target=self.status.target_stack or "",
+            nodes=self.depg_nodes,
+            edges=self.depg_edges,
+            memory=self.memory_rows,
+            phase_history=tuple(self._phase_history),
+            metrics=self._last_metrics,
+        )
+        md_path, json_path = write_report(report, out_dir)
+        self.transcript.add_note(
+            f"report written — {len(report.findings)} resolved finding(s) → {md_path}, {json_path}"
+        )
 
     @staticmethod
     def _entry_as_text(widget) -> str:  # noqa: ANN001 - any transcript entry

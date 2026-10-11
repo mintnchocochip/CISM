@@ -211,10 +211,17 @@ class ChatModelExtractionBackend:
 class LlamaCppExtractionBackend:
     """Posts to a llama.cpp server's /completion with a json_schema
     constraint, so an unconstrained/non-tool-calling model still can't
-    emit anything but valid ExtractedFindings JSON. Not live-tested — no
-    llama.cpp server was reachable while building this."""
+    emit anything but valid ExtractedFindings JSON. Live-tested 2026-10-11
+    against a real llama-server + LFM2.5-8B-A1B-Q4_K_M — the endpoint and
+    grammar constraint both work; see the ``timeout`` note below for the
+    one real issue that run surfaced."""
 
-    def __init__(self, base_url: str, *, n_predict: int = 1024, timeout: float = 30.0) -> None:
+    def __init__(self, base_url: str, *, n_predict: int = 1024, timeout: float = 90.0) -> None:
+        # §2.2 live-test (2026-10-11, real llama-server + LFM2.5-8B-A1B-Q4_K_M):
+        # a real nikto-sized prompt under this schema's GBNF grammar
+        # constraint took noticeably longer than simple unconstrained
+        # completions: 30s produced a silent-to-user (but logged, G1)
+        # fallback to GenericExtractor on the very first live call.
         self._base_url = base_url.rstrip("/")
         self._n_predict = n_predict
         self._timeout = timeout
