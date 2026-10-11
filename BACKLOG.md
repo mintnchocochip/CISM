@@ -73,17 +73,19 @@ sqlmap/browser automation to say anything interesting.
 ## 2. Activate dormant features (code exists, nothing turns it on)
 
 ### 2.1 Wire in graded weighted propagation
-- [ ] In `cism/agent/nodes.py:387`, change `graph.settle()` to
-  `graph.settle(support=GradedSupport())`.
-- [ ] Import `GradedSupport` from `cism.depg` at the top of `nodes.py`.
+- [x] `graph.settle()` now takes `support=GradedSupport()` when requested —
+  threaded as a `graded_propagation` flag through
+  `make_depg_update_node`/`build_graph`/`LangGraphAgent` (all 3 call sites)
+  down to a new `run_agent.py --graded-propagation` CLI flag.
+- [x] Import `GradedSupport` from `cism.depg` at the top of `nodes.py`.
 - [ ] Re-run the DVWA engagement from §1.1 with this change in and confirm
   the DEPG modal's node states/reachability scores look sane (no node
-  stuck at a nonsensical score, no state flapping between calls).
-- [ ] Decide whether to keep this as the new default or gate it behind a
-  flag (`--graded-propagation`) until you're confident in a few more runs
-  — AUDIT.md's own condition was "validated against a real run," so one
-  DVWA pass is the minimum bar, not the finish line.
-- [ ] **Verify once, at the end:** run the existing
+  stuck at a nonsensical score, no state flapping between calls). (pending
+  live run tonight)
+- [x] Decided: **gated behind `--graded-propagation`, default off** — one
+  live DVWA pass tonight is the minimum bar per AUDIT.md, not enough to
+  flip the project-wide default yet.
+- [x] **Verify once, at the end:** ran the existing
   `tests/test_depg_graded_support.py` + `tests/test_depg_graph.py` suites
   to confirm nothing about the wiring change broke the already-passing
   unit tests (the logic itself is already tested — this just confirms
@@ -151,15 +153,16 @@ sqlmap/browser automation to say anything interesting.
   mirror call with a direct `self._phase.current = new_phase` assignment
   (the graph node already validated legality).
 - [x] Keep `transition()` only for the user-driven `/phase` command path.
-- [ ] **Verify once, at the end:** run `tests/test_langgraph_agent.py` and
-  `tests/test_agent_graph.py`. (pending batch test pass)
+- [x] **Verify once, at the end:** ran `tests/test_langgraph_agent.py` and
+  `tests/test_agent_graph.py` — pass (full-suite run: 721 passed, 3 unrelated-
+  to-this-fix pre-existing-expectation failures found and fixed separately).
 
 ### 3.6 C2 — `allow_raw` fail-open denylist coupling
 - [x] Add a test asserting every catalog tool with `allow_raw: true` has a
   matching `_PER_TOOL_DANGEROUS_TOKENS` entry in `dangerous_flags.py`.
-- [ ] **Verify once, at the end:** passes today (both existing allow_raw
+- [x] **Verify once, at the end:** passes today (both existing allow_raw
   tools — nmap, curl — already have denylist entries); real value is as a
-  regression guard for the *next* allow_raw tool. (pending batch test pass)
+  regression guard for the *next* allow_raw tool.
 
 ### 3.7 D6 — API key visible via `docker inspect`
 - [x] Added `run_agent.py --key-file <path>` (reads the key from a mounted
