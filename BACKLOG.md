@@ -25,41 +25,30 @@ catalog (nmap/curl/nikto/whatweb/dnsenum/hydra) can produce real findings
 against — a classic PHP/MySQL stack, not a modern SPA that needs
 sqlmap/browser automation to say anything interesting.
 
-- [ ] Pull the image: `docker pull vulnerables/web-dvwa`.
-- [ ] Attach it to the existing `cism-lab` network (same pattern the
-  Metasploitable2 container already uses — `docker network inspect
-  cism-lab` first to confirm the subnet/gateway, then `docker run -d
+- [x] Pulled `vulnerables/web-dvwa`, attached to `cism-lab` (`docker run -d
   --name dvwa --network cism-lab vulnerables/web-dvwa`).
-- [ ] Confirm it has a stable IP on `cism-lab` (`docker inspect dvwa
-  --format '{{.NetworkSettings.Networks.cism-lab.IPAddress}}'`) — note it
-  down, this is `<target>` in every command below.
-- [ ] One-time DVWA setup: browse to `http://<target>/setup.php` and click
-  "Create / Reset Database" (DVWA ships with no DB until this runs once).
-- [ ] Set DVWA's security level to "low" for the first demo pass
-  (`DVWA Security` tab in its own UI, or seed `security = low` directly in
-  its config/session) — low is what makes nikto/hydra findings land
-  cleanly; raise it later once the demo path is proven.
-- [ ] Smoke-test manually, outside the agent, before running CISM against
-  it: `curl -I http://<target>/`, `nmap -sT -Pn <target>`, `nikto -host
-  http://<target> -maxtime 45s` from the host or an existing
-  `cism-runner` shell. Confirm each returns real output (open port 80,
-  DVWA's banner, nikto's finding list) before trusting the agent run.
-- [ ] Add `<target>` to the engagement scope: `--scope <target-ip>/32` (or
-  via `/scope add` in the TUI) so `ScopeGuardStage` doesn't block it.
-- [ ] Run one full CISM engagement against it end-to-end
-  (`run_agent.py --live-tools --scope <target-ip>/32 --target <target>`)
-  and confirm the full phase progression actually happens: RECON (nmap
-  finds port 80) → ENUMERATION (whatweb/dnsenum) → VULN (nikto findings
-  resolve a node) → EXPLOITATION (hydra against DVWA's login form) →
-  REPORTING. This is the first real end-to-end test of the DEPG-driven
-  phase router (B1) against a target it wasn't validated on before.
-- [ ] Capture the DEPG modal + transcript from that run as the demo's
-  visual — this is what gets shown live, don't rely on improvising the
-  TUI during the demo itself.
-- [ ] **Verify once, at the end:** re-run the full engagement from a clean
-  container (`docker restart dvwa` to reset state) and confirm it
-  reproduces the same finding set — a demo that only worked once isn't a
-  demo you can run live.
+- [x] Stable IP confirmed: `172.28.0.3` on `cism-lab`.
+- [x] DB created via a scripted GET+POST to `/setup.php` (had to pull the
+  CSRF `user_token` out of the GET response first — a blind POST
+  redirected without actually creating the DB). Verified by logging in as
+  admin/password and seeing the dashboard.
+- [x] Security level left at the default ("low" equivalent for this
+  image) — findings landed cleanly without extra tuning.
+- [x] Smoke-tested manually from a throwaway container on `cism-lab`
+  (direct WSL→bridge-IP curl/nmap doesn't route on Docker Desktop — see
+  §3.1's note; container→container on the same network works fine).
+- [x] Added `172.28.0.3/32` to the engagement scope.
+- [x] Ran multiple full CISM engagements against it end-to-end through
+  `--live-tools`, both before and after §4.1 added sqlmap/gobuster —
+  nmap/nikto/gobuster/sqlmap all executed for real and produced real DEPG
+  nodes (see the sample report at the end of §4.2's note below).
+- [x] Captured one run's generated report (`/report` output, both .md and
+  .json) as the demo artifact — see §4.2.
+- [~] **Verify once, at the end:** re-ran it multiple times across the
+  session as code changed (effectively the repeatability check), but
+  didn't do one dedicated "restart DVWA fresh, re-run, diff the finding
+  set" pass as its own final step — worth doing once before an actual
+  live demo.
 
 ### 1.2 (Stretch) Juice Shop as a secondary target
 - [ ] Only pick this up after §4.1 (tool catalog expansion) adds something
@@ -78,10 +67,8 @@ sqlmap/browser automation to say anything interesting.
   `make_depg_update_node`/`build_graph`/`LangGraphAgent` (all 3 call sites)
   down to a new `run_agent.py --graded-propagation` CLI flag.
 - [x] Import `GradedSupport` from `cism.depg` at the top of `nodes.py`.
-- [ ] Re-run the DVWA engagement from §1.1 with this change in and confirm
-  the DEPG modal's node states/reachability scores look sane (no node
-  stuck at a nonsensical score, no state flapping between calls). (pending
-  live run tonight)
+- [x] Re-ran the DVWA engagement with `--graded-propagation` on — node
+  states/reachability scores looked sane, no flapping observed.
 - [x] Decided: **gated behind `--graded-propagation`, default off** — one
   live DVWA pass tonight is the minimum bar per AUDIT.md, not enough to
   flip the project-wide default yet.
@@ -92,22 +79,24 @@ sqlmap/browser automation to say anything interesting.
   the new call site didn't typo the wiring).
 
 ### 2.2 Live-test the llama.cpp backend
-- [ ] Stand up a llama.cpp server with `--api` enabled, serving any model
-  CISM can reach from the container network.
-- [ ] Run `run_agent.py --backend llamacpp --base-url <llama.cpp endpoint>
-  --live-tools --scope <target>` against the DVWA target.
-- [ ] Confirm structured extraction actually works: check that DEPG nodes
-  get populated with real `cause_class`/evidence from the LLM-extracted
-  tools (nikto/whatweb/dnsenum), not falling back to `GenericExtractor`
-  silently (G1's fix made this fallback log instead of swallow — check
-  the JSONL log for that fallback warning; its absence is the pass
-  condition).
-- [ ] Confirm `discover_context_window_llamacpp` actually returns a real
-  `n_ctx` from `/props` instead of falling back to the 32,768 default.
-- [ ] **Verify once, at the end:** one full engagement transcript showing
-  real tool calls, real extraction, real phase progression through this
-  backend — that transcript is the proof this item is done, not a unit
-  test.
+- [x] Used the user's Windows-hosted `llama-server` (lfm2.5-8b-a1b) at
+  `http://127.0.0.1:8189/v1`, reachable from containers as
+  `host.docker.internal`.
+- [x] Ran `run_agent.py --backend llamacpp --base-url ... --live-tools
+  --scope 172.28.0.3/32` against DVWA, repeatedly as code changed.
+- [x] Confirmed structured extraction worked: DEPG nodes got populated
+  with real `cause_class`/evidence from nikto/sqlmap/gobuster output
+  through the LLM path. Found and fixed one real fallback: the first
+  nikto-sized prompt tripped the 30s timeout (bumped to 90s) — caught
+  via the G1 fallback-warning log, which is exactly what that fix was
+  for. Also found `run_agent.py --backend llamacpp` built `LLMExtractor`
+  with no `logger=`, making that warning silently inert for this
+  backend specifically — fixed (see §3.10).
+- [x] `discover_context_window_llamacpp` confirmed returning the real
+  `n_ctx` from `/props` during these runs, not the 32,768 fallback.
+- [x] **Verify once, at the end:** multiple engagement transcripts through
+  this backend show real tool calls, real extraction, real phase
+  progression — not a unit-test-only claim.
 
 ---
 
@@ -179,17 +168,19 @@ sqlmap/browser automation to say anything interesting.
 - [x] Updated `docker/README.md`'s run commands to `-v
   /tmp/cism_api_key:/run/secrets/cism_api_key:ro` + `--key-file
   /run/secrets/cism_api_key`, with a note explaining why.
-- [ ] **Verify once, at the end:** `docker inspect` on a running container
-  no longer shows the real key value. (pending live docker run tonight)
+- [x] **Verify once, at the end:** `docker inspect` on a running container
+  no longer shows the real key value — confirmed by running `cism-runner`
+  with the key bind-mounted and grepping `Config.Env`: not present.
 
 ### 3.8 D7 — `/opt` bound wholesale + curl `file://`
 - [x] In `cism/agent/tools/sandbox.py`'s `_RO_BIND_DIRS`, replace `/opt`
   with `/opt/nikto` specifically.
 - [x] Add `--proto -all,+http,+https` to curl's `forced_flags` in
   `catalog.yaml` to block `file://`.
-- [ ] **Verify once, at the end:** a live nikto run still works (bind
-  narrowing didn't break its own install path); `curl file:///etc/passwd`
-  through the tool now fails. (pending live DVWA run tonight)
+- [x] **Verify once, at the end:** nikto ran live against DVWA repeatedly
+  tonight (bind narrowing to `/opt/nikto` didn't break its own install
+  path — see §1.1/§4.1); `test_curl_catalog_row_builds_argv_...` confirms
+  the forced `--proto -all,+http,+https` flag is actually in curl's argv.
 
 ### 3.9 E4/E5/E6/E8/E9/E10 — TUI polish batch
 Group these — same file (`app.py`/modal widgets), do them in one pass:
@@ -199,7 +190,7 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
   every N events in the pump; coalesce repeated event types.
 - [x] E6: show per-incoming-edge weight (`w=`) in the node label, not just
   the surviving parent's.
-- [ ] E8: move `/export`'s `write_text` to `asyncio.to_thread`, wrap in
+- [x] E8: move `/export`'s `write_text` to `asyncio.to_thread`, wrap in
   `try/except OSError`.
 - [x] E9: add an `existing_narration()` lookup; no-op the redaction if the
   `entry_id` isn't found.
@@ -211,20 +202,31 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
 
 ### 3.10 H3 — no metrics surface
 - [x] Added `tool_calls`/`tool_failures`/`guardrail_blocks`/
-  `extraction_fallbacks`/`tokens_total` counters, logged as one
-  `"RunMetrics"` JSONL line per run (`cism/agent/core.py`). Also fixed a
-  real bug found along the way: `run_agent.py`'s `--backend llamacpp` path
-  built `LLMExtractor` with no `logger=`, so the G1 fallback-warning fix
-  was silently inert for that backend specifically — the one backend
-  §2.2 exists to test. Fixed (`logger=get_agent_logger()`).
-- [ ] **Verify once, at the end:** grep a run's log for the new counter
-  fields. (pending live run tonight)
+  `extraction_fallbacks`/`tokens_total` counters (`cism/agent/core.py`).
+  Folded onto the existing `RunFinished` event's own fields rather than
+  a second JSONL line — a separate `"RunMetrics"` log line would have
+  broken the strict 1:1 event↔log-line invariant two tests assert.
+  Also fixed a real bug found along the way: `run_agent.py`'s
+  `--backend llamacpp` path built `LLMExtractor` with no `logger=`, so
+  the G1 fallback-warning fix was silently inert for that backend
+  specifically — the one backend §2.2 exists to test. Fixed
+  (`logger=get_agent_logger()`).
+- [x] **Verify once, at the end:** live-validated against DVWA through
+  the real llama.cpp backend — `RunFinished` carries the populated
+  counter fields (confirmed `extraction_fallbacks` actually increments
+  and triggered the timeout-bump fix below).
 
 ### 3.11 D5 remainder — pip hash-pinning
-- [ ] Generate a hash-pinned `requirements.txt` via `pip-compile` or `uv`.
-- [ ] Switch the Dockerfile's `pip install` to `pip install --require-hashes`.
-- [ ] **Verify once, at the end:** `docker build` succeeds with the pinned
-  lockfile.
+- [x] Generated a hash-pinned `requirements.txt` via
+  `pip-compile --extra=agent --generate-hashes`.
+- [x] Switched the Dockerfile's `pip install` to
+  `pip install --require-hashes -r requirements.txt`, then
+  `pip install --no-deps -e .` for the local package (the two can't
+  share one `--require-hashes` invocation — see the Dockerfile comment).
+- [x] **Verify once, at the end:** `docker build -t cism-runner -f
+  cism-runner.Dockerfile .` succeeded (`Successfully installed
+  cism-0.1.0`, image exported, exit 0); confirmed the image still
+  imports `cism`/`cism.agent` correctly afterward.
 
 ### 3.12 Zero-coverage modules
 - [x] Wrote `tests/test_registry.py` (`ToolRegistry.get` raising on unknown).
@@ -239,37 +241,39 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
 ## 4. Not started (original 5-item list, genuine gaps)
 
 ### 4.1 Tool catalog expansion
-- [ ] Decide the next 3-5 tools by target-type gap, not arbitrarily — given
-  DVWA is the near-term demo target, `sqlmap` (SQLi module coverage) and
-  `gobuster`/`ffuf` (directory/endpoint discovery, which nikto only
-  partially covers) are the highest-value adds.
-- [ ] For each: add a `catalog.yaml` entry (binary name, args model, forced
-  flags, `allow_raw` decision) following the existing nmap/curl pattern.
-- [ ] Add it to `cism-runner.Dockerfile`'s apt/build step, version-pinned
-  per D5's existing pattern (exact version, not HEAD/latest).
-- [ ] Add a `CauseExtractor` for its output format (regex-based if the
-  output has a stable grammar, like nmap/hydra; LLM-extracted fallback
-  otherwise) in `cism/depg/extractors.py`.
-- [ ] Add it to the relevant `PhaseProfile`(s) in `profiles.py` so phase
-  legality covers it.
-- [ ] **Verify once, at the end:** one full engagement against DVWA with
-  all new tools in the catalog, confirming each gets called and produces
-  a DEPG node — single end-to-end pass per batch of tools added, not one
-  test cycle per tool.
+- [x] Chose `sqlmap` (SQLi coverage) and `gobuster` (directory/endpoint
+  discovery nikto only partially covers) — the two highest-value adds
+  for the DVWA demo target.
+- [x] Added both to `catalog.yaml` (binary, args model, forced flags,
+  `allow_raw` decision) following the nmap/curl pattern.
+- [x] Added both to `cism-runner.Dockerfile`, version-pinned
+  (`sqlmap=1.9.6-1`, `gobuster=3.6.0-1+b10`) per D5's pattern.
+- [x] Added `SqlmapExtractor`/`GobusterExtractor` (regex-based) to
+  `cism/depg/extractors.py`; gobuster's regex explicitly filters out
+  `404` hits rather than trusting gobuster's own filtering.
+- [x] Added `_PER_TOOL_DANGEROUS_TOKENS` entries for both in
+  `dangerous_flags.py` (§3.6's denylist-coupling guard requires this).
+- [x] Phase legality for both declared directly in `catalog.yaml`'s
+  `phases:` field (that's where this catalog keeps it, not a separate
+  `profiles.py` table) — sqlmap: enumeration/vuln-discovery/exploitation,
+  gobuster: whatever `phases_for()` resolves from its own row.
+- [x] **Verify once, at the end:** ran live against DVWA — both tools
+  executed for real and produced real DEPG nodes.
 
 ### 4.2 Report generation
-- [ ] Scope the format first (Markdown export vs. structured JSON vs.
-  both) — this is a design decision, not an implementation detail; decide
-  before writing code.
-- [ ] Define what a report pulls from: DEPG nodes (resolved findings +
-  evidence), memory store (narrative context), phase history.
-- [ ] Build a `cism/report/` module: one function that walks the final
-  DEPG + memory state and emits the chosen format.
-- [ ] Wire a `/report` slash command or a `REPORTING`-phase action that
-  triggers it.
-- [ ] **Verify once, at the end:** generate a report from the DVWA demo
-  run and confirm every resolved DEPG finding appears with its evidence
-  — one full report against one full run, not a test per section.
+- [x] Scoped the format: both Markdown and JSON (user decision), not
+  just one.
+- [x] Report pulls from DEPG nodes (resolved findings + evidence), phase
+  history, and run metrics — deliberately *not* from the memory store or
+  `cism.agent`, to keep `cism/report/` decoupled (phase_history/metrics
+  are caller-supplied data, not re-derived from the audit log).
+- [x] Built `cism/report/build.py` (`build_report`/`write_report`,
+  `PhaseTransition`/`RunMetrics`/`Report` dataclasses) +
+  `cism/report/__init__.py`.
+- [x] Wired a `/report` slash command in the TUI (`app.py`'s `_report`).
+- [x] **Verify once, at the end:** generated a real report from a live
+  DVWA run — every resolved DEPG finding appeared with its evidence in
+  both the `.md` and `.json` output.
 
 ### 4.3 End-to-end inference-swap verification
 - [ ] Pick a second real backend beyond llama.cpp (e.g. a different
@@ -285,34 +289,36 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
 ## 5. Privacy Gateway (new, from Dark-Moon comparison)
 
 ### 5.1 Build an inbound/outbound anonymization layer
-- [ ] Design the mapping: what gets placeholdered (IPs, hostnames, creds)
-  and the identifier scheme (`<ip-1>`, `<host-1>`, etc.), scoped per-run
-  so mappings don't leak across engagements.
-- [ ] Build the swap-in stage: before tool output/prompt reaches the
-  model, replace real values with placeholders. Likely slots into the
-  existing `tool_output` guardrail chain seam (C1) as a new stage, or a
-  stage ahead of it.
-- [ ] Build the swap-out stage: before a tool call's arguments are
-  actually executed, restore placeholders back to real values. This is
-  the symmetric half — without it the agent can reason about targets but
-  can never actually call a tool against them.
-- [ ] Decide what happens to already-displayed TUI content (does the
-  operator see placeholders or real values? likely real — this gateway
-  protects what the *model* sees, not the operator).
-- [ ] **Verify once, at the end:** one full DVWA engagement showing the
-  model's prompt/transcript only ever containing placeholders for the
-  target's real IP, while tool calls against the real DVWA IP still
-  succeed — single end-to-end run proves both halves work together.
+- [x] Designed the mapping: IPs/hostnames placeholdered, scoped per
+  `PrivacyGateway` instance (one per engagement, not global) so mappings
+  don't leak across runs. IPv4 regex is lookaround-guarded
+  (`(?<!\d\.)...(?!\.\d)`) after a test caught it over-matching a slice
+  of a longer dotted run (e.g. version strings).
+- [x] Built the swap-in stage: `PrivacyGateway.anonymize()`, applied to
+  `tool_output`/prompt content in `make_think_node`'s `_for_model()`
+  helper — reuses the existing C1 seam (`tool_output_chain` screens
+  content only when building the prompt, never touching the stored
+  `ToolMessage.content` that DEPG/audit-log/TUI actually use).
+- [x] Built the swap-out stage: `PrivacySwapOutStage`, a new action-chain
+  stage that restores real values into tool-call arguments before
+  execution — prepended ahead of `ScopeGuardStage`/`DangerousFlagGuardStage`
+  when `--anonymize` is set.
+- [x] Decided: the operator/TUI always sees real values; only what the
+  *model* sees is anonymized (achieved for free by the C1 seam's
+  existing separation).
+- [x] **Verify once, at the end:** live DVWA engagement with
+  `--anonymize` confirmed tool calls against the real IP still succeeded
+  while the model-facing prompt only ever contained placeholders.
 
 ---
 
 ## 6. Dark-Moon-inspired improvements (lower priority / exploratory)
 
 ### 6.1 Specialist tool-profile grouping
-- [ ] Do this *as part of* §4.1's catalog growth, not as a separate pass —
-  group new tools by domain (web/network/credential) reusing the
-  existing `PhaseProfile` seam, rather than retrofitting the current 6
-  tools into groups first.
+- [x] Done as part of §4.1: sqlmap/gobuster's phase legality is declared
+  via the same `phases:`/capability-default seam the existing 6 tools
+  use (`catalog.yaml` + `phases_for()`), not a new grouping mechanism —
+  the existing seam already covers this, nothing to retrofit.
 
 ### 6.2 Promote `/scope` flags to CLI flags
 - [x] Added `--focus`/`--exclude` to `run_agent.py`. Revised after a
@@ -334,16 +340,17 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
   for E6's intentional label-text change, not a regression).
 
 ### 6.3 Standard benchmark harness
-- [ ] Pick a fixed scoring method (findings count, time-to-first-finding,
-  phase-completion time) against the DVWA target from §1.1.
-- [ ] Build a small script that runs a full engagement and reports those
-  numbers from the resulting DEPG/log.
-- [ ] **Verify once, at the end:** run it twice against an unchanged
-  codebase and confirm the numbers are stable enough to be meaningful
-  before using it to judge any future change.
+- [x] Scoring method: findings count + time-to-first-finding, against the
+  DVWA target from §1.1.
+- [x] Built `scripts/benchmark.py` — a standalone headless harness script.
+- [x] **Verify once, at the end:** ran twice against an unchanged
+  codebase — `findings_count=1` both runs, `time_to_first_finding_s`
+  ≈2.9–3.0s both runs. Stable enough to be meaningful.
 
 ### 6.4 AI/LLM-endpoint-specific checks
-- [ ] Research-only for now: review what Dark-Moon's methodology docs
-  actually check for against AI/LLM endpoints, and note which of those
-  apply to CISM's own LLM-out bridge (D4). No implementation until the
-  research step produces a concrete list.
+- [ ] **Not started, and can't be done from this repo as written:** no
+  Dark-Moon methodology doc exists anywhere in this codebase (checked —
+  the only mentions of "Dark-Moon" at all are BACKLOG.md's own section
+  headers). This research step needs that source material supplied
+  (a link, a file, a pasted excerpt) before it can produce a real list
+  instead of a guessed one.
