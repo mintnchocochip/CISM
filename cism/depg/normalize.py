@@ -24,9 +24,21 @@ def normalize_target(raw: str) -> str:
     value = value.rstrip("/")
     if value.endswith("."):
         value = value[:-1]
-    host, _, port = value.rpartition(":")
-    if host and port.isdigit():
-        value = host
+    if value.startswith("[") and "]" in value:
+        # Bracketed IPv6, e.g. "[::1]" or "[::1]:80" — unwrap the brackets
+        # and drop a trailing :port, but never touch what's inside them.
+        closing = value.index("]")
+        host = value[1:closing]
+        rest = value[closing + 1 :]
+        if rest.startswith(":") and rest[1:].isdigit():
+            return host
+        return host + rest
+    if value.count(":") == 1:
+        # A single colon means host:port. Two or more means an unbracketed
+        # IPv6 literal (e.g. "fe80::1") — never strip anything from those.
+        host, _, port = value.rpartition(":")
+        if host and port.isdigit():
+            value = host
     return value
 
 

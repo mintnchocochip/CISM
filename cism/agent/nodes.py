@@ -424,22 +424,33 @@ def make_memory_update_node() -> Callable[[AgentState], dict]:
                 continue
             latest = node.evidence[-1]
             if latest.call_id in this_step_call_ids:
-                store.upsert(node.id, latest.tier, phase_tag, latest.exit_signal)
+                store.upsert(
+                    node.id, latest.tier, phase_tag, latest.exit_signal, source_type="depg_node"
+                )
 
         for _, message in trailing:
             if getattr(message, "status", "success") != "error":
                 continue
             snippet = str(message.content)[:120]
-            store.upsert(memory_key("tool-failure", phase_tag, snippet), "T3", phase_tag, snippet)
+            store.upsert(
+                memory_key("tool-failure", phase_tag, snippet),
+                "T3", phase_tag, snippet, source_type="tool-failure",
+            )
 
         last_ai = next((m for m in reversed(state["messages"]) if isinstance(m, AIMessage)), None)
         if last_ai is not None and str(last_ai.content).strip():
             snippet = str(last_ai.content).strip()[:120]
-            store.upsert(memory_key("narration", phase_tag, snippet), "T3", phase_tag, snippet)
+            store.upsert(
+                memory_key("narration", phase_tag, snippet),
+                "T3", phase_tag, snippet, source_type="narration",
+            )
 
         if state.get("phase_changed"):
             snippet = f"phase -> {phase_tag}"
-            store.upsert(memory_key("phase-change", phase_tag, snippet), "T2", phase_tag, snippet)
+            store.upsert(
+                memory_key("phase-change", phase_tag, snippet),
+                "T2", phase_tag, snippet, source_type="phase-change",
+            )
 
         return {"memory_items": store.items}
 

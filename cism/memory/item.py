@@ -13,7 +13,16 @@ from cism.tui.events import MemoryRow, Tier
 
 __all__ = ["MemoryItem"]
 
-_BASE_SALIENCE = 1.0
+#: Base salience by where a memory candidate came from — a resolved DEPG
+#: finding earns more weight up front than a narration snippet, which decays
+#: to the same relevance as everything else purely through SalienceTerms.
+_SOURCE_SALIENCE: dict[str, float] = {
+    "depg_node": 1.2,
+    "tool-failure": 1.0,
+    "narration": 0.8,
+    "phase-change": 1.0,
+}
+_DEFAULT_SALIENCE = 1.0
 
 
 @dataclass(slots=True)
@@ -23,6 +32,7 @@ class MemoryItem:
     phase_tag: str
     snippet: str
     created_at: float
+    source_type: str = "unknown"
     hits: int = 1
 
     def to_event(self, now: float) -> MemoryRow:
@@ -30,7 +40,7 @@ class MemoryItem:
             id=self.id,
             tier=self.tier,
             phase_tag=self.phase_tag,
-            salience=_BASE_SALIENCE,
+            salience=_SOURCE_SALIENCE.get(self.source_type, _DEFAULT_SALIENCE),
             age_s=max(0.0, now - self.created_at),
             snippet=self.snippet,
             hits=self.hits,

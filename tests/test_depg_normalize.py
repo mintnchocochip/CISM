@@ -25,6 +25,22 @@ def test_leaves_a_bare_hostname_with_no_port_unchanged() -> None:
     assert normalize_target("host.local") == "host.local"
 
 
+def test_leaves_an_unbracketed_ipv6_literal_unchanged() -> None:
+    assert normalize_target("::1") == "::1"
+
+
+def test_leaves_a_longer_unbracketed_ipv6_literal_unchanged() -> None:
+    assert normalize_target("fe80::1") == "fe80::1"
+
+
+def test_strips_brackets_and_port_from_a_bracketed_ipv6_literal() -> None:
+    assert normalize_target("[::1]:80") == "::1"
+
+
+def test_strips_brackets_from_a_bracketed_ipv6_literal_with_no_port() -> None:
+    assert normalize_target("[::1]") == "::1"
+
+
 def test_hash_signal_is_deterministic() -> None:
     assert hash_signal("some tool output") == hash_signal("some tool output")
 

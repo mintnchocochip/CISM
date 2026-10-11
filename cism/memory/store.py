@@ -35,14 +35,16 @@ class MemoryStore:
     def from_state(cls, items: dict[str, MemoryItem]) -> MemoryStore:
         return cls(dict(items))
 
-    def upsert(self, key: str, tier: Tier, phase_tag: str, snippet: str) -> MemoryItem:
+    def upsert(
+        self, key: str, tier: Tier, phase_tag: str, snippet: str, source_type: str = "unknown"
+    ) -> MemoryItem:
         """A matching key bumps hits and keeps the original creation time,
         so age reflects how long this has been true. A new key inserts fresh."""
         existing = self.items.get(key)
         if existing is None:
             item = MemoryItem(
                 id=key, tier=tier, phase_tag=phase_tag, snippet=snippet,
-                created_at=time.time(), hits=1,
+                created_at=time.time(), source_type=source_type, hits=1,
             )
             self.items[key] = item
             return item

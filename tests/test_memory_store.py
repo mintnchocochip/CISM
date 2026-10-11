@@ -64,3 +64,25 @@ def test_memory_key_normalizes_whitespace_and_case() -> None:
     a = memory_key("narration", "recon", "  Some Text  ")
     b = memory_key("narration", "recon", "some text")
     assert a == b
+
+
+def test_salience_is_derived_from_source_type_not_a_constant() -> None:
+    store = MemoryStore()
+    depg_item = store.upsert("k1", "T2", "recon", "a", source_type="depg_node")
+    store.upsert("k2", "T2", "recon", "b", source_type="narration")
+
+    rows = store.snapshot(now=depg_item.created_at)
+    by_id = {row.id: row for row in rows}
+
+    assert by_id["k1"].salience != by_id["k2"].salience
+    assert by_id["k1"].salience == 1.2
+    assert by_id["k2"].salience == 0.8
+
+
+def test_unknown_source_type_falls_back_to_the_default_salience() -> None:
+    store = MemoryStore()
+    item = store.upsert("k1", "T2", "recon", "a", source_type="some-future-source")
+
+    row = store.snapshot(now=item.created_at)[0]
+
+    assert row.salience == 1.0
