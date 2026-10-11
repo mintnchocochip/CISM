@@ -8,6 +8,7 @@ state mutates; user actions go back out via :meth:`Agent.submit` /
 
 from __future__ import annotations
 
+import asyncio
 import time
 import traceback
 from collections import deque
@@ -481,12 +482,19 @@ class CISMApp(App[None]):
         lines.append("/model <name> switches.")
         return "\n".join(lines)
 
-    def _export(self, argument: str) -> None:
+    # E8: a slow/unavailable disk (network mount, full volume) used to
+    # block the whole UI loop on this write; now it's a worker, and a
+    # write failure is reported in the transcript instead of crashing the
+    # app with an unhandled OSError.
+    @work(exclusive=False, thread=False)
+    async def _export(self, argument: str) -> None:
         target = Path(argument) if argument else self.export_dir / "cism-transcript.txt"
-        lines: list[str] = []
-        for child in self.transcript.children:
-            lines.append(self._entry_as_text(child))
-        target.write_text("\n".join(lines), encoding="utf-8")
+        lines: list[str] = [self._entry_as_text(child) for child in self.transcript.children]
+        try:
+            await asyncio.to_thread(target.write_text, "\n".join(lines), encoding="utf-8")
+        except OSError as exc:
+            self.transcript.add_note(f"export to {target} failed: {exc}")
+            return
         self.transcript.add_note(f"exported {len(lines)} entries → {target}")
 
     def _report(self, argument: str) -> None:

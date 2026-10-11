@@ -362,6 +362,22 @@ async def test_export_writes_the_transcript(export_app, tmp_path) -> None:
         assert "PTES: exploitation" in body
 
 
+async def test_export_to_an_unwritable_path_reports_the_error_without_crashing(
+    export_app, tmp_path
+) -> None:
+    app, agent = export_app
+    bad_path = tmp_path / "does-not-exist" / "out.txt"
+    async with app.run_test(size=(100, 30)) as pilot:
+        await replay_all(pilot, agent)
+        for ch in f"/export {bad_path}":
+            await pilot.press(ch)
+        await pilot.press("enter")
+        await settle(pilot, 12)
+        assert not bad_path.exists()
+        notes = [c for c in app.transcript.children if "failed" in str(getattr(c, "text", ""))]
+        assert notes
+
+
 async def test_scope_changed_renders_as_a_transcript_note(quiet_app) -> None:
     app, agent = quiet_app
     async with app.run_test(size=(100, 30)) as pilot:
