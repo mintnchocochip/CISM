@@ -171,6 +171,30 @@ async def test_ctrl_d_opens_and_escape_closes_the_depg_view(app_and_agent) -> No
         assert not isinstance(app.screen, DEPGModal)
 
 
+async def test_ctrl_d_twice_in_a_row_pushes_only_one_modal(app_and_agent) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(120, 34)) as pilot:
+        await replay_all(pilot, agent)
+        await pilot.press("ctrl+d")
+        await settle(pilot, 12)
+        await pilot.press("ctrl+d")
+        await settle(pilot, 12)
+        assert isinstance(app.screen, DEPGModal)
+        assert len(app.screen_stack) == 2
+
+
+async def test_ctrl_m_twice_in_a_row_pushes_only_one_modal(app_and_agent) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(120, 34)) as pilot:
+        await replay_all(pilot, agent)
+        await pilot.press("ctrl+m")
+        await settle(pilot, 12)
+        await pilot.press("ctrl+m")
+        await settle(pilot, 12)
+        assert isinstance(app.screen, MemoryModal)
+        assert len(app.screen_stack) == 2
+
+
 async def test_ctrl_m_opens_and_escape_closes_the_memory_view(app_and_agent) -> None:
     app, agent = app_and_agent
     async with app.run_test(size=(120, 34)) as pilot:

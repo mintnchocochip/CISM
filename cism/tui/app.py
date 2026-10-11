@@ -486,9 +486,13 @@ class CISMApp(App[None]):
         self._notice("press ctrl+c again to quit")
 
     def action_show_depg(self) -> None:
+        if len(self.screen_stack) > 1:
+            return
         self.push_screen(DEPGModal(self.depg_nodes, self.depg_edges))
 
     def action_show_memory(self) -> None:
+        if len(self.screen_stack) > 1:
+            return
         self.push_screen(MemoryModal(self.memory_rows, self.memory_terms))
 
     def action_toggle_output(self) -> None:
