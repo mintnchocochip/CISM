@@ -111,4 +111,6 @@ def test_curl_catalog_row_builds_argv_from_target_and_extra() -> None:
     with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
         tool.invoke({"target": "https://example.com", "extra": "-sS -L"})
 
-    assert mock_run.call_args.args[0] == ["curl", "-sS", "-L", "https://example.com"]
+    assert mock_run.call_args.args[0] == [
+        "curl", "--proto", "-all,+http,+https", "-sS", "-L", "https://example.com",
+    ]

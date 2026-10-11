@@ -58,12 +58,16 @@ def build_graph(
     extractors: ExtractorRegistry,
     profiles: PhaseProfiles,
     checkpointer: BaseCheckpointSaver | None = None,
+    *,
+    graded_propagation: bool = False,
 ) -> CompiledStateGraph:
     graph = StateGraph(AgentState)
 
     graph.add_node("think", make_think_node(llm, tools, profiles, guardrails.tool_output))
     graph.add_node("act", make_act_node(tools, guardrails.action, profiles))
-    graph.add_node("depg_update", make_depg_update_node(extractors))
+    graph.add_node(
+        "depg_update", make_depg_update_node(extractors, graded_propagation=graded_propagation)
+    )
     graph.add_node("phase_router", make_phase_router())
     graph.add_node("memory_update", make_memory_update_node())
     graph.add_node("respond", make_respond_node(guardrails.output))

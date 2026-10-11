@@ -104,6 +104,7 @@ class LangGraphAgent:
         model_name: str = "",
         key_env_var: str = "",
         backend: str = "openai",
+        graded_propagation: bool = False,
     ) -> None:
         self.events: asyncio.Queue[AgentEvent] = asyncio.Queue()
         if llm is None:
@@ -115,6 +116,10 @@ class LangGraphAgent:
             self._key_env_var = key_env_var
         #: "openai" or "llamacpp" — picks the context-window probe below.
         self._backend_kind = backend
+        #: B1 follow-up (2.1): opt-in continuous DEPG propagation — see
+        #: cism.depg.reducer.GradedSupport. Off by default; one DVWA pass is
+        #: the minimum validation bar per AUDIT.md, not the finish line.
+        self._graded_propagation = graded_propagation
         self._tools = tools or ToolRegistry([dummy_nmap, dummy_msfconsole])
         self._guardrails = guardrails or GuardrailSeam.no_op()
         default_extractor = (
@@ -138,6 +143,7 @@ class LangGraphAgent:
             self._extractors,
             self._profiles,
             checkpointer=self._checkpointer,
+            graded_propagation=self._graded_propagation,
         )
         self._phase = PhaseStateMachine(Phase.RECON)
         self._target = target
@@ -497,6 +503,7 @@ class LangGraphAgent:
                 self._extractors,
                 self._profiles,
                 checkpointer=self._checkpointer,
+                graded_propagation=self._graded_propagation,
             )
             await self._refresh_context_window()
 
@@ -552,6 +559,7 @@ class LangGraphAgent:
                 self._extractors,
                 profiles,
                 checkpointer=self._checkpointer,
+                graded_propagation=self._graded_propagation,
             )
 
         self._metrics = {"tool_calls": 0, "tool_failures": 0, "guardrail_blocks": 0}
@@ -576,8 +584,7 @@ class LangGraphAgent:
                     done=True,
                 )
             )
-            self._log.info("RunMetrics", extra={"data": self._run_metrics(run_id)})
-            await self._emit(RunFinished(run_id=run_id, ok=False))
+            await self._emit(RunFinished(run_id=run_id, ok=False, **self._run_metrics()))
             return
 
         initial_state: dict[str, Any] = {
@@ -646,14 +653,12 @@ class LangGraphAgent:
                 Narration(entry_id=f"{run_id}-error", text=f"run failed: {exc}", done=True)
             )
 
-        self._log.info("RunMetrics", extra={"data": self._run_metrics(run_id)})
-        await self._emit(RunFinished(run_id=run_id, ok=ok))
+        await self._emit(RunFinished(run_id=run_id, ok=ok, **self._run_metrics()))
 
-    def _run_metrics(self, run_id: str) -> dict[str, Any]:
+    def _run_metrics(self) -> dict[str, Any]:
         default_extractor = getattr(self._extractors, "_default", None)
         extraction_fallbacks = getattr(default_extractor, "fallback_count", 0)
         return {
-            "run_id": run_id,
             "tokens_total": self._token_total,
             "extraction_fallbacks": extraction_fallbacks,
             **self._metrics,

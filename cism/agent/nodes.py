@@ -18,7 +18,7 @@ from cism.agent.guardrails import GuardrailChain
 from cism.agent.profiles import PhaseProfiles
 from cism.agent.state import AgentState, IllegalPhaseTransition, Phase, PhaseStateMachine
 from cism.agent.tools import ToolRegistry
-from cism.depg import Edge, ExtractorRegistry, Graph, Node
+from cism.depg import Edge, ExtractorRegistry, Graph, GradedSupport, Node
 from cism.depg.linking import find_precondition
 from cism.depg.normalize import normalize_target
 from cism.memory import MemoryStore, memory_key
@@ -355,7 +355,9 @@ def _trailing_tool_results(messages: list) -> list[tuple[ToolCall | None, ToolMe
     return [(calls_by_id.get(m.tool_call_id), m) for m in results]
 
 
-def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState], Awaitable[dict]]:
+def make_depg_update_node(
+    extractors: ExtractorRegistry, *, graded_propagation: bool = False
+) -> Callable[[AgentState], Awaitable[dict]]:
     async def depg_update(state: AgentState) -> dict:
         graph = Graph.from_state(state["depg_nodes"], state["depg_edges"])
         phase_tag = state["phase"].to_wire()
@@ -384,7 +386,7 @@ def make_depg_update_node(extractors: ExtractorRegistry) -> Callable[[AgentState
             for edge in extraction.edges:
                 graph.add_edge(edge)
 
-        graph.settle()
+        graph.settle(support=GradedSupport() if graded_propagation else None)
         graph.prune()
         graph.compute_metrics()
         # No reducer on these keys — must return the full merged graph, never just a delta.

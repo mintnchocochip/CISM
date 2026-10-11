@@ -92,6 +92,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="how DEPG findings get extracted: 'openai' (default, needs function calling) or 'llamacpp' (json_schema-constrained /completion call)",
     )
     parser.add_argument(
+        "--graded-propagation",
+        action="store_true",
+        help=(
+            "use GradedSupport's continuous reachability score instead of "
+            "BinarySupport's any-non-blocked-parent flood fill when settling "
+            "the DEPG (opt-in; AUDIT.md's bar for flipping this default is "
+            "validation against several real runs, not one)"
+        ),
+    )
+    parser.add_argument(
         "--live-tools",
         action="store_true",
         help=(
@@ -178,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
             model_name=args.model,
             key_env_var=args.key_env_var,
             backend=args.backend,
+            graded_propagation=args.graded_propagation,
         )
     else:
         agent = LangGraphAgent(tools=tools, guardrails=guardrails, target=args.target)

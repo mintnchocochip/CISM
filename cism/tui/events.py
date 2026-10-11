@@ -205,6 +205,14 @@ class RunStarted(_Event):
 class RunFinished(_Event):
     run_id: str
     ok: bool = True
+    #: H3 metrics surface — folded onto the event that already closes every
+    #: run, rather than a second log line, so the 1:1 event<->log-line
+    #: invariant (see cism.agent.logging) stays exactly true.
+    tool_calls: int = 0
+    tool_failures: int = 0
+    guardrail_blocks: int = 0
+    extraction_fallbacks: int = 0
+    tokens_total: int = 0
 
 
 @dataclass(frozen=True, slots=True)
