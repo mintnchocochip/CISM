@@ -490,22 +490,43 @@ from model non-determinism.
   refuses to negotiate by default. That's a target/tool compatibility gap
   in an 18-year-old intentionally-vulnerable image, not a CISM bug — not
   fixed, not planned, noted here so it isn't mistaken for one later.
-- [ ] **Not fixed, newly observed:** phase progression looks too eager
-  within a single turn — one turn's wafw00f + whatweb calls advanced the
-  phase straight from enumeration to vulnerability-discovery to
-  exploitation. Not investigated this round.
-- [ ] **Not fixed, newly observed:** asked to "brute force directories,"
-  the model called bare `curl` against a guessed `/admin` path instead of
-  `gobuster` (the catalog's actual directory-brute-force tool) — a
-  tool-selection miss, not a catalog/argv bug. Not investigated this
-  round.
-- [ ] **Not fixed, newly observed, low severity:** sqlmap was called once
-  with a hallucinated `extra: 'service=http'` token — not a real sqlmap
-  flag. Appears to have been silently absorbed without breaking the run
-  (confirmed: sqlmap still crawled and tested correctly), so left alone.
-- [ ] **Verify once, at the end:** targeted suite
+- [x] **Investigated, deliberately left alone — not a bug:** phase
+  progression looked too eager within a single turn — one turn's
+  wafw00f + whatweb calls advanced the phase straight from enumeration
+  through vulnerability-discovery to exploitation. Attempted a
+  `phase_advanced_this_run` cap limiting `phase_router` to one advance
+  per user submission; reverted after
+  `test_dummy_run_produces_a_final_narration_and_two_phase_changes`
+  (`tests/test_langgraph_agent.py`) showed this is existing, deliberately
+  tested behavior — the dummy demo flow itself relies on exactly two
+  phase changes within one submit, because the agent's internal
+  think/act loop can legitimately do several genuine rounds of tool use
+  (each with its own real resolved finding) before a single user turn
+  ends. Capping it would have been "fixing" intended autonomous
+  multi-step behavior, not a defect — left as-is.
+- [x] **Fixed:** asked to "brute force directories," the model called
+  bare `curl` against a guessed `/admin` path instead of `gobuster` (the
+  catalog's actual directory-brute-force tool). curl's `catalog.yaml`
+  description now says explicitly it's for one already-known URL, not
+  directory discovery, and points to gobuster for that instead.
+- [x] **Fixed:** sqlmap was called once with a hallucinated
+  `extra: 'service=http'` token — not a real sqlmap flag. Root cause:
+  every `allow_raw` tool's `extra` argument had no description at all in
+  its exposed schema, just a bare unlabeled string — the model guessed.
+  Added a concrete description (`cism/agent/tools/base.py`) with real
+  examples ("-p 1-1000", "--level 3") and an explicit "never a bare
+  key=value token" instruction. Considered and rejected a stricter fix
+  (drop any extra token not starting with "-" before it reaches argv):
+  reverted immediately after it broke `test_render_argv_appends_extra_
+  only_when_allow_raw` and two others — a flag's *value* token
+  ("80,443", "3") has no leading dash either and would get silently
+  dropped right along with a genuinely bad token, which is worse than
+  the hallucination it was meant to catch.
+- [x] **Verify once, at the end:** targeted suite
   (`test_nodes.py test_tool_catalog_build.py test_credentials.py
-  test_depg_extractors.py test_depg_linking.py test_langgraph_agent.py
-  test_sandboxed_tool_decorator.py test_toolkit_integration.py`) green
-  after each fix; full suite 790/792 (2 pre-existing TUI-snapshot flakes,
-  unrelated — diff never touches `cism/tui/`).
+  test_tool_argv.py test_depg_extractors.py test_depg_linking.py
+  test_langgraph_agent.py test_sandboxed_tool_decorator.py
+  test_toolkit_integration.py test_phase_profiles.py
+  test_phase_tool_guard.py`) green after each fix and after each revert;
+  full suite 790/792 (2 pre-existing TUI-snapshot flakes, unrelated —
+  diff never touches `cism/tui/`).
