@@ -444,3 +444,68 @@ submits (recon → enumerate → sqlmap) against the live `dvwa` container,
   findings across whatweb/wafw00f/gobuster (0 in the "before" run for
   those same three tools' real output), full suite green throughout
   (786 passed; 3 pre-existing xdist-only snapshot flakes, pass serially).
+
+## 8. Live-test findings, round 2 (2026-10-12, two-host engagement: dvwa + metasploitable2)
+
+Same hardened container, same real `lfm2.5-8b-a1b` backend. Methodology:
+6 scripted submits driving nmap/wafw00f/whatweb/curl/sqlmap against `dvwa`
+(172.28.0.3) then pivoting to `metasploitable2` (172.28.0.2) for an
+nmap/hydra pass — run both through the real `LangGraphAgent` (bypassing
+only the Textual render layer) and, separately, with a direct
+`hydra.invoke()` bypassing the LLM entirely to isolate sandbox behavior
+from model non-determinism.
+
+- [x] **Fixed, live-verified:** `depg_update` stamped every node in a run
+  with `state["target"]` (the one host declared at startup) regardless of
+  which host a given tool call actually scanned. A second nmap call
+  against a different host had all 19 of its open ports mislabeled onto
+  the first host. Fixed in `cism/agent/nodes.py` (`_call_target`) —
+  confirmed in this round's own DEPG dump: metasploitable2's 19 ports
+  now land on `172.28.0.2`, dvwa's on `172.28.0.3`, cleanly separated.
+- [x] **Fixed, live-verified:** sqlmap exited immediately with "no
+  parameter(s) found for testing" against DVWA's POST login form and
+  still reported `ok: true` — a silent no-op. Forced `--forms --crawl=2`
+  into `catalog.yaml`'s sqlmap row; re-run shows sqlmap actually crawling
+  the form and testing `username`/`password`/`Login` with real
+  boolean/error/time-based/UNION techniques, correctly concluding "all
+  tested parameters do not appear to be injectable."
+- [x] **Fixed, live-verified:** hydra failed outright with a Pydantic
+  validation error (missing required `service`) because its description
+  didn't make clear the tool only speaks network services, not web
+  logins. Docstring rewritten (`credentials.py`) — re-run shows the model
+  correctly supplying `service: "ssh"` and a bare host instead of a URL.
+- [x] **Fixed, live-verified (separately, by direct `hydra.invoke()`):**
+  even with correct arguments, hydra failed with "File for logins not
+  found" — `_cred_flag`'s explicit-list branch passed the materialized
+  wordlist's absolute *host* scratch path, but `BubblewrapRunner` binds
+  that host dir to `/work` and `--chdir`'s into it, so hydra's own cwd is
+  `/work`; the host path the file was genuinely written to doesn't exist
+  inside the sandbox. Named wordlists never hit this (`/usr/share/wordlists`
+  is ro-bound at the same path on both sides). Fixed by passing the bare
+  filename. Direct re-test against metasploitable2:22 now gets past
+  credential-file loading entirely and reaches a real network attack
+  attempt — the remaining failure there (`kex error: no match for method
+  server host key algo`) is metasploitable2's SSH server offering only
+  `ssh-rsa`/`ssh-dss`, which this container's modern libssh/hydra build
+  refuses to negotiate by default. That's a target/tool compatibility gap
+  in an 18-year-old intentionally-vulnerable image, not a CISM bug — not
+  fixed, not planned, noted here so it isn't mistaken for one later.
+- [ ] **Not fixed, newly observed:** phase progression looks too eager
+  within a single turn — one turn's wafw00f + whatweb calls advanced the
+  phase straight from enumeration to vulnerability-discovery to
+  exploitation. Not investigated this round.
+- [ ] **Not fixed, newly observed:** asked to "brute force directories,"
+  the model called bare `curl` against a guessed `/admin` path instead of
+  `gobuster` (the catalog's actual directory-brute-force tool) — a
+  tool-selection miss, not a catalog/argv bug. Not investigated this
+  round.
+- [ ] **Not fixed, newly observed, low severity:** sqlmap was called once
+  with a hallucinated `extra: 'service=http'` token — not a real sqlmap
+  flag. Appears to have been silently absorbed without breaking the run
+  (confirmed: sqlmap still crawled and tested correctly), so left alone.
+- [ ] **Verify once, at the end:** targeted suite
+  (`test_nodes.py test_tool_catalog_build.py test_credentials.py
+  test_depg_extractors.py test_depg_linking.py test_langgraph_agent.py
+  test_sandboxed_tool_decorator.py test_toolkit_integration.py`) green
+  after each fix; full suite 790/792 (2 pre-existing TUI-snapshot flakes,
+  unrelated — diff never touches `cism/tui/`).
