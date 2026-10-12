@@ -572,6 +572,59 @@ async def test_think_leaves_the_target_line_real_with_no_privacy_gateway() -> No
     assert "10.0.0.5" in str(system.content)
 
 
+async def test_think_tells_the_model_never_to_ask_for_the_already_given_target() -> None:
+    """2026-10-12 live-test: a real small model asked the user to re-supply
+    a target that was already in this line — strengthened after that."""
+    recorded_messages: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+            recorded_messages.extend(messages)
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    profiles = PhaseProfiles({
+        Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="p", tool_names=frozenset())
+    })
+    think = make_think_node(_Recording(), ToolRegistry([]), profiles)
+    state = _state([HumanMessage(content="x")])
+
+    await think(state)
+
+    system = next(m for m in recorded_messages if isinstance(m, SystemMessage))
+    assert "never ask the user" in str(system.content).lower()
+
+
+async def test_think_adds_the_one_call_rule_only_when_tools_are_offered() -> None:
+    """2026-10-12 live-test: the same model planned a JSON array of several
+    future calls in one turn instead of making one real tool call."""
+    recorded_messages: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+            recorded_messages.extend(messages)
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    with_tools = PhaseProfiles({
+        Phase.RECON: PhaseProfile(
+            phase=Phase.RECON, system_prompt="p", tool_names=frozenset({"dummy_nmap"})
+        )
+    })
+    no_tools = PhaseProfiles({
+        Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="p", tool_names=frozenset())
+    })
+
+    think_with = make_think_node(_Recording(), ToolRegistry([dummy_nmap]), with_tools)
+    await think_with(_state([HumanMessage(content="x")]))
+    system_with = next(m for m in recorded_messages if isinstance(m, SystemMessage))
+    assert "exactly one tool call per turn" in str(system_with.content)
+
+    recorded_messages.clear()
+    think_without = make_think_node(_Recording(), ToolRegistry([]), no_tools)
+    await think_without(_state([HumanMessage(content="x")]))
+    system_without = next(m for m in recorded_messages if isinstance(m, SystemMessage))
+    assert "exactly one tool call per turn" not in str(system_without.content)
+
+
 async def test_think_prepends_the_phases_system_prompt_without_mutating_state() -> None:
     profiles = PhaseProfiles({
         Phase.RECON: PhaseProfile(

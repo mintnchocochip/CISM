@@ -44,18 +44,30 @@ class PhaseProfiles:
 
 _PROMPTS: dict[Phase, str] = {
     Phase.RECON: (
-        "You are in the recon phase: map hosts and open services. "
+        "You are in the recon phase: map hosts and open services. Start with "
+        "nmap against the target — it's the only tool available here. This "
+        "phase is done once nmap has reported at least one open port; stop "
+        "scanning once it does, rather than re-running it. "
         "Do not attempt exploitation."
     ),
     Phase.ENUMERATION: (
         "You are in enumeration: identify service versions and configuration "
-        "on discovered hosts."
+        "on discovered hosts. whatweb or nikto are good first choices against "
+        "a web service; wafw00f tells you whether a WAF is in the way before "
+        "you get more aggressive. Move on once you have at least one concrete "
+        "technology, version, or configuration fact — you don't need to run "
+        "every available tool."
     ),
     Phase.VULNERABILITY_DISCOVERY: (
-        "You are assessing discovered services for known vulnerabilities."
+        "You are assessing discovered services for known vulnerabilities. "
+        "nikto and sqlmap are the primary tools here. Stop once you've "
+        "confirmed or ruled out at least one specific vulnerability."
     ),
     Phase.EXPLOITATION: (
-        "You are attempting to exploit a confirmed vulnerability or weak credential."
+        "You are attempting to exploit a confirmed vulnerability or weak "
+        "credential. Use hydra for a credential attack, or sqlmap against a "
+        "confirmed injection point. Stop once you have a credential or a "
+        "confirmed exploit — or have good evidence the attempt doesn't work."
     ),
     Phase.POST_EXPLOITATION: (
         "You have a foothold; document access and look for further pivots within scope."

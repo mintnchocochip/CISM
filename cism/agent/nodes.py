@@ -158,6 +158,20 @@ _FALLBACK_HINT = (
     '{"name": "<tool>", "args": {...}}.'
 )
 
+#: 2026-10-12 live-test against a real small local model (lfm2.5-8b-a1b):
+#: given an open-ended instruction, it twice produced zero tool calls —
+#: once by writing a JSON *array* of several planned future calls as prose
+#: instead of one structured call, once by asking the user to re-confirm
+#: the target that was already on the line above. Both are prompt gaps,
+#: not model-capability gaps: the same model handled a single, explicit
+#: instruction (name the tool, give the target) correctly on the first try.
+_ONE_CALL_RULE = (
+    "Make exactly one tool call per turn, using the tool-calling mechanism "
+    "— never write out a list of several planned calls as text or JSON. "
+    "Decide the next single call, see its result, then decide the one "
+    "after that."
+)
+
 
 def _extract_balanced_json(text: str, start: int) -> str | None:
     """The first balanced {...} object in text at or after start."""
@@ -228,10 +242,18 @@ def make_think_node(
         # Prepended for this invocation only, never appended to state. The
         # target line exists because profile.system_prompt is phase-only and
         # never mentions it — without this, the model has no way to know
-        # what "the target" or "our target" refers to.
-        target_line = f"Target: {state['target']}" if state["target"] else "No target configured yet."
+        # what "the target" or "our target" refers to. "Already decided...
+        # never ask" was added after a live run asked the user to re-supply
+        # a target that was sitting right here (see _ONE_CALL_RULE's note).
+        target_line = (
+            f"Target: {state['target']} — already decided for this run; use it "
+            "directly in tool calls. Never ask the user to confirm or supply it."
+            if state["target"]
+            else "No target configured yet."
+        )
+        rules = f"\n\n{_ONE_CALL_RULE}" if phase_tools else ""
         hint = _FALLBACK_HINT if phase_tools else ""
-        system_prompt = f"{target_line}\n\n{profile.system_prompt}{hint}"
+        system_prompt = f"{target_line}\n\n{profile.system_prompt}{rules}{hint}"
         context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
         history, dropped = _compact_history(state["messages"], system_prompt, context_window)
 

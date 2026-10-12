@@ -57,6 +57,20 @@ def test_default_profiles_recon_includes_every_reads_capability_catalog_tool() -
     assert {"nikto", "whatweb", "dnsenum", "nmap", "curl"} <= profiles.get(Phase.RECON).tool_names
 
 
+def test_default_profiles_name_a_concrete_tool_and_a_done_criterion() -> None:
+    """2026-10-12: the original one-sentence-per-phase prompts gave a real
+    small model no stopping criterion and no tool-selection hint — a live
+    run against them produced zero tool calls on an open-ended instruction.
+    Each actionable phase now names at least one real tool and a concrete
+    "done" signal, not just the phase's abstract goal."""
+    profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
+
+    assert "nmap" in profiles.get(Phase.RECON).system_prompt
+    assert "whatweb" in profiles.get(Phase.ENUMERATION).system_prompt
+    assert "nikto" in profiles.get(Phase.VULNERABILITY_DISCOVERY).system_prompt
+    assert "hydra" in profiles.get(Phase.EXPLOITATION).system_prompt
+
+
 def test_default_profiles_reporting_phase_has_no_tools() -> None:
     profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
 
