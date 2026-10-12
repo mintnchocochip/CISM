@@ -28,7 +28,17 @@ def _cred_flag(flag: str, values: list[str] | None, listname: str | None, path: 
         raise ValueError("exactly one of an explicit list or a named wordlist must be given")
     if values is not None:
         _materialize(values, path)
-        return [flag, str(path)]
+        # path.name, not str(path): BubblewrapRunner binds the host scratch
+        # dir to /work and --chdir's into it (sandbox.py), so hydra's own
+        # cwd is /work, not the host's scratch path — the absolute host
+        # path this process just wrote to does not exist inside the
+        # sandbox at all. Confirmed live 2026-10-12: an explicit
+        # usernames/passwords list made hydra fail with "File for logins
+        # not found", pointing at the correctly-written but
+        # sandbox-unreachable host path. A named wordlist never hit this
+        # because /usr/share/wordlists is itself ro-bound at the same path
+        # inside the sandbox.
+        return [flag, path.name]
     wordlist = _WORDLISTS.get(listname)
     if wordlist is None:
         raise ValueError(f"unknown wordlist {listname!r}; choose one of {sorted(_WORDLISTS)}")

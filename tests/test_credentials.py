@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -29,10 +28,14 @@ def test_explicit_lists_are_materialized_into_scratch_files() -> None:
     assert result == "ok"
     argv = mock_run.call_args.args[0]
     assert argv[0] == "hydra"
-    users_path = argv[argv.index("-L") + 1]
-    pass_path = argv[argv.index("-P") + 1]
-    assert Path(users_path).name == "users.txt"
-    assert Path(pass_path).name == "pass.txt"
+    # Bare filenames, not the scratch dir's host-absolute path: bwrap binds
+    # that host dir to /work and --chdir's into it (sandbox.py), so hydra's
+    # own cwd is /work — the host path these files were just written to
+    # does not exist inside the sandbox. Confirmed live 2026-10-12: passing
+    # the absolute host path made hydra fail with "File for logins not
+    # found" against a real target.
+    assert argv[argv.index("-L") + 1] == "users.txt"
+    assert argv[argv.index("-P") + 1] == "pass.txt"
     assert argv[-2:] == ["10.0.0.5", "ssh"]
 
 
