@@ -260,6 +260,44 @@ async def test_differently_formatted_targets_normalize_onto_the_same_node() -> N
     assert node.target == "10.0.0.5"
 
 
+async def test_a_calls_own_target_argument_wins_over_the_sessions_declared_target() -> None:
+    """A multi-host engagement calls the same tool against several hosts in
+    one run — state["target"] (set once at startup via --target/--scope)
+    must not get stamped onto every node regardless of which host the
+    call actually scanned. Confirmed live 2026-10-12: a second nmap call
+    against a different host had all its open ports mislabeled with the
+    first host's IP because depg_update ignored the call's own args."""
+    from cism.depg import ExtractorRegistry
+    from cism.depg.extractors import NmapExtractor
+
+    depg_update = make_depg_update_node(
+        ExtractorRegistry({"nmap": NmapExtractor()}, GenericExtractor())
+    )
+    ai = AIMessage(
+        content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {"target": "10.0.0.9"}}]
+    )
+    result = ToolMessage(content="22/tcp   open  ssh\n", tool_call_id="c1", name="nmap")
+    state = _state([HumanMessage(content="scan it"), ai, result])
+    state["target"] = "10.0.0.5"  # the session's startup target, a different host
+
+    update = await depg_update(state)
+
+    node = next(iter(update["depg_nodes"].values()))
+    assert node.target == "10.0.0.9"
+
+
+async def test_a_call_with_no_target_argument_falls_back_to_the_session_target() -> None:
+    """A targetless tool (e.g. tool_help) has no target arg of its own —
+    must still fall back to the session's declared target, not blow up."""
+    ai, result = _tool_round("call-1", "dummy_nmap", "ok")
+    state = _state([HumanMessage(content="scan it"), ai, result])
+
+    update = await _depg_update()(state)
+
+    node = next(iter(update["depg_nodes"].values()))
+    assert node.target == "10.0.0.5"
+
+
 async def test_a_second_call_on_the_same_target_gets_an_edge_from_the_first() -> None:
     depg_update = _depg_update()
     ai1, result1 = _tool_round("call-1", "dummy_nmap", "ok")

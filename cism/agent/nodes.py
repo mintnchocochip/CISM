@@ -386,18 +386,37 @@ def _trailing_tool_results(messages: list) -> list[tuple[ToolCall | None, ToolMe
     return [(calls_by_id.get(m.tool_call_id), m) for m in results]
 
 
+def _call_target(call: ToolCall | None, default: str) -> str:
+    """The host a tool call's own findings belong to is the target argument
+    *that call* was made with, never the session's one declared/startup
+    target — a multi-host engagement calls the same tools against several
+    hosts, and stamping every node with state["target"] regardless of which
+    host was actually scanned silently merges unrelated hosts' findings onto
+    one node family. Confirmed live 2026-10-12: a second nmap call against a
+    different host had all 19 of its open ports attributed to the first
+    host instead. Falls back to the session default only for a call with no
+    target argument of its own (e.g. tool_help) or no call at all."""
+    if call is not None:
+        raw = (call.get("args") or {}).get("target")
+        if raw:
+            return normalize_target(str(raw))
+    return default
+
+
 def make_depg_update_node(
     extractors: ExtractorRegistry, *, graded_propagation: bool = False
 ) -> Callable[[AgentState], Awaitable[dict]]:
     async def depg_update(state: AgentState) -> dict:
         graph = Graph.from_state(state["depg_nodes"], state["depg_edges"])
         phase_tag = state["phase"].to_wire()
-        # Normalized once, here — an identity key can't depend on incidental
-        # formatting or "10.0.0.5"/"ssh://10.0.0.5:22" fragment into separate nodes.
-        target = normalize_target(state["target"])
+        # Only a fallback for a call with no target argument of its own
+        # (e.g. tool_help) — see _call_target below for why this must not
+        # be used for every call in a multi-host engagement.
+        default_target = normalize_target(state["target"])
 
         for call, message in _trailing_tool_results(state["messages"]):
             extractor = extractors.get(message.name or "")
+            target = _call_target(call, default_target)
             # to_thread: extraction can be a ~20s blocking LLM call, off the
             # loop thread so it doesn't freeze the TUI. Stays sequential
             # (not gathered) — find_precondition needs each call's nodes

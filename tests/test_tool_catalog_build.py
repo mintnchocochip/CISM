@@ -155,6 +155,21 @@ def test_wafw00f_does_not_override_a_scheme_the_model_already_gave() -> None:
     ]
 
 
+def test_sqlmap_catalog_row_forces_forms_and_crawl() -> None:
+    """Without --forms/--crawl, sqlmap finds nothing to test on a bare URL
+    that hosts a POST login form and exits "no parameter(s) found for
+    testing" while the call still reports success — confirmed live against
+    DVWA's login.php 2026-10-12."""
+    (tool,) = build_catalog({"sqlmap": CATALOG["sqlmap"]})
+
+    with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
+        tool.invoke({"target": "http://10.0.0.5/login.php"})
+
+    assert mock_run.call_args.args[0] == [
+        "sqlmap", "--batch", "--forms", "--crawl=2", "-u", "http://10.0.0.5/login.php",
+    ]
+
+
 def test_gobuster_catalog_row_suppresses_the_live_progress_indicator() -> None:
     """-z (--no-progress): gobuster's progress indicator rewrites the
     current line with a raw \\r + ANSI clear-line before every hit, which

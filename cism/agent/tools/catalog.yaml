@@ -70,8 +70,16 @@ sqlmap:
     Test a URL for SQL injection and, if found, enumerate what's behind it.
     --batch makes every prompt take sqlmap's own default answer instead of
     hanging on stdin (there is no interactive session to answer it here).
+    --forms/--crawl=2 are forced because the target URL is usually a page
+    that hosts a POST login form rather than a GET ?id=1-style parameter —
+    without them sqlmap finds nothing to test on a bare URL like
+    http://host/login.php and exits with "no parameter(s) found for
+    testing" while still reporting the call as a success. Confirmed live
+    2026-10-12 against DVWA's login form: a bare sqlmap call tested
+    literally nothing. Harmless to add when the URL does have its own
+    GET parameter — sqlmap still tests that too, it just also crawls.
   target: "-u"
-  forced_flags: ["--batch"]
+  forced_flags: ["--batch", "--forms", "--crawl=2"]
   allow_raw: true
   timeout: 90.0
   # Explicit, like nmap/curl: this is an active-exploitation-capable tool,

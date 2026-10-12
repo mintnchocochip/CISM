@@ -46,11 +46,20 @@ def hydra(
     passwordlist: str | None = None,
     threads: int = 4,
 ) -> list[str]:
-    """Run hydra against one target/service with explicit credential lists
-    or a named wordlist. Exactly one of usernames/userlist and one of
-    passwords/passwordlist must be given; threads is capped at 16 —
-    real safety here is the scope guardrail and the run timeout, not
-    argv tricks."""
+    """Brute-force a login on a network SERVICE — ssh, ftp, telnet, mysql,
+    postgres, and similar — never a web page. target is a bare host or IP
+    (e.g. "10.0.0.5"), not a URL, and service is required with no default:
+    pass the exact protocol name hydra expects (e.g. "ssh", "ftp",
+    "telnet"). This tool does NOT support HTTP form logins (hydra's
+    http-post-form module needs a form-path/field/failure-string argument
+    this tool doesn't expose) — for a web login form, use sqlmap for
+    injection or test credentials with curl instead. Confirmed live
+    2026-10-12: a call aimed at a web login URL with no service argument
+    failed outright with a validation error.
+
+    Exactly one of usernames/userlist and one of passwords/passwordlist
+    must be given; threads is capped at 16 — real safety here is the scope
+    guardrail and the run timeout, not argv tricks."""
     argv = ["-t", str(min(threads, _MAX_THREADS))]
     argv += _cred_flag("-L", usernames, userlist, scratch / "users.txt")
     argv += _cred_flag("-P", passwords, passwordlist, scratch / "pass.txt")
