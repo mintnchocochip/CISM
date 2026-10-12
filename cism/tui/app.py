@@ -20,7 +20,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import TextArea
 
-from cism.report import PhaseTransition, RunMetrics, build_report, write_report
+from cism.report import PhaseTransition, RunMetrics, build_report, write_graph, write_report
 
 from .events import (
     Agent,
@@ -502,9 +502,16 @@ class CISMApp(App[None]):
             self.transcript.add_note("no run yet — nothing to report on")
             return
         out_dir = Path(argument) if argument else self.export_dir
+        # Not self.status.target_stack: that's the detected OS/software
+        # fingerprint tags for the status bar (e.g. "linux", "apache"),
+        # a tuple — passing it here as the report's network target silently
+        # produced a wrong-but-non-crashing header in to_markdown()/to_json()
+        # (an f-string coerces a tuple to text without complaint) until
+        # build_dot's _escape() made the type mismatch an actual crash.
+        # DEPGNode.target is the real host/IP every node in this run shares.
         report = build_report(
             run_id=self._last_run_id,
-            target=self.status.target_stack or "",
+            target=self.depg_nodes[0].target if self.depg_nodes else "",
             nodes=self.depg_nodes,
             edges=self.depg_edges,
             memory=self.memory_rows,
@@ -512,8 +519,12 @@ class CISMApp(App[None]):
             metrics=self._last_metrics,
         )
         md_path, json_path = write_report(report, out_dir)
+        dot_path = write_graph(report, out_dir)
+        svg_path = dot_path.with_suffix(".svg")
+        graph_note = f", {svg_path}" if svg_path.exists() else f", {dot_path} (install graphviz for .svg)"
         self.transcript.add_note(
-            f"report written — {len(report.findings)} resolved finding(s) → {md_path}, {json_path}"
+            f"report written — {len(report.findings)} resolved finding(s) → "
+            f"{md_path}, {json_path}{graph_note}"
         )
 
     @staticmethod

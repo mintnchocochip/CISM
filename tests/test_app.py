@@ -362,6 +362,20 @@ async def test_export_writes_the_transcript(export_app, tmp_path) -> None:
         assert "PTES: exploitation" in body
 
 
+async def test_report_writes_markdown_json_and_graph_files(export_app, tmp_path) -> None:
+    app, agent = export_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        await replay_all(pilot, agent)
+        await pilot.press(*"/report")
+        await pilot.press("escape")
+        await pilot.press("enter")
+        await settle(pilot, 12)
+        written = list(tmp_path.glob("*.md")) + list(tmp_path.glob("*.json")) + list(tmp_path.glob("*.dot"))
+        assert len(written) == 3
+        notes = [str(getattr(c, "text", "")) for c in app.transcript.children]
+        assert any("report written" in n for n in notes)
+
+
 async def test_export_to_an_unwritable_path_reports_the_error_without_crashing(
     export_app, tmp_path
 ) -> None:
