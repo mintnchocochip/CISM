@@ -44,9 +44,10 @@ from cism.agent.guardrails import (
     parse_scope,
 )
 from cism.agent.llm import build_chat_model
+from cism.agent.logging import get_agent_logger
 from cism.agent.tools import CATALOG, build_toolkit, hydra
 from cism.agent.tools.sandbox import BubblewrapRunner, set_default_runner
-from cism.depg import EXTRACTORS
+from cism.depg import EXTRACTORS, ExtractorRegistry, LlamaCppExtractionBackend, LLMExtractor
 from cism.tui.events import DEPGUpdated, PhaseChanged, RunFinished, drain
 
 
@@ -85,10 +86,24 @@ async def _run(args: argparse.Namespace) -> dict:
         tool_output=GuardrailChain([ToolOutputScreenStage()]),
     )
     llm = build_chat_model(args.base_url, args.key_env_var, args.model, max_tokens=args.max_tokens)
+    # Without this, --backend llamacpp only picks the context-window probe
+    # (LangGraphAgent._backend_kind) — the LLM-extraction fallback still
+    # defaults to ChatModelExtractionBackend (generic LangChain
+    # with_structured_output), never the backend actually tuned against a
+    # real llama-server (90s timeout, raw /completion + json_schema; see
+    # cism/depg/extractors.py). Mirrors run_agent.py's _llamacpp_extractors.
+    extractors = None
+    if args.backend == "llamacpp":
+        backend = LlamaCppExtractionBackend(args.base_url)
+        extractors = ExtractorRegistry(
+            {**EXTRACTORS, "dummy_nmap": EXTRACTORS["nmap"]},
+            LLMExtractor(backend, logger=get_agent_logger()),
+        )
     agent = LangGraphAgent(
         llm=llm,
         tools=tools,
         guardrails=guardrails,
+        extractors=extractors,
         target=args.target,
         endpoint=args.base_url,
         model_name=args.model,
