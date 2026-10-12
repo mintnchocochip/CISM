@@ -51,11 +51,22 @@ sqlmap/browser automation to say anything interesting.
   live demo.
 
 ### 1.2 (Stretch) Juice Shop as a secondary target
-- [ ] Only pick this up after §4.1 (tool catalog expansion) adds something
-  that can actually test a JS-driven SPA (sqlmap at minimum). Not worth
-  standing up before that — today's toolset returns near-empty results
-  against it, confirmed by reasoning about what nikto/whatweb actually
-  check for (server-side misconfig, not client-side app logic).
+- [x] §4.1 landed (sqlmap/gobuster), unblocking this.
+- [x] Stood up `bkimminich/juice-shop` on `cism-lab`, confirmed at
+  `172.28.0.4`; added to engagement scope (`172.28.0.4/32`).
+- [~] **Ran one live engagement through llama.cpp** ("run sqlmap against
+  the target's login form..."): finished in 10s with zero findings.
+  Inconclusive, not a pass: this was run straight from the host shell,
+  and a separate check that same session found the host has **no network
+  route to `cism-lab`'s containers at all** (direct `curl`/`ping` to a
+  `cism-lab` IP from the host got nothing; the identical request from a
+  throwaway container on `cism-lab` worked). So a fast, empty result here
+  could equally be the model skipping the tool call (a real, separately
+  confirmed failure mode — see §4.3) or sqlmap correctly trying and
+  failing against a target it genuinely couldn't reach from here. Needs a
+  re-run from inside a container actually attached to `cism-lab` (see
+  README's "Live lab" section, option 4) before either explanation can be
+  trusted.
 
 ---
 
@@ -184,10 +195,17 @@ sqlmap/browser automation to say anything interesting.
 
 ### 3.9 E4/E5/E6/E8/E9/E10 — TUI polish batch
 Group these — same file (`app.py`/modal widgets), do them in one pass:
-- [ ] E4: hold a ref to the mounted modal; on `DEPGUpdated`/`MemoryUpdated`,
+- [x] E4: hold a ref to the mounted modal; on `DEPGUpdated`/`MemoryUpdated`,
   diff-update it in place instead of rebuild, preserving cursor position.
-- [ ] E5: give the agent-side queue a `maxsize`; `await asyncio.sleep(0)`
+  `DEPGModal`/`MemoryModal` both got a `refresh_data()` that re-indexes
+  and re-renders the existing screen instance, restoring the cursor by
+  node/row id when it's still present after the update.
+- [x] E5: give the agent-side queue a `maxsize`; `await asyncio.sleep(0)`
   every N events in the pump; coalesce repeated event types.
+  `LangGraphAgent.events` is now `Queue(maxsize=512)`; `pump()` yields
+  every 50 applied events and coalesces a queued run of
+  `DEPGUpdated`/`MemoryUpdated`/`TokenDelta` (full-snapshot types) down
+  to the last one before applying.
 - [x] E6: show per-incoming-edge weight (`w=`) in the node label, not just
   the surviving parent's.
 - [x] E8: move `/export`'s `write_text` to `asyncio.to_thread`, wrap in
@@ -195,10 +213,18 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
 - [x] E9: add an `existing_narration()` lookup; no-op the redaction if the
   `entry_id` isn't found.
 - [x] E10: move `interrupt` off the `send` worker's exclusive group.
-- [ ] **Verify once, at the end:** one full TUI session exercising all six
-  paths (open/close modals repeatedly during a run, trigger `/export`,
-  double-submit, redact after entry removal) — single pass, not six.
-  (E6/E9/E10 done + unit-tested; E4/E5/E8 remaining.)
+- [x] **Verify once, at the end:** automated instead of manual, like §3.2 —
+  new tests cover opening a modal then pushing a second `DEPGUpdated`/
+  `MemoryUpdated` while it's open (same screen instance reused, cursor
+  preserved when the selected node survives, no crash when it doesn't),
+  plus a burst of same-type events collapsing to the last one without
+  skipping a different event type sitting in between. Full suite green
+  (`pytest -n auto`, 782 passed, 1 pre-existing flaky snapshot). A
+  from-scratch E4/E5 fix also surfaced a latent bug in two unrelated
+  `test_widgets.py` indicator tests that assumed the pump fully drained
+  the demo replay synchronously before the test body ran — no longer
+  safe now that the pump yields periodically — fixed by moving them to
+  the `quiet_app` (non-autostart) fixture.
 
 ### 3.10 H3 — no metrics surface
 - [x] Added `tool_calls`/`tool_failures`/`guardrail_blocks`/
@@ -276,13 +302,17 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
   both the `.md` and `.json` output.
 
 ### 4.3 End-to-end inference-swap verification
-- [ ] Pick a second real backend beyond llama.cpp (e.g. a different
-  OpenAI-wire provider, or Ollama directly via `OpenAIBackend`).
-- [ ] Run one full engagement through it.
-- [ ] **Verify once, at the end:** confirm tool-calling, structured
-  extraction, and context-window discovery all work on this second
-  backend too — this is the actual "swappable backend" claim being
-  proven, not assumed from the one llama.cpp pass in §2.2.
+- [ ] **Blocked for now, not abandoned.** A real second server (local
+  Ollama, `gemma4:e4b`) was reachable this session and briefly smoke-tested
+  — confirmed its `/v1` endpoint does return real OpenAI-style structured
+  tool calls (`chat.completions` → `tool_calls` with correctly-typed JSON
+  args), so the integration shape is sound. User then said explicitly:
+  don't run Ollama — the real inference server for this project is the
+  llama.cpp one at `:8189`. That's a single backend, so the "swappable
+  backend" claim is still only proven for llama.cpp (§2.2), same as
+  before. Needs either a second real OpenAI-wire server the user
+  actually wants used, or explicit sign-off to use Ollama for this one
+  verification pass.
 
 ---
 

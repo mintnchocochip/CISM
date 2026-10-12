@@ -94,6 +94,116 @@ python run_agent.py --live-tools --scope 10.0.0.0/24,example.internal \
 `--key-env-var` names the environment variable holding the API key (default
 `CISM_API_KEY`) for a server that needs one.
 
+### Live lab: stand up a real target and run a real engagement
+
+This spins up an actual vulnerable web app in Docker and points CISM's real
+tool catalog at it — nothing here is a replay or a stub. Needs Docker and an
+OpenAI-compatible inference server already running somewhere reachable
+(llama.cpp's `llama-server`, vLLM, LM Studio, Ollama's `/v1`, or real OpenAI).
+
+**1. The lab network and target:**
+
+```bash
+docker network create --subnet 172.28.0.0/24 cism-lab
+
+docker run -d --name dvwa --network cism-lab vulnerables/web-dvwa
+```
+
+DVWA lands on that subnet's second usable address — confirm it and add it to
+scope:
+
+```bash
+docker inspect dvwa --format '{{(index .NetworkSettings.Networks "cism-lab").IPAddress}}'
+```
+
+Then open `http://<that IP>/setup.php` once from a browser on the same
+network (or `docker exec -it dvwa bash` and curl it) and click "Create /
+Reset Database" — DVWA has no DB until that's done once.
+
+**2. Point CISM at your inference server.** Set `--base-url` to wherever it
+actually listens (not necessarily `localhost`, if it's on another host/port —
+e.g. a Windows-hosted `llama-server` reachable from WSL2 at its LAN IP) and
+`--model` to the model name it reports. `--key-env-var` just needs *a*
+non-empty env var — most local servers never check the value.
+
+**Your shell needs to actually reach `cism-lab`'s containers before step 3
+or 4 below will see real results** — found the hard way: a custom Docker
+bridge network's containers are often *not* reachable from the Docker host's
+own shell at all (confirmed on this Docker Desktop/WSL2 setup — direct
+`curl`/`ping` from the host to a `cism-lab` IP both got nothing, while the
+exact same request from a throwaway container actually attached to
+`cism-lab` worked immediately). If `run_agent.py`/`scripts/benchmark.py` run
+straight from your shell and every tool call comes back empty or
+"filtered" against a target you know is up, this is almost certainly why —
+check with one throwaway container first:
+
+```bash
+docker run --rm --network cism-lab curlimages/curl -s -o /dev/null \
+    -w 'HTTP %{http_code}\n' http://<dvwa-ip>/
+```
+
+If that returns a real status code but your shell's own `curl`/`ping` to
+the same IP times out, run CISM itself from inside a container on
+`cism-lab` too — option 4 below does exactly that.
+
+**3. Run it, with the real tool catalog, against the real target:**
+
+```bash
+export CISM_API_KEY=local
+python run_agent.py --live-tools --target <dvwa-ip> \
+    --scope <dvwa-ip>/32 \
+    --base-url http://<your-server>:<port>/v1 --model <model-name>
+```
+
+This opens the normal TUI — `ctrl+d` for the DEPG, `ctrl+m` for memory,
+`/report` at the end writes both a Markdown and JSON report plus an SVG graph
+diagram (needs system `graphviz`'s `dot`; degrades gracefully to DOT-only
+without it) to the export directory.
+
+For a headless run (no TUI, just a JSON summary — findings count,
+time-to-first-finding, per-phase timing) use the benchmark harness instead:
+
+```bash
+python scripts/benchmark.py \
+    --target <dvwa-ip> --scope <dvwa-ip>/32 \
+    --base-url http://<your-server>:<port>/v1 --model <model-name> \
+    --turn "recon the target with nmap, then enumerate the web service" \
+    --out bench_result.json
+```
+
+Add `--backend llamacpp` if your server is a real `llama-server` (raw
+`/completion` + constrained JSON schema for structured extraction, instead
+of the generic OpenAI function-calling path) — see "Swappable inference
+backend" below for when that flag actually matters.
+
+**4. Run it fully containerized instead of from your host**, with the same
+hardened sandbox the agent uses in production (non-root, capability-dropped,
+seccomp-restricted bwrap) — see [docker/README.md](docker/README.md) for the
+full flag-by-flag rationale:
+
+```bash
+docker build -t cism-runner -f cism-runner.Dockerfile .
+
+echo -n local > /tmp/cism_api_key && chmod 600 /tmp/cism_api_key
+
+docker run --rm -it \
+  --cap-drop=ALL --cap-add=SYS_ADMIN \
+  --security-opt seccomp=docker/seccomp-bwrap.json \
+  --security-opt no-new-privileges \
+  --security-opt systempaths=unconfined \
+  --memory=2g --memory-swap=2g --cpus=2 --pids-limit=512 \
+  --network cism-lab \
+  -v /tmp/cism_api_key:/run/secrets/cism_api_key:ro \
+  cism-runner --live-tools --target <dvwa-ip> --scope <dvwa-ip>/32 \
+  --base-url http://<your-server>:<port>/v1 --model <model-name> \
+  --key-file /run/secrets/cism_api_key
+```
+
+If your inference server runs on the Docker host itself (not inside
+`cism-lab`), the container also needs a route to it — see docker/README.md's
+D4 note on why `--add-host=host.docker.internal:host-gateway` is unreliable
+on Docker Desktop/WSL2 and what the workaround is.
+
 ## Keys
 
 | Key | |
@@ -406,14 +516,15 @@ survive a process restart.
 
 ### Tool catalog
 
-The real catalog is small and deliberately data-driven. Five tools are
+The real catalog is small and deliberately data-driven. Eight tools are
 declared in `cism/agent/tools/catalog.yaml` (binary, capability, target flag,
 timeout, allowed phases): **nikto**, **whatweb**, **dnsenum**, **nmap**,
-**curl**. A sixth, **hydra**, doesn't fit that flat shape — it needs a
-scratch directory pre-populated with credential files before the process
-starts — so it's hand-written in `cism/agent/tools/credentials.py` instead.
+**curl**, **sqlmap**, **gobuster**, **wafw00f**. A ninth, **hydra**, doesn't
+fit that flat shape — it needs a scratch directory pre-populated with
+credential files before the process starts — so it's hand-written in
+`cism/agent/tools/credentials.py` instead.
 `build_toolkit(CATALOG, [hydra], EXTRACTORS)` (`run_agent.py`) assembles all
-six plus a synthetic `tool_help` tool into one `ToolRegistry`. Extending the
+nine plus a synthetic `tool_help` tool into one `ToolRegistry`. Extending the
 catalog with another flag-and-target-shaped tool is a `catalog.yaml` row, not
 a new Python function; a tool with hydra's shape needs its own hand-written
 function next to `credentials.py`.
@@ -422,7 +533,8 @@ function next to `credentials.py`.
 seam every real tool call runs through. On Debian/Ubuntu/Kali:
 
 ```bash
-sudo apt update && sudo apt install -y nmap curl nikto whatweb dnsenum hydra bubblewrap
+sudo apt update && sudo apt install -y nmap curl nikto whatweb dnsenum hydra \
+    sqlmap gobuster wafw00f bubblewrap
 ```
 
 `hydra`'s `userlist`/`passwordlist` arguments only ever select one of two
@@ -612,7 +724,7 @@ cism/agent/            the LangGraph-backed core — see "The agent core"
   logging.py            JSONL operational logging, retention TTL + /replay's read path
   tools/                ToolRegistry (hard allowlist), catalog assembly, dummy_nmap/dummy_msfconsole
     catalog.py             ToolSpec/Flag — the data-driven tool schema
-    catalog.yaml           the 5 declared tools: nikto, whatweb, dnsenum, nmap, curl
+    catalog.yaml           the 8 declared tools: nikto, whatweb, dnsenum, nmap, curl, sqlmap, gobuster, wafw00f
     credentials.py         hydra — hand-written, doesn't fit catalog.yaml's flat shape
     sandbox.py             run_sandboxed() — the shared execution seam for real tools
     registry.py            ToolRegistry — the hard allowlist
