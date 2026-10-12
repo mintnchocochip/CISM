@@ -113,7 +113,12 @@ class LangGraphAgent:
         graded_propagation: bool = False,
         privacy: PrivacyGateway | None = None,
     ) -> None:
-        self.events: asyncio.Queue[AgentEvent] = asyncio.Queue()
+        # E5 (AUDIT.md): bounded so a TUI that falls behind applies real
+        # backpressure (both put() call sites below are awaited) instead of
+        # this queue growing without limit. 512 is generous for normal
+        # per-turn event volume — this is a leak guard, not a throttle meant
+        # to bind under ordinary load.
+        self.events: asyncio.Queue[AgentEvent] = asyncio.Queue(maxsize=512)
         if llm is None:
             self._llm, self._endpoint, self._model_name, self._key_env_var = _llm_from_env()
         else:

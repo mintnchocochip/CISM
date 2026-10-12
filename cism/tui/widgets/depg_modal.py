@@ -94,6 +94,12 @@ class DEPGModal(ModalScreen[None]):
         self, nodes: tuple[DEPGNode, ...], edges: tuple[DEPGEdge, ...]
     ) -> None:
         super().__init__()
+        self._index(nodes, edges)
+
+    def _index(self, nodes: tuple[DEPGNode, ...], edges: tuple[DEPGEdge, ...]) -> None:
+        """Builds every lookup table derived from (nodes, edges) — called
+        from __init__, and again from refresh_data (E4) when the modal is
+        updated in place rather than rebuilt from scratch."""
         self.nodes = nodes
         self.edges = edges
         self._by_id = {node.id: node for node in nodes}
@@ -118,7 +124,7 @@ class DEPGModal(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="depg-frame"):
-            yield Static(self._title(), classes="modal-title")
+            yield Static(self._title(), id="depg-title", classes="modal-title")
             with Horizontal(id="depg-split"):
                 with Vertical(id="depg-left"):
                     yield DEPGTree()
@@ -166,9 +172,33 @@ class DEPGModal(ModalScreen[None]):
 
     # -- tree construction -------------------------------------------------
 
+    def refresh_data(self, nodes: tuple[DEPGNode, ...], edges: tuple[DEPGEdge, ...]) -> None:
+        """E4: called in place on an already-mounted modal (instead of the
+        caller pushing a brand new one) when a DEPGUpdated event arrives
+        while this modal is open. Rebuilding the tree is unavoidable —
+        Textual's Tree has no structural diff API, and this stays a plain
+        ASCII tree on purpose (see the module docstring) — but the cursor
+        would otherwise snap back to the first root on every single update
+        during a live run, which is what actually made this feel broken."""
+        tree = self.query_one(DEPGTree)
+        selected_id = (
+            tree.cursor_node.data.id
+            if tree.cursor_node is not None and tree.cursor_node.data is not None
+            else None
+        )
+        self._index(nodes, edges)
+        self.query_one("#depg-title", Static).update(self._title())
+        self._build_tree()
+        if selected_id is not None:
+            restored = self._tree_nodes_by_id.get(selected_id)
+            if restored is not None:
+                tree.move_cursor(restored)
+                self._show_node(restored.data)
+
     def _build_tree(self) -> None:
         tree = self.query_one(DEPGTree)
         tree.clear()
+        self._tree_nodes_by_id: dict[str, TreeNode[DEPGNode]] = {}
         children: dict[str, list[tuple[str, float]]] = {}
         for child, parent in self._parent_of.items():
             children.setdefault(parent, []).append((child, self._primary_weight[child]))
@@ -215,6 +245,7 @@ class DEPGModal(ModalScreen[None]):
         branch = parent.add(label, data=node) if kids else parent.add_leaf(
             label, data=node
         )
+        self._tree_nodes_by_id[node.id] = branch
         for child_id, child_weight in kids:
             child = self._by_id.get(child_id)
             if child is not None:

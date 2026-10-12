@@ -100,6 +100,16 @@ Set the variable in your shell and point /api at the endpoint only:
   export {var}=...
   /api https://your-endpoint/v1"""
 
+#: E5: three full-snapshot event types — each carries complete current
+#: state (every node, every row, the running token total), not a delta —
+#: so under a burst, only the last one queued is ever worth rendering.
+#: Narration/ToolStarted/ToolFinished/etc. are deliberately excluded:
+#: those are genuinely incremental and coalescing them would drop content.
+_COALESCIBLE_EVENT_TYPES = (DEPGUpdated, MemoryUpdated, TokenDelta)
+#: How many events the pump applies before yielding to the event loop —
+#: keeps a burst from starving the UI's own message processing.
+_PUMP_YIELD_EVERY = 50
+
 
 class CISMApp(App[None]):
     """Cyber Investigation State Memory — terminal surface."""
@@ -130,6 +140,14 @@ class CISMApp(App[None]):
         self._phase_history: list[PhaseTransition] = []
         self._last_metrics: RunMetrics | None = None
         self.memory_terms: SalienceTerms | None = None
+        #: E4: a ref to the currently-mounted modal, so a DEPGUpdated/
+        #: MemoryUpdated arriving while it's open can update it in place
+        #: instead of the handler pushing a whole new screen (which reset
+        #: the tree/table cursor back to the top on every single event).
+        #: Cleared by push_screen's dismiss callback, never left dangling
+        #: once the modal actually closes.
+        self._depg_modal: DEPGModal | None = None
+        self._memory_modal: MemoryModal | None = None
         self.token_total = 0
         self.unknown_events = 0
         self.model = ""
@@ -185,10 +203,31 @@ class CISMApp(App[None]):
 
     @work(group="pump", exclusive=False, thread=False)
     async def pump(self) -> None:
-        """Drain agent events forever. The only writer of transcript state."""
+        """Drain agent events forever. The only writer of transcript state.
+
+        E5: a queued run of the exact same full-snapshot event type
+        (_COALESCIBLE_EVENT_TYPES) collapses to its last member before
+        being applied — an older one in the run is already stale by the
+        time this loop would get to it. Only ever collapses a contiguous
+        run of one type sitting at the front of the queue; a differently
+        typed event in between is held and applied next, never skipped
+        over, so ordering between distinct event types is unaffected.
+        Every event this loop decides to apply still gets task_done()
+        only *after* _apply() returns — tests' drain() depends on that to
+        mean "the UI reflects this event", not just "it left the queue";
+        a superseded event's task_done() fires immediately instead, since
+        it will never be applied and there's nothing left to wait for.
+        """
         await self.agent.start()
+        held: AgentEvent | None = None
+        processed = 0
         while True:
-            event = await self.agent.events.get()
+            if held is not None:
+                event, held = held, None
+            else:
+                event = await self.agent.events.get()
+            if isinstance(event, _COALESCIBLE_EVENT_TYPES):
+                event, held = self._coalesce(event)
             try:
                 self._apply(event)
             except Exception:
@@ -196,6 +235,24 @@ class CISMApp(App[None]):
                 self.unknown_events += 1
             finally:
                 self.agent.events.task_done()
+            processed += 1
+            if processed >= _PUMP_YIELD_EVERY:
+                processed = 0
+                await asyncio.sleep(0)
+
+    def _coalesce(self, event: AgentEvent) -> tuple[AgentEvent, AgentEvent | None]:
+        """Drains any already-queued run of the exact same event type as
+        ``event``, keeping only the last. Returns that last event, plus
+        the first differently-typed event found (to apply next), or None
+        if the queue ran dry first."""
+        while not self.agent.events.empty():
+            next_event = self.agent.events.get_nowait()
+            if isinstance(next_event, type(event)):
+                self.agent.events.task_done()
+                event = next_event
+            else:
+                return event, next_event
+        return event, None
 
     def _apply(self, event: AgentEvent) -> None:
         """Apply one event to the UI. Total: unknown events are dropped."""
@@ -273,6 +330,8 @@ class CISMApp(App[None]):
             self.depg_nodes = event.nodes
             self.depg_edges = event.edges
             self.status.depg_nodes = len(event.nodes)
+            if self._depg_modal is not None:
+                self._depg_modal.refresh_data(event.nodes, event.edges)
 
         elif isinstance(event, MemoryUpdated):
             self.memory_rows = event.rows
@@ -281,6 +340,8 @@ class CISMApp(App[None]):
             self.status.mem_t1 = sum(1 for r in event.rows if r.tier == "T1")
             self.status.mem_t2 = sum(1 for r in event.rows if r.tier == "T2")
             self.status.mem_t3 = sum(1 for r in event.rows if r.tier == "T3")
+            if self._memory_modal is not None:
+                self._memory_modal.refresh_data(event.rows, self.memory_terms)
 
         elif isinstance(event, TokenDelta):
             self.token_total = event.total
@@ -563,12 +624,16 @@ class CISMApp(App[None]):
     def action_show_depg(self) -> None:
         if len(self.screen_stack) > 1:
             return
-        self.push_screen(DEPGModal(self.depg_nodes, self.depg_edges))
+        modal = DEPGModal(self.depg_nodes, self.depg_edges)
+        self._depg_modal = modal
+        self.push_screen(modal, callback=lambda _: setattr(self, "_depg_modal", None))
 
     def action_show_memory(self) -> None:
         if len(self.screen_stack) > 1:
             return
-        self.push_screen(MemoryModal(self.memory_rows, self.memory_terms))
+        modal = MemoryModal(self.memory_rows, self.memory_terms)
+        self._memory_modal = modal
+        self.push_screen(modal, callback=lambda _: setattr(self, "_memory_modal", None))
 
     def action_toggle_output(self) -> None:
         entry = self.transcript.last_collapsible()

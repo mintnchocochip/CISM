@@ -376,8 +376,8 @@ async def test_empty_submission_is_ignored(app_and_agent) -> None:
 # -- spinner and status -----------------------------------------------------
 
 
-async def test_indicator_renders_the_specified_line(app_and_agent) -> None:
-    app, _ = app_and_agent
+async def test_indicator_renders_the_specified_line(quiet_app) -> None:
+    app, _ = quiet_app
     async with app.run_test(size=(100, 24)) as pilot:
         indicator = app.indicator
         indicator.start("recon", token_base=0)
@@ -389,8 +389,8 @@ async def test_indicator_renders_the_specified_line(app_and_agent) -> None:
         assert indicator.verb in VERBS["recon"]
 
 
-async def test_indicator_verb_list_follows_the_phase(app_and_agent) -> None:
-    app, _ = app_and_agent
+async def test_indicator_verb_list_follows_the_phase(quiet_app) -> None:
+    app, _ = quiet_app
     async with app.run_test(size=(100, 24)) as pilot:
         indicator = app.indicator
         indicator.start("recon")
@@ -400,8 +400,8 @@ async def test_indicator_verb_list_follows_the_phase(app_and_agent) -> None:
         assert indicator.verb in VERBS["exploitation"]
 
 
-async def test_indicator_glyph_cycles(app_and_agent) -> None:
-    app, _ = app_and_agent
+async def test_indicator_glyph_cycles(quiet_app) -> None:
+    app, _ = quiet_app
     async with app.run_test(size=(100, 24)) as pilot:
         indicator = app.indicator
         indicator.start("recon")

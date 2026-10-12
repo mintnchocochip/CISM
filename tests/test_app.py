@@ -7,7 +7,18 @@ from dataclasses import dataclass
 
 from conftest import drain, replay_all, settle
 
-from cism.tui.events import Narration, ScopeChanged, ToolFailed, ToolFinished, ToolStarted
+from cism.tui.events import (
+    DEPGEdge,
+    DEPGNode,
+    DEPGUpdated,
+    MemoryRow,
+    MemoryUpdated,
+    Narration,
+    ScopeChanged,
+    ToolFailed,
+    ToolFinished,
+    ToolStarted,
+)
 from cism.tui.redact import MASK
 from cism.tui.widgets.depg_modal import DEPGModal, DEPGTree
 from cism.tui.widgets.memory_modal import MemoryModal, MemoryTable
@@ -205,6 +216,139 @@ async def test_ctrl_m_opens_and_escape_closes_the_memory_view(app_and_agent) -> 
         await pilot.press("escape")
         await settle(pilot, 8)
         assert not isinstance(app.screen, MemoryModal)
+
+
+def _depg_node(node_id: str, state: str = "resolved") -> DEPGNode:
+    return DEPGNode(id=node_id, cause_class="open-port", target="10.0.0.5", generality=0.5, state=state)
+
+
+async def test_depg_updated_refreshes_the_open_modal_in_place(quiet_app) -> None:
+    """E4: a second DEPGUpdated arriving while the modal is open must
+    update the same modal instance, not push a new one on top of it."""
+    app, agent = quiet_app
+    async with app.run_test(size=(120, 34)) as pilot:
+        agent.events.put_nowait(DEPGUpdated(nodes=(_depg_node("a"),), edges=()))
+        await drain(pilot, agent)
+        await pilot.press("ctrl+d")
+        await settle(pilot, 12)
+        modal = app.screen
+        assert isinstance(modal, DEPGModal)
+
+        agent.events.put_nowait(
+            DEPGUpdated(nodes=(_depg_node("a"), _depg_node("b")), edges=())
+        )
+        await drain(pilot, agent)
+
+        assert app.screen is modal
+        assert len(modal.nodes) == 2
+
+
+async def test_depg_modal_refresh_preserves_the_selected_node(quiet_app) -> None:
+    """E4: the cursor must stay on the node the operator selected across a
+    live update, not snap back to the first root on every event."""
+    app, agent = quiet_app
+    async with app.run_test(size=(120, 34)) as pilot:
+        agent.events.put_nowait(
+            DEPGUpdated(nodes=(_depg_node("a"), _depg_node("b")), edges=())
+        )
+        await drain(pilot, agent)
+        await pilot.press("ctrl+d")
+        await settle(pilot, 12)
+        modal = app.screen
+        assert isinstance(modal, DEPGModal)
+        tree = modal.query_one(DEPGTree)
+        tree.move_cursor(modal._tree_nodes_by_id["b"])
+        await settle(pilot, 4)
+
+        agent.events.put_nowait(
+            DEPGUpdated(
+                nodes=(_depg_node("a"), _depg_node("b"), _depg_node("c")), edges=()
+            )
+        )
+        await drain(pilot, agent)
+
+        assert tree.cursor_node is not None
+        assert tree.cursor_node.data.id == "b"
+
+
+async def test_depg_modal_refresh_falls_back_when_the_selected_node_is_gone(
+    quiet_app,
+) -> None:
+    """If the selected node was pruned away, refresh must not crash or
+    leave the cursor pointing at a now-nonexistent tree node."""
+    app, agent = quiet_app
+    async with app.run_test(size=(120, 34)) as pilot:
+        agent.events.put_nowait(
+            DEPGUpdated(nodes=(_depg_node("a"), _depg_node("b")), edges=())
+        )
+        await drain(pilot, agent)
+        await pilot.press("ctrl+d")
+        await settle(pilot, 12)
+        modal = app.screen
+        assert isinstance(modal, DEPGModal)
+        tree = modal.query_one(DEPGTree)
+        tree.move_cursor(modal._tree_nodes_by_id["b"])
+        await settle(pilot, 4)
+
+        agent.events.put_nowait(DEPGUpdated(nodes=(_depg_node("a"),), edges=()))
+        await drain(pilot, agent)
+
+        assert app.screen is modal
+        assert len(modal.nodes) == 1
+
+
+def _memory_row(row_id: str, tier: str = "T1") -> MemoryRow:
+    return MemoryRow(id=row_id, tier=tier, phase_tag="recon", salience=1.0, age_s=1.0, snippet=row_id)
+
+
+async def test_memory_updated_refreshes_the_open_modal_in_place(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(120, 34)) as pilot:
+        agent.events.put_nowait(MemoryUpdated(rows=(_memory_row("m1"),)))
+        await drain(pilot, agent)
+        await pilot.press("ctrl+m")
+        await settle(pilot, 12)
+        modal = app.screen
+        assert isinstance(modal, MemoryModal)
+
+        agent.events.put_nowait(
+            MemoryUpdated(rows=(_memory_row("m1"), _memory_row("m2")))
+        )
+        await drain(pilot, agent)
+
+        assert app.screen is modal
+        assert len(modal.rows) == 2
+
+
+async def test_pump_coalesces_a_burst_of_depg_updated_to_the_last_one(quiet_app) -> None:
+    """E5: three DEPGUpdated events queued back-to-back before the pump
+    gets to any of them must apply only the last — the first two are
+    already stale (each carries full state, not a delta)."""
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        agent.events.put_nowait(DEPGUpdated(nodes=(_depg_node("a"),), edges=()))
+        agent.events.put_nowait(DEPGUpdated(nodes=(_depg_node("a"), _depg_node("b")), edges=()))
+        agent.events.put_nowait(
+            DEPGUpdated(nodes=(_depg_node("a"), _depg_node("b"), _depg_node("c")), edges=())
+        )
+        await drain(pilot, agent)
+
+        assert len(app.depg_nodes) == 3
+
+
+async def test_pump_coalescing_does_not_skip_a_different_event_type(quiet_app) -> None:
+    """A PhaseChanged sitting between two DEPGUpdated events must still be
+    applied — coalescing only ever collapses a run of the *same* type."""
+    app, agent = quiet_app
+    async with app.run_test(size=(100, 30)) as pilot:
+        agent.events.put_nowait(DEPGUpdated(nodes=(_depg_node("a"),), edges=()))
+        agent.events.put_nowait(ScopeChanged(action="add", target="10.0.0.5"))
+        agent.events.put_nowait(DEPGUpdated(nodes=(_depg_node("a"), _depg_node("b")), edges=()))
+        await drain(pilot, agent)
+
+        notes = [str(getattr(c, "text", "")) for c in app.transcript.children]
+        assert any("scope: added 10.0.0.5" in n for n in notes)
+        assert len(app.depg_nodes) == 2
 
 
 async def test_escape_interrupts_a_running_node(quiet_app) -> None:

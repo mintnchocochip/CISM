@@ -63,7 +63,7 @@ class MemoryModal(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="memory-frame"):
-            yield Static(self._title(), classes="modal-title")
+            yield Static(self._title(), id="memory-title", classes="modal-title")
             yield MemoryTable(id="memory-table", cursor_type="row", zebra_stripes=False)
             yield Static(self._equation(None), id="memory-equation",
                          classes="modal-footer")
@@ -87,6 +87,32 @@ class MemoryModal(ModalScreen[None]):
         table.focus()
 
     # -- rows --------------------------------------------------------------
+
+    def refresh_data(self, rows: tuple[MemoryRow, ...], terms: SalienceTerms | None) -> None:
+        """E4: called in place on an already-mounted modal instead of the
+        caller pushing a brand new one on every MemoryUpdated — without
+        this, re-pushing a fresh modal while the operator was scrolled
+        down the sorted list snapped them back to whatever the new sort
+        happened to put first."""
+        table = self.query_one(MemoryTable)
+        selected_id = None
+        if table.cursor_row is not None:
+            ordered = self._sorted_rows()
+            if 0 <= table.cursor_row < len(ordered):
+                selected_id = ordered[table.cursor_row].id
+
+        self.rows = rows
+        self.terms = terms
+        self.query_one("#memory-title", Static).update(self._title())
+        self._fill()
+
+        if selected_id is not None:
+            new_ordered = self._sorted_rows()
+            for index, row in enumerate(new_ordered):
+                if row.id == selected_id:
+                    table.move_cursor(row=index)
+                    self._update_equation(row)
+                    break
 
     def _decayed(self, row: MemoryRow) -> float:
         return self.terms.score(row) if self.terms else row.salience
