@@ -1,0 +1,57 @@
+1) G. Deng et al., “PentestGPT: Evaluating and harnessing large language models for automated penetration testing,” Proc. 33rd USENIX Security Symposium, 2024. https://www.usenix.org/conference/usenixsecurity24/presentation/deng
+
+2) Happe, Andreas & Cito, Jürgen. (2023). Getting pwn’d by AI: Penetration Testing with Large Language Models. 2082-2086. 10.1145/3611643.3613083. 
+
+3) Happe, Andreas & Cito, Jürgen. (2026). Cochise: A Reference Harness for Autonomous Penetration Testing. 10.48550/arXiv.2605.11671. 
+
+4) Muzsai, Lajos & Imolai, David & Lukács, András. (2024). HackSynth: LLM Agent and Evaluation Framework for Autonomous Penetration Testing. 10.48550/arXiv.2412.01778. 
+
+5) P. D. Luong et al., “xOffense: An autonomous multi-agent framework for penetration testing with domain-adapted large language models,” 2025. DOI: 10.48550/arXiv.2509.13021
+
+6) Wu, Benlong & Chen, Guoqiang & Chen, Kejiang & Shang, Xiuwei & Han, Jiapeng & He, Yanru & Zhang, Weiming & Yu, Nenghai. (2025). AutoPT: How Far Are We From the Fully Automated Web Penetration Testing?. IEEE Transactions on Information Forensics and Security. 20. 9657-9672. 10.1109/TIFS.2025.3601343. 
+
+7) Wang, Wenhao & Gu, Hao & Wu, Zhixuan & Chen, Hao & Chen, Xingguo & Shi, Fan. (2025). PTFusion: LLM-driven Context-Aware Knowledge Fusion for Web Penetration Testing. Information Fusion. 127. 103731. 10.1016/j.inffus.2025.103731. 
+
+8) Liu, Yu & Man, Hong. (2005). Network vulnerability assessment using Bayesian networks. Proc SPIE. 61. 10.1117/12.604240. 
+
+9) Luis Muñoz-González, Daniele Sgandurra, Andrea Paudice, and Emil C. Lupu. 2017. Efficient Attack Graph Analysis through Approximate Inference. ACM Trans. Priv. Secur. 20, 3, Article 10 (August 2017), 30 pages. https://doi.org/10.1145/3105760
+
+10) Kuwaiti, Meera & Ismail, Heba. (2025). Adversarial Attacks on Large Language Models: A Survey. 10.1007/978-981-96-9248-4_40. 
+
+11) Zhiyu Liao, Kang Chen, Yuanguo Lin, Kangkang Li, Yunxuan Liu, Hefeng Chen, Xingwang Huang, Yuanhui Yu, Attack and defense techniques in large language models: A survey and new perspectives, Neural Networks, Volume 196, 2026, 108388, ISSN0893-6080,https://doi.org/10.1016/j.neunet.2025.108388.
+
+12) Xu, Wenrui & Parhi, Keshab. (2025). A Survey of Attacks on Large Language Models. 10.48550/arXiv.2505.12567. 
+
+13) Barcha Correia, Pedro & Achjian, Ryan & Oliveira, Diego & Maria, Ygor & Hayashi, Victor & Lopes, Marcos & Miers, Charles & Simplicio, Marcos. (2026). A Systematic Literature Review on LLM Defenses Against Prompt Injection and Jailbreaking: Expanding NIST Taxonomy. 10.48550/arXiv.2601.22240. 
+
+14) Yuqiong Sun, David Safford, Mimi Zohar, Dimitrios Pendarakis, Zhongshu Gu, and Trent Jaeger. 2018. Security namespace: making Linux security frameworks available to containers. In Proceedings of the 27th USENIX Conference on Security Symposium (SEC'18). USENIX Association, USA, 1423–1439.
+
+15) Thalji, Nisrean & Raza, Ali & Islam, Mohammad & Abdelsamee, Nagwan & Jamjoom, Mona. (2023). AE-Net: Novel Autoencoder-Based Deep Features for SQL Injection Attack Detection. IEEE Access. 11. 135507-135516. 10.1109/ACCESS.2023.3337645. 
+
+16) Hasan, Musaab & Balbahaith, Zayed & Tarique, Mohammed. (2019). Detection of SQL Injection Attacks: A Machine Learning Approach. 1-6. 10.1109/ICECTA48151.2019.8959617. 
+
+17) Singh, Bhanu & Singhal, Prof. (2024). Detection of SQL Injection Attack Using Machine Learning Techniques. International Journal of Scientific Research in Science and Technology. 11. 780-790. 10.32628/IJSRST24114323. 
+
+18) Casmiry E, Mduma N and Sinde R (2025) Enhanced SQL injection detection using chi-square feature selection and machine learning classifiers. Front. Big Data 8:1686479. doi: 10.3389/fdata.2025.1686479
+
+19) Tsai, Chih-Fong & Hsu, Yu-Feng & Lin, Chia-Ying & Lin, Wei-Yang. (2009). Intrusion detection by machine learning: A review. Expert Systems with Applications. 36. 11994-12000. 10.1016/j.eswa.2009.05.029. 
+
+20) Liu, Hongyu & Lang, Bo. (2019). Machine Learning and Deep Learning Methods for Intrusion Detection Systems: A Survey. Applied Sciences. 9. 4396. 10.3390/app9204396. 
+
+21) Issa, Melad & Aljanabi, Mohammad & Muhialdeen, Hassan. (2024). Systematic literature review on intrusion detection systems: Research trends, algorithms, methods, datasets, and limitations. Journal of Intelligent Systems. 33. 10.1515/jisys-2023-0248. 
+
+22) Wang, Lei & Ma, Chen & Feng, Xueyang & Zhang, Zeyu & Yang, Hao & Zhang, Jingsen & Chen, Zhiyuan & Tang, Jiakai & Chen, Xu & Lin, Yankai & Zhao, Wayne & Wei, Zhewei & Wen, Jirong. (2024). A survey on large language model based autonomous agents. Frontiers of Computer Science. 18. 10.1007/s11704-024-40231-1. 
+
+23) Lewis, Patrick & Perez, Ethan & Piktus, Aleksandara & Petroni, Fabio & Karpukhin, Vladimir & Goyal, Naman & Küttler, Heinrich & Lewis, Mike & Yih, Wen-tau & Rocktäschel, Tim & Riedel, Sebastian & Kiela, Douwe. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. 10.48550/arXiv.2005.11401. 
+
+24) Utpala, Saiteja & Hooker, Sara & Chen, Pin. (2023). Locally Differentially Private Document Generation Using Zero Shot Prompting. 8442-8457. 10.18653/v1/2023.findings-emnlp.566. 
+
+25) Marshall, Ben & Li, Sirui & Meka, Shiv & Liu, Wei. (2025). Differential Privacy on Large Language Models for Privacy Preserving Clinical Coding. 1-8. 0.1109/IJCNN64981.2025.11229049. 
+
+26) Feng, Runhan & Yan, Ziyang & Peng, Shiyan & Zhang, Yuanyuan. (2022). Automated detection of password leakage from public GitHub repositories. 175-186. 10.1145/3510003.3510150. 
+
+27) “Systems and methods for automated penetration testing,” U.S. Patent 11,252,172 B1, Feb. 15, 2022.
+
+28) “Systems, methods, and storage media for conducting security penetration testing,” U.S. Patent 12,074,896 B2, 2024.
+
+29) “Systems and methods for rules-based automated penetration testing to certify release candidates,” U.S. Patent 11,921,862 B2, 2024.
