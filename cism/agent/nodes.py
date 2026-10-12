@@ -165,20 +165,29 @@ _FALLBACK_HINT = (
 #: the target that was already on the line above. Both are prompt gaps,
 #: not model-capability gaps: the same model handled a single, explicit
 #: instruction (name the tool, give the target) correctly on the first try.
-#: 2026-10-12, same model, a second live run: a different concrete miss —
-#: the literal placeholder token "<target>" used as a tool's target
-#: argument instead of the real value given on the target line above.
-#: Added as its own explicit anti-example because the existing target-line
-#: instruction ("use it directly") did not stop this on its own.
 _ONE_CALL_RULE = (
     "Make exactly one tool call per turn, using the tool-calling mechanism "
     "— never write out a list of several planned calls as text or JSON. "
     "Decide the next single call, see its result, then decide the one "
-    "after that. If the request covers several things, pick the single "
-    "most useful next call and make it now — do not describe a plan "
-    "instead of acting. Every argument must be a real, concrete value: "
-    'never write a placeholder like "<target>" or "<host>" — use the '
-    "exact target value given above, verbatim."
+    "after that."
+)
+
+#: 2026-10-12, live: a bare "HI" with no scan request triggered a full,
+#: unprompted nmap -> whatweb -> nikto chain against the configured
+#: target. Root cause: every phase prompt below is phrased as a standing
+#: order ("Start with nmap against the target") with nothing conditioning
+#: it on the user's current message actually calling for it — true
+#: regardless of phase, so this is prepended once rather than reworded
+#: five times. The phase text still answers "what tool, once something
+#: needs doing"; this answers "should anything be done on this turn at
+#: all", which the phase text was never written to cover.
+_ACT_ONLY_WHEN_ASKED = (
+    "Only call a tool when the user's current message actually calls for "
+    "it — a new scan, a continuation of testing already underway, or an "
+    "explicit request. A greeting, small talk, or a question about status "
+    "or findings is not a request to act: answer in plain text instead. "
+    "Having a target configured and tools available is not, by itself, a "
+    "reason to call one."
 )
 
 
