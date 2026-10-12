@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from langchain_core.tools import BaseTool, StructuredTool
-from pydantic import create_model
+from pydantic import Field, create_model
 
 from cism.agent.tools.catalog import Capability, ToolSpec
 from cism.agent.tools.registry import ToolRegistry
@@ -48,7 +48,23 @@ def _args_model(name: str, spec: ToolSpec):
     for flag_name, flag in spec.flags.items():
         fields[flag_name] = (bool, False) if flag.kind == "bool" else (str | None, None)
     if spec.allow_raw:
-        fields["extra"] = (str | None, None)
+        # Explicit about what belongs here: without this, "extra" is a bare
+        # unlabeled field and the model guesses — confirmed live
+        # 2026-10-12, sqlmap once got extra="service=http", a free-form
+        # token no CLI flag here resembles.
+        fields["extra"] = (
+            str | None,
+            Field(
+                default=None,
+                description=(
+                    "Extra raw CLI flags only, space-separated exactly as "
+                    "they'd appear on the command line, e.g. '-p 1-1000' or "
+                    "'--level 3'. Never a bare key=value token — if it's "
+                    "not a real flag this tool's own CLI takes, leave this "
+                    "unset."
+                ),
+            ),
+        )
     return create_model(f"{name.title()}Args", **fields)
 
 

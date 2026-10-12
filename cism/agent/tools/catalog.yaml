@@ -52,7 +52,13 @@ nmap:
 curl:
   binary: curl
   capability: reads
-  description: Fetch a URL and return its response.
+  description: >-
+    Fetch one specific, already-known URL and return its response — for
+    checking a single page/header/redirect you already have the path for.
+    Not for discovering unknown paths or brute-forcing directories one
+    guess at a time; use gobuster for that instead. Confirmed live
+    2026-10-12: asked to brute-force directories, the model called curl
+    against a single guessed path instead of gobuster.
   allow_raw: true
   # D7: without this, "curl file:///etc/passwd" is a live local-file read
   # through a tool the model thinks only hits the network.

@@ -22,11 +22,18 @@ def test_hydra_materializes_explicit_credential_lists_to_scratch_files(monkeypat
         # The scratch dir is cleaned up as soon as hydra()'s `with` block
         # exits, right after this call returns — so the credential files
         # must be read here, while they still exist, not after invoke().
+        # argv itself carries only the bare filename ("users.txt"), not an
+        # absolute path — that's deliberate (see credentials.py's
+        # _cred_flag): BubblewrapRunner binds this cwd to /work and
+        # --chdir's into it, so hydra resolves the filename there, not at
+        # the host path. This fake resolves it the same way, against the
+        # cwd run_sandboxed was actually called with.
         captured["argv"] = argv
-        userfile = argv[argv.index("-L") + 1]
-        passfile = argv[argv.index("-P") + 1]
-        captured["users"] = Path(userfile).read_text().splitlines()
-        captured["passwords"] = Path(passfile).read_text().splitlines()
+        cwd = kwargs["cwd"]
+        userfile = cwd / argv[argv.index("-L") + 1]
+        passfile = cwd / argv[argv.index("-P") + 1]
+        captured["users"] = userfile.read_text().splitlines()
+        captured["passwords"] = passfile.read_text().splitlines()
         return "ok"
 
     monkeypatch.setattr(base_module, "run_sandboxed", fake)
