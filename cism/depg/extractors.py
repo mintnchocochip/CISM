@@ -1,7 +1,7 @@
 """Real cause-class extractors: regex-based NmapExtractor/HydraExtractor
 parsing each tool's default plain-text output, plus LLMExtractor as the
 fallback for any tool without a hand-written parser, and EXTRACTORS, the
-tool-name -> extractor dict for the two regex-based ones.
+tool-name -> extractor dict for the regex-based ones.
 
 LLMExtractor's structured-output call is pluggable (ExtractionBackend):
 ChatModelExtractionBackend for LangChain models, LlamaCppExtractionBackend
@@ -9,6 +9,7 @@ for a llama.cpp server via json_schema. See AUDIT.md G1."""
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import datetime
@@ -35,8 +36,10 @@ __all__ = [
     "HydraExtractor",
     "LLMExtractor",
     "LlamaCppExtractionBackend",
+    "NiktoExtractor",
     "NmapExtractor",
     "SqlmapExtractor",
+    "Wafw00fExtractor",
 ]
 
 _OPEN_PORT_RE = re.compile(r"^(\d+)/(tcp|udp)\s+open\s+(\S+)", re.MULTILINE)
@@ -46,6 +49,18 @@ _HYDRA_SUCCESS_RE = re.compile(r"login:\s*(\S+)\s+password:\s*(\S+)")
 #: between them, hence the optional \n\s* rather than a fixed gap).
 _SQLMAP_PARAM_RE = re.compile(r"Parameter:\s*(\S+)\s*\((\w+)\)\s*\n\s*Type:\s*(.+)")
 _GOBUSTER_HIT_RE = re.compile(r"^(/\S+)\s+\(Status:\s*(\d+)\)", re.MULTILINE)
+#: nikto's own banner line — same high-value-signal shape as nmap's service
+#: column, worth its own node rather than folding into the generic findings below.
+_NIKTO_SERVER_RE = re.compile(r"^\+ Server:\s*(.+)$", re.MULTILINE)
+#: nikto 2.6's stable per-finding reference id, e.g. "+ [600050] Apache/2.4.25
+#: appears to be outdated." The same id repeats across unrelated findings
+#: (e.g. one "missing security header" id for every header it checks), so the
+#: id alone can't be the dedup/distinguishing key — the full matched text is
+#: (see NiktoExtractor's signal). Everything *without* this tag (Target
+#: IP/Hostname/Port, Start/End Time, "No CGI Directories found", the
+#: requests/host-count summary lines) is scan housekeeping, not a finding,
+#: and is deliberately left unmatched rather than swept in as noise.
+_NIKTO_FINDING_RE = re.compile(r"^\+ \[(\d+)\]\s*(.+)$", re.MULTILINE)
 
 
 def _now() -> str:
@@ -234,6 +249,104 @@ class GobusterExtractor:
         return Extraction(nodes=nodes)
 
 
+class NiktoExtractor:
+    """nikto had no dedicated extractor until now, despite being the main
+    VULN-phase tool — it fell through LLMExtractor and, on any backend
+    hiccup, further to GenericExtractor, producing one opaque hash-signal
+    node (cause_class=="nikto") instead of real findings. nikto's own
+    output has the same stable-grammar shape nmap's does; there was no
+    real reason to depend on a local model for it at all."""
+
+    def extract(
+        self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
+    ) -> Extraction:
+        content = str(message.content)
+        call_id = _call_id(call, message)
+        nodes = []
+
+        server_match = _NIKTO_SERVER_RE.search(content)
+        if server_match:
+            signal = server_match.group(1).strip()
+            nodes.append(
+                Node(
+                    id=derive_node_id("server-banner", target, signal),
+                    cause_class="server-banner",
+                    target=target,
+                    signal=signal,
+                    evidence=[
+                        Evidence(
+                            timestamp=_now(), tool="nikto", exit_signal=f"Server: {signal}",
+                            tier="T2", source="deterministic", verdict="alive", call_id=call_id,
+                        )
+                    ],
+                )
+            )
+
+        for ref_id, text in _NIKTO_FINDING_RE.findall(content):
+            # Truncated, not the bare ref_id: the same id repeats across
+            # several distinct findings (see _NIKTO_FINDING_RE's comment),
+            # so the full text is what actually distinguishes siblings.
+            signal = f"[{ref_id}] {text.strip()}"[:160]
+            nodes.append(
+                Node(
+                    id=derive_node_id("nikto-finding", target, signal),
+                    cause_class="nikto-finding",
+                    target=target,
+                    signal=signal,
+                    evidence=[
+                        Evidence(
+                            timestamp=_now(), tool="nikto", exit_signal=signal,
+                            tier="T2", source="deterministic", verdict="alive", call_id=call_id,
+                        )
+                    ],
+                )
+            )
+        return Extraction(nodes=nodes)
+
+
+class Wafw00fExtractor:
+    """wafw00f is forced to ``-f json -o -`` in catalog.yaml, so parsing is
+    a straight ``json.loads`` of wafw00f's own result schema — never the
+    fragile, dynamically column-padded text table its default output
+    builds. One node: whether a WAF sits in front of the target (and
+    which), directly useful going into EXPLOITATION — expect filtering and
+    rate-limiting, or don't. Malformed/empty JSON (a crashed or killed
+    run) becomes zero nodes, not a crash here."""
+
+    def extract(
+        self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
+    ) -> Extraction:
+        call_id = _call_id(call, message)
+        content = str(message.content)
+        try:
+            results = json.loads(content)
+        except json.JSONDecodeError:
+            return Extraction(nodes=[])
+        if not isinstance(results, list):
+            return Extraction(nodes=[])
+
+        detected = [r for r in results if isinstance(r, dict) and r.get("detected")]
+        if detected:
+            names = sorted({str(r.get("firewall", "unknown")) for r in detected})
+            cause_class, signal = "waf-detected", ", ".join(names)
+        else:
+            cause_class, signal = "waf-absent", "no-waf-detected"
+
+        node = Node(
+            id=derive_node_id(cause_class, target, signal),
+            cause_class=cause_class,
+            target=target,
+            signal=signal,
+            evidence=[
+                Evidence(
+                    timestamp=_now(), tool="wafw00f", exit_signal=signal,
+                    tier="T2", source="deterministic", verdict="alive", call_id=call_id,
+                )
+            ],
+        )
+        return Extraction(nodes=[node])
+
+
 _MAX_PROMPT_CHARS = 6000
 
 _PROMPT = (
@@ -250,6 +363,11 @@ _PROMPT = (
     "Example: the line \"Server: Apache/2.2.8\" is cause_class "
     "'outdated-server-header', signal 'Apache/2.2.8', tier T2, verdict "
     "'alive', evidence_quote 'Server: Apache/2.2.8'.\n"
+    "Only report what the output below actually contains — never invent a "
+    "finding, a version number, or a path that isn't literally present. "
+    "If the same underlying fact appears on more than one line (e.g. the "
+    "same missing header repeated for several paths), report it once, not "
+    "once per line.\n"
     "If there is nothing worth reporting, return an empty findings list.\n\n"
     "{tool} output{truncated_note}:\n{output}"
 )
@@ -407,4 +525,6 @@ EXTRACTORS: dict[str, CauseExtractor] = {
     "hydra": HydraExtractor(),
     "sqlmap": SqlmapExtractor(),
     "gobuster": GobusterExtractor(),
+    "nikto": NiktoExtractor(),
+    "wafw00f": Wafw00fExtractor(),
 }

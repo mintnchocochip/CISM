@@ -114,3 +114,17 @@ def test_curl_catalog_row_builds_argv_from_target_and_extra() -> None:
     assert mock_run.call_args.args[0] == [
         "curl", "--proto", "-all,+http,+https", "-sS", "-L", "https://example.com",
     ]
+
+
+def test_wafw00f_catalog_row_puts_target_positionally_after_forced_flags() -> None:
+    """wafw00f's own CLI takes the target positionally (no -u/--url flag at
+    all) — unlike every other web-facing row in this catalog, which is why
+    this is tested explicitly rather than assumed from the others."""
+    (tool,) = build_catalog({"wafw00f": CATALOG["wafw00f"]})
+
+    with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
+        tool.invoke({"target": "http://10.0.0.5/"})
+
+    assert mock_run.call_args.args[0] == [
+        "wafw00f", "-f", "json", "-o", "-", "http://10.0.0.5/",
+    ]

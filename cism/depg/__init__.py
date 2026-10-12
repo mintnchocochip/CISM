@@ -24,8 +24,10 @@ from .extractors import (
     HydraExtractor,
     LlamaCppExtractionBackend,
     LLMExtractor,
+    NiktoExtractor,
     NmapExtractor,
     SqlmapExtractor,
+    Wafw00fExtractor,
 )
 from .graph import Graph
 from .node import Node
@@ -47,9 +49,11 @@ __all__ = [
     "HydraExtractor",
     "LLMExtractor",
     "LlamaCppExtractionBackend",
+    "NiktoExtractor",
     "Node",
     "NmapExtractor",
     "SqlmapExtractor",
     "SupportPolicy",
+    "Wafw00fExtractor",
     "reduce_state",
 ]

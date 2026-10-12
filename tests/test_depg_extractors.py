@@ -5,7 +5,14 @@ from __future__ import annotations
 
 from langchain_core.messages import ToolMessage
 
-from cism.depg.extractors import GobusterExtractor, HydraExtractor, NmapExtractor, SqlmapExtractor
+from cism.depg.extractors import (
+    GobusterExtractor,
+    HydraExtractor,
+    NiktoExtractor,
+    NmapExtractor,
+    SqlmapExtractor,
+    Wafw00fExtractor,
+)
 from cism.depg.graph import Graph
 
 _SQLMAP_VULNERABLE = """
@@ -136,6 +143,101 @@ def test_gobuster_extractor_one_node_per_hit_excluding_404() -> None:
     signals = {n.signal for n in extraction.nodes}
     assert signals == {"/admin (301)", "/login.php (200)"}
     assert all(n.cause_class == "exposed-path" for n in extraction.nodes)
+
+
+_NIKTO_OUTPUT = """- Nikto v2.6.1
+---------------------------------------------------------------------------
++ Target IP:          10.0.0.5
++ Target Hostname:    10.0.0.5
++ Target Port:        80
++ Start Time:         2026-10-12 06:00:00 (GMT0)
+---------------------------------------------------------------------------
++ Server: Apache/2.4.25 (Debian)
++ ERROR: Failed to check for updates:
++ No CGI Directories found (use '-C all' to force check all possible dirs). CGI tests skipped.
++ [600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).
++ [013587] /: Suggested security header missing: permissions-policy.
++ [013587] /: Suggested security header missing: referrer-policy.
++ [750500] /config/: Directory indexing found. See: CWE-548
++ 8003 requests: 0 errors and 14 items reported on the remote host
++ End Time:           2026-10-12 06:00:14 (GMT0) (14 seconds)
+---------------------------------------------------------------------------
++ 1 host(s) tested
+"""
+
+_WAFW00F_DETECTED = (
+    '[{"detected": true, "firewall": "Cloudflare", "manufacturer": "Cloudflare Inc.", '
+    '"trigger_url": null, "url": "http://10.0.0.5/"}]'
+)
+_WAFW00F_ABSENT = (
+    '[{"detected": false, "firewall": "None", "manufacturer": "None", '
+    '"trigger_url": null, "url": "http://10.0.0.5/"}]'
+)
+
+
+def test_nikto_extractor_splits_server_banner_from_findings() -> None:
+    message = ToolMessage(content=_NIKTO_OUTPUT, tool_call_id="c1", name="nikto")
+
+    extraction = NiktoExtractor().extract(None, message, Graph(), "10.0.0.5")
+
+    by_class = {n.cause_class for n in extraction.nodes}
+    assert by_class == {"server-banner", "nikto-finding"}
+    banner = next(n for n in extraction.nodes if n.cause_class == "server-banner")
+    assert banner.signal == "Apache/2.4.25 (Debian)"
+
+
+def test_nikto_extractor_ignores_housekeeping_lines() -> None:
+    """Target IP/Hostname/Port, Start/End Time, 'No CGI Directories found',
+    and the summary/host-count lines are not findings."""
+    message = ToolMessage(content=_NIKTO_OUTPUT, tool_call_id="c1", name="nikto")
+
+    extraction = NiktoExtractor().extract(None, message, Graph(), "10.0.0.5")
+
+    joined = " ".join(n.signal for n in extraction.nodes)
+    assert "Target IP" not in joined
+    assert "requests:" not in joined
+    assert "host(s) tested" not in joined
+
+
+def test_nikto_extractor_keeps_duplicate_ids_as_distinct_findings() -> None:
+    """[013587] repeats for two different missing headers — the id alone
+    can't be the distinguishing key, the full text is."""
+    message = ToolMessage(content=_NIKTO_OUTPUT, tool_call_id="c1", name="nikto")
+
+    extraction = NiktoExtractor().extract(None, message, Graph(), "10.0.0.5")
+
+    findings = [n for n in extraction.nodes if n.cause_class == "nikto-finding"]
+    ids = [n.id for n in findings]
+    assert len(ids) == len(set(ids))
+    assert sum(1 for n in findings if "013587" in n.signal) == 2
+
+
+def test_wafw00f_extractor_reports_detected_waf() -> None:
+    message = ToolMessage(content=_WAFW00F_DETECTED, tool_call_id="c1", name="wafw00f")
+
+    extraction = Wafw00fExtractor().extract(None, message, Graph(), "10.0.0.5")
+
+    (node,) = extraction.nodes
+    assert node.cause_class == "waf-detected"
+    assert node.signal == "Cloudflare"
+    assert node.evidence[0].verdict == "alive"
+
+
+def test_wafw00f_extractor_reports_absence_as_a_finding_too() -> None:
+    message = ToolMessage(content=_WAFW00F_ABSENT, tool_call_id="c1", name="wafw00f")
+
+    extraction = Wafw00fExtractor().extract(None, message, Graph(), "10.0.0.5")
+
+    (node,) = extraction.nodes
+    assert node.cause_class == "waf-absent"
+
+
+def test_wafw00f_extractor_malformed_json_is_zero_nodes_not_a_crash() -> None:
+    message = ToolMessage(content="not json", tool_call_id="c1", name="wafw00f")
+
+    extraction = Wafw00fExtractor().extract(None, message, Graph(), "10.0.0.5")
+
+    assert extraction.nodes == []
 
 
 def test_extractors_dict_keys_are_known_tool_names() -> None:

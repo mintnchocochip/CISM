@@ -89,3 +89,22 @@ gobuster:
   forced_flags: ["dir", "-w", "/usr/share/wordlists/common-dirs.txt"]
   allow_raw: true
   timeout: 60.0
+
+# Picked from the awesome-cyber-security-tools list against a target-type
+# gap, same as sqlmap/gobuster above: everything else on that list either
+# needs live internet + a real registered domain (theHarvester, Sublist3r,
+# WHOIS, dnsrecon) — useless against an isolated lab IP like the DVWA/Juice
+# Shop targets this agent actually runs against — or is too heavy to wire
+# into one sandboxed CLI call (Burp, ZAP, Metasploit). wafw00f is the one
+# that fits: apt-packaged, one-shot, deterministic JSON output.
+wafw00f:
+  binary: wafw00f
+  capability: reads
+  description: >-
+    Fingerprint whether a web application firewall sits in front of the
+    target, and which one. Forced to JSON-on-stdout so the extractor never
+    has to parse wafw00f's own dynamically-column-padded text table.
+  target: positional
+  forced_flags: ["-f", "json", "-o", "-"]
+  allow_raw: false
+  timeout: 45.0

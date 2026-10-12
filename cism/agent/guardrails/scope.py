@@ -34,6 +34,7 @@ _TARGET_ARG_BY_TOOL: dict[str, str] = {
     "ffuf": "url",
     "ssh": "host",
     "scp": "host",
+    "wafw00f": "target",
 }
 
 #: user[:pass]@host — impacket-style / ssh-style composite arguments.

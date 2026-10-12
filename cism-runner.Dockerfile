@@ -12,6 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     hydra=9.5-3 \
     sqlmap=1.9.6-1 \
     gobuster=3.6.0-1+b10 \
+    wafw00f=2.3.1-1 \
+    graphviz=2.42.4-3 \
     bubblewrap=0.12.0-1~deb13u1 \
     git=1:2.47.3-0+deb13u1 \
     perl=5.40.1-6+deb13u1 \
