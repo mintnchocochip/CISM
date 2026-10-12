@@ -12,6 +12,7 @@ from cism.depg.extractors import (
     NmapExtractor,
     SqlmapExtractor,
     Wafw00fExtractor,
+    WhatwebExtractor,
 )
 from cism.depg.graph import Graph
 
@@ -34,6 +35,42 @@ _GOBUSTER_OUTPUT = """
 /doesnotexist          (Status: 404) [Size: 12]
 ===============================================================
 """
+
+#: Real gobuster v3.6 output against DVWA, 2026-10-12 — note the \r\x1b[2K
+#: (carriage return + ANSI clear-line) immediately before every hit line,
+#: gobuster's live-progress indicator doing its own rewrite. This is what
+#: gobuster emits by default even to a non-tty pipe, not a crafted case.
+_GOBUSTER_OUTPUT_WITH_PROGRESS_NOISE = (
+    "===============================================================\n"
+    "Gobuster v3.6\n"
+    "===============================================================\n"
+    "\r\x1b[2K/phpinfo.php          (Status: 302) [Size: 0] [--> login.php]\n"
+    "\r\x1b[2K/robots.txt           (Status: 200) [Size: 26]\n"
+    "\r\x1b[2K/setup.php            (Status: 200) [Size: 4076]\n"
+    "\r\x1b[2KProgress: 15 / 16 (93.75%)\r\x1b[2K/docs                 (Status: 301) [Size: 307] [--> http://172.28.0.3/docs/]\n"
+    "===============================================================\n"
+    "Finished\n"
+    "===============================================================\n"
+)
+
+#: Real whatweb output against DVWA, 2026-10-12 (ANSI colors trimmed for
+#: readability here; WhatwebExtractor strips them before matching either way).
+_WHATWEB_OUTPUT = (
+    "http://172.28.0.3 [302 Found] Apache[2.4.25], "
+    "Cookies[PHPSESSID,security], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], "
+    "IP[172.28.0.3], RedirectLocation[login.php]\n"
+    "http://172.28.0.3/login.php [200 OK] Apache[2.4.25], "
+    "Cookies[PHPSESSID,security], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], "
+    "IP[172.28.0.3], PasswordField[password], "
+    "Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]\n"
+)
+
+#: The same whatweb line with real ANSI color codes wrapping every token,
+#: as whatweb actually emits by default (not a cleaned-up fixture).
+_WHATWEB_OUTPUT_WITH_ANSI = (
+    "\x1b[1m\x1b[34mhttp://172.28.0.3\x1b[0m [302 Found] \x1b[1mApache\x1b[0m"
+    "[\x1b[1m\x1b[32m2.4.25\x1b[0m], \x1b[1mIP\x1b[0m[\x1b[0m\x1b[22m172.28.0.3\x1b[0m]\n"
+)
 
 _NMAP_OUTPUT = """
 Starting Nmap 7.94
@@ -143,6 +180,53 @@ def test_gobuster_extractor_one_node_per_hit_excluding_404() -> None:
     signals = {n.signal for n in extraction.nodes}
     assert signals == {"/admin (301)", "/login.php (200)"}
     assert all(n.cause_class == "exposed-path" for n in extraction.nodes)
+
+
+def test_gobuster_extractor_survives_the_live_progress_indicator() -> None:
+    """Regression: gobuster's \\r + ANSI clear-line before every hit line
+    (its real default output, not a crafted case) used to defeat the
+    ^-anchored regex entirely — confirmed live against DVWA 2026-10-12,
+    where 5 real hits (including an exposed setup.php) became zero nodes."""
+    message = ToolMessage(
+        content=_GOBUSTER_OUTPUT_WITH_PROGRESS_NOISE, tool_call_id="c1", name="gobuster"
+    )
+    call = {"id": "c1", "name": "gobuster", "args": {"target": "http://172.28.0.3/"}}
+
+    extraction = GobusterExtractor().extract(call, message, Graph(), "172.28.0.3")
+
+    signals = {n.signal for n in extraction.nodes}
+    assert signals == {
+        "/phpinfo.php (302)",
+        "/robots.txt (200)",
+        "/setup.php (200)",
+        "/docs (301)",
+    }
+
+
+def test_whatweb_extractor_one_node_per_scanned_url() -> None:
+    message = ToolMessage(content=_WHATWEB_OUTPUT, tool_call_id="c1", name="whatweb")
+    call = {"id": "c1", "name": "whatweb", "args": {"target": "172.28.0.3"}}
+
+    extraction = WhatwebExtractor().extract(call, message, Graph(), "172.28.0.3")
+
+    assert len(extraction.nodes) == 2
+    assert all(n.cause_class == "web-fingerprint" for n in extraction.nodes)
+    signals = " ".join(n.signal for n in extraction.nodes)
+    # The actual technology facts must survive into the signal, not just a hash.
+    assert "Apache[2.4.25]" in signals
+    assert "DVWA" in signals
+    assert "Title[Login" in signals
+
+
+def test_whatweb_extractor_strips_ansi_color_codes() -> None:
+    message = ToolMessage(content=_WHATWEB_OUTPUT_WITH_ANSI, tool_call_id="c1", name="whatweb")
+    call = {"id": "c1", "name": "whatweb", "args": {"target": "172.28.0.3"}}
+
+    extraction = WhatwebExtractor().extract(call, message, Graph(), "172.28.0.3")
+
+    (node,) = extraction.nodes
+    assert "\x1b" not in node.signal
+    assert "Apache[2.4.25]" in node.signal
 
 
 _NIKTO_OUTPUT = """- Nikto v2.6.1

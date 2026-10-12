@@ -34,6 +34,8 @@ def render_argv(spec: ToolSpec, target: str, **kwargs: Any) -> list[str]:
     argv += spec.forced_flags
     if spec.allow_raw and kwargs.get("extra"):
         argv += shlex.split(str(kwargs["extra"]))
+    if spec.default_scheme and "://" not in target:
+        target = f"{spec.default_scheme}://{target}"
     if spec.target == "positional":
         argv.append(target)
     elif spec.target:

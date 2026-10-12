@@ -32,6 +32,14 @@ class ToolSpec(BaseModel):
     description: str
     flags: dict[str, Flag] = {}
     target: str = "positional"
+    #: Some tools (wafw00f) take a URL, not a bare host, and silently
+    #: assume their own default scheme when given one — wafw00f tries
+    #: https first and fails outright (connection refused) against an
+    #: http-only target, confirmed live against DVWA 2026-10-12. Applied
+    #: in render_argv only when the model's target doesn't already
+    #: contain "://", so a model that already knows the right scheme
+    #: (e.g. after nmap found 443 open) is never overridden.
+    default_scheme: str | None = None
     #: Always appended, regardless of what the model puts in `extra` — for a
     #: sandbox-wide constraint the model can't be trusted to retype
     #: correctly every call (e.g. nmap's no-raw-socket workaround), not a

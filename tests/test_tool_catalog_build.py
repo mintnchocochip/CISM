@@ -128,3 +128,45 @@ def test_wafw00f_catalog_row_puts_target_positionally_after_forced_flags() -> No
     assert mock_run.call_args.args[0] == [
         "wafw00f", "-f", "json", "-o", "-", "http://10.0.0.5/",
     ]
+
+
+def test_wafw00f_defaults_a_schemeless_target_to_http() -> None:
+    """wafw00f itself defaults to https and fails outright (connection
+    refused) against an http-only target when given a bare host —
+    confirmed live against DVWA 2026-10-12."""
+    (tool,) = build_catalog({"wafw00f": CATALOG["wafw00f"]})
+
+    with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
+        tool.invoke({"target": "172.28.0.3"})
+
+    assert mock_run.call_args.args[0] == [
+        "wafw00f", "-f", "json", "-o", "-", "http://172.28.0.3",
+    ]
+
+
+def test_wafw00f_does_not_override_a_scheme_the_model_already_gave() -> None:
+    (tool,) = build_catalog({"wafw00f": CATALOG["wafw00f"]})
+
+    with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
+        tool.invoke({"target": "https://172.28.0.3"})
+
+    assert mock_run.call_args.args[0] == [
+        "wafw00f", "-f", "json", "-o", "-", "https://172.28.0.3",
+    ]
+
+
+def test_gobuster_catalog_row_suppresses_the_live_progress_indicator() -> None:
+    """-z (--no-progress): gobuster's progress indicator rewrites the
+    current line with a raw \\r + ANSI clear-line before every hit, which
+    desynced GobusterExtractor's regex from real content — confirmed live
+    against DVWA 2026-10-12. The extractor strips that noise regardless,
+    but suppressing it at the source means there's nothing to strip."""
+    (tool,) = build_catalog({"gobuster": CATALOG["gobuster"]})
+
+    with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
+        tool.invoke({"target": "http://10.0.0.5/"})
+
+    assert mock_run.call_args.args[0] == [
+        "gobuster", "dir", "-w", "/usr/share/wordlists/common-dirs.txt", "-z",
+        "-u", "http://10.0.0.5/",
+    ]

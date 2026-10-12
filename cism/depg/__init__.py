@@ -28,6 +28,7 @@ from .extractors import (
     NmapExtractor,
     SqlmapExtractor,
     Wafw00fExtractor,
+    WhatwebExtractor,
 )
 from .graph import Graph
 from .node import Node
@@ -55,5 +56,6 @@ __all__ = [
     "SqlmapExtractor",
     "SupportPolicy",
     "Wafw00fExtractor",
+    "WhatwebExtractor",
     "reduce_state",
 ]

@@ -15,6 +15,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from langchain_core.messages.tool import ToolCall
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from cism.agent.graph import build_graph
 from cism.agent.guardrails import (
@@ -79,6 +80,27 @@ _REPLAY_STEP_DELAY = 0.05
 #: instead of a GenericExtractor stand-in, which phase_router's RECON gate
 #: (cism.agent.nodes._phase_ready) specifically requires.
 _DEFAULT_TOOL_EXTRACTORS: dict[str, CauseExtractor] = {**EXTRACTORS, "dummy_nmap": NmapExtractor()}
+
+#: AgentState's checkpointed fields hold these as plain dataclasses, none
+#: of which msgpack knows how to encode natively — langgraph's own
+#: serializer falls back to a permissive "unregistered type" path for
+#: them today, but warns at every single checkpoint read/write (confirmed
+#: live, 2026-10-12) that this will be a hard error in a future langgraph
+#: version. Every type reachable from an AgentState field, including
+#: nested ones (Node.evidence: list[Evidence], Node.decision:
+#: Decision | None) — missing one doesn't warn, it *blocks* deserializing
+#: that field outright once allowed_msgpack_modules is non-empty, which is
+#: strictly worse than the permissive default this is replacing. Naming
+#: them all here keeps every checkpoint round trip quiet and
+#: forward-compatible instead of degrading to an exception later.
+_ALLOWED_MSGPACK_MODULES: list[tuple[str, str]] = [
+    ("cism.agent.state", "Phase"),
+    ("cism.depg.node", "Node"),
+    ("cism.depg.edge", "Edge"),
+    ("cism.depg.evidence", "Evidence"),
+    ("cism.tui.events", "Decision"),
+    ("cism.memory.item", "MemoryItem"),
+]
 
 
 def _llm_from_env() -> tuple[BaseChatModel, str, str, str]:
@@ -145,7 +167,9 @@ class LangGraphAgent:
         self._profiles = profiles or default_profiles(self._tools)
         #: In-process session memory only, not restart-survival. A fixed
         #: thread_id so a graph rebuilt mid-session (/ablate) still shares it.
-        self._checkpointer = MemorySaver()
+        self._checkpointer = MemorySaver(
+            serde=JsonPlusSerializer(allowed_msgpack_modules=_ALLOWED_MSGPACK_MODULES)
+        )
         self._thread_id = uuid.uuid4().hex
         #: True once depg_nodes/depg_edges/memory_items have been seeded —
         #: after that, re-supplying `{}` would wipe checkpointed state (see _run).

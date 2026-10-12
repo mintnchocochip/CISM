@@ -40,6 +40,7 @@ __all__ = [
     "NmapExtractor",
     "SqlmapExtractor",
     "Wafw00fExtractor",
+    "WhatwebExtractor",
 ]
 
 _OPEN_PORT_RE = re.compile(r"^(\d+)/(tcp|udp)\s+open\s+(\S+)", re.MULTILINE)
@@ -61,6 +62,28 @@ _NIKTO_SERVER_RE = re.compile(r"^\+ Server:\s*(.+)$", re.MULTILINE)
 #: requests/host-count summary lines) is scan housekeeping, not a finding,
 #: and is deliberately left unmatched rather than swept in as noise.
 _NIKTO_FINDING_RE = re.compile(r"^\+ \[(\d+)\]\s*(.+)$", re.MULTILINE)
+#: whatweb's own grammar: "<url> [<status>] <comma-separated Plugin[value]
+#: pairs>" per line — one line per URL/redirect hop it actually followed.
+_WHATWEB_LINE_RE = re.compile(r"^(\S+)\s+\[(\d+[^\]]*)\]\s+(.+)$", re.MULTILINE)
+#: gobuster's live progress indicator and whatweb's colorized plugin names
+#: both put a raw ANSI escape (and, for gobuster, a bare \r) directly before
+#: real content on the same terminal "line" — confirmed live against DVWA
+#: 2026-10-12: gobuster found 5 real paths (including an exposed
+#: setup.php) that _GOBUSTER_HIT_RE silently matched zero of, because
+#: MULTILINE's ^ anchors right after \n, and the character sitting there
+#: was \r, not "/". \r is replaced with \n rather than dropped — gobuster
+#: sometimes rewrites the *same* visual line twice with no \n in between
+#: ("Progress: ...\rPROGRESS: ...\r/docs ..."), and simply deleting \r
+#: would glue that next real hit onto the end of the progress text
+#: instead of giving it its own line to be ^-anchored on. ANSI escapes
+#: are dropped outright: they carry no content, only styling. Applied
+#: only for matching below, never to the evidence/summary text the
+#: operator actually reads.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _clean(text: str) -> str:
+    return _ANSI_RE.sub("", text.replace("\r", "\n"))
 
 
 def _now() -> str:
@@ -225,7 +248,7 @@ class GobusterExtractor:
     def extract(
         self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
     ) -> Extraction:
-        content = str(message.content)
+        content = _clean(str(message.content))
         call_id = _call_id(call, message)
         nodes = []
         for path, status in _GOBUSTER_HIT_RE.findall(content):
@@ -241,6 +264,43 @@ class GobusterExtractor:
                     evidence=[
                         Evidence(
                             timestamp=_now(), tool="gobuster", exit_signal=signal,
+                            tier="T2", source="deterministic", verdict="alive", call_id=call_id,
+                        )
+                    ],
+                )
+            )
+        return Extraction(nodes=nodes)
+
+
+class WhatwebExtractor:
+    """whatweb had no dedicated extractor until now, so every call fell
+    through to LLMExtractor — a second model call per invocation, on the
+    same small backend already busy running the engagement. Confirmed
+    live against DVWA 2026-10-12: that second call returned zero
+    findings and the result degraded to GenericExtractor's opaque hash
+    signal (e.g. `whatweb:<target>:50d29fa22d6e`), even though whatweb had
+    just reported the server, its version, and "DVWA" by name. whatweb's
+    own grammar is exactly as stable as nikto's/nmap's; one node per URL
+    line it actually scanned (it follows redirects, so a single call
+    often reports more than one)."""
+
+    def extract(
+        self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
+    ) -> Extraction:
+        content = _clean(str(message.content))
+        call_id = _call_id(call, message)
+        nodes = []
+        for url, status, plugins in _WHATWEB_LINE_RE.findall(content):
+            signal = f"{status.strip()}: {plugins.strip()}"
+            nodes.append(
+                Node(
+                    id=derive_node_id("web-fingerprint", target, signal),
+                    cause_class="web-fingerprint",
+                    target=target,
+                    signal=signal,
+                    evidence=[
+                        Evidence(
+                            timestamp=_now(), tool="whatweb", exit_signal=f"{url.strip()}: {signal}",
                             tier="T2", source="deterministic", verdict="alive", call_id=call_id,
                         )
                     ],
@@ -527,4 +587,5 @@ EXTRACTORS: dict[str, CauseExtractor] = {
     "gobuster": GobusterExtractor(),
     "nikto": NiktoExtractor(),
     "wafw00f": Wafw00fExtractor(),
+    "whatweb": WhatwebExtractor(),
 }

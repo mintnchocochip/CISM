@@ -86,7 +86,13 @@ gobuster:
     mode is forced — gobuster also has vhost/dns/s3/etc. modes this catalog
     row doesn't support.
   target: "-u"
-  forced_flags: ["dir", "-w", "/usr/share/wordlists/common-dirs.txt"]
+  # -z: gobuster's live progress indicator rewrites the current line with
+  # a raw \r + ANSI clear-line before every hit it prints — confirmed live
+  # against DVWA 2026-10-12 to desync the extractor's ^-anchored regex
+  # from real content on the same "line". GobusterExtractor now strips
+  # that noise before matching regardless, but suppressing it at the
+  # source means there's nothing to strip in the first place.
+  forced_flags: ["dir", "-w", "/usr/share/wordlists/common-dirs.txt", "-z"]
   allow_raw: true
   timeout: 60.0
 
@@ -105,6 +111,13 @@ wafw00f:
     target, and which one. Forced to JSON-on-stdout so the extractor never
     has to parse wafw00f's own dynamically-column-padded text table.
   target: positional
+  # wafw00f takes a URL and defaults to https when given a bare host —
+  # confirmed live against DVWA 2026-10-12: it tried port 443, got
+  # connection refused, and reported nothing, even though port 80 was
+  # open and serving. default_scheme fixes the blind-default case without
+  # overriding a model that already knows the real scheme (e.g. after
+  # nmap reported 443 open).
+  default_scheme: http
   forced_flags: ["-f", "json", "-o", "-"]
   allow_raw: false
   timeout: 45.0
