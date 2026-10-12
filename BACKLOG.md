@@ -384,3 +384,63 @@ Group these — same file (`app.py`/modal widgets), do them in one pass:
   headers). This research step needs that source material supplied
   (a link, a file, a pasted excerpt) before it can produce a real list
   instead of a guessed one.
+
+---
+
+## 7. Live-test findings (2026-10-12, real container + real llama.cpp backend)
+
+First engagement actually run through the hardened `docker run` command
+(docker/README.md), not `run_agent.py` from a bare host shell — see §3.1's
+network note for why that distinction matters. Methodology: 3 scripted
+submits (recon → enumerate → sqlmap) against the live `dvwa` container,
+`--live-tools`, real `lfm2.5-8b-a1b` at `:8189`, repeated twice.
+
+- [x] Fixed (all live-verified, before/after): GobusterExtractor matched
+  zero of 5 real hits (incl. an exposed `setup.php`) because of a raw
+  `\r`+ANSI progress indicator defeating its regex; whatweb had no
+  extractor at all and degraded to an opaque hash signal; wafw00f
+  defaulted to https and failed outright on this http-only target. See
+  §3.9-adjacent commit `219c75b` for the fix and `cism/depg/extractors.py`
+  for the regression tests built from the actual captured output.
+- [x] Fixed: `LangGraphAgent`'s checkpointer now declares
+  `allowed_msgpack_modules` — every single checkpoint read/write was
+  logging a "will be blocked in a future version" warning for
+  Phase/Node/Edge/Evidence/Decision/MemoryItem.
+- [ ] **Not fixed, reverted after breaking 6 tests:** attempted a bounded
+  "retry once on zero tool calls" to recover the model's live,
+  reproducible tendency to answer a tool-offering turn with a text
+  question for information already given (e.g. "Please provide the
+  target host or IP address") instead of calling a tool — confirmed to
+  still happen even after the §3.9-era prompt fix, non-deterministically,
+  same prompt/model/target, side by side with a clean 5-tool-call run.
+  The attempted fix is unsafe as built: `core.py`'s event-translation
+  loop streams every token from *any* `bound.astream()` call made inside
+  `think()` straight to the TUI/event bus in real time (via LangGraph's
+  own `stream_mode="messages"`), so a discarded first attempt's text
+  still leaks into the visible narration and double-counts tokens —
+  confirmed by 6 broken tests expecting exactly one narration/TokenDelta
+  sequence per turn. A real fix needs `core.py`'s streaming translation to
+  know "this attempt is discardable" before any retry can be safe; that's
+  its own change, not a `nodes.py`-only one.
+- [ ] **Not fixed, newly observed, not yet root-caused:** the same model
+  separately called nmap with the literal arg `{'target': '<target>'}` —
+  the placeholder token itself, not the real IP — causing a real tool
+  call that still produced nothing (nmap: `Failed to resolve "<target>"`).
+  Different failure shape than the "asks a question" case above (this one
+  *does* call the tool, just with a templated-looking arg); needs its own
+  investigation, not assumed to share a cause or a fix with the above.
+- [ ] **Not fixed, structural, not yet addressed:** when an early turn's
+  tool call produces no usable finding (either failure above), the PTES
+  phase never advances past `recon` — so a *later* turn asking explicitly
+  for sqlmap (which `catalog.yaml` only offers from `enumeration` onward)
+  silently can't get it; the model substituted other recon-phase tools
+  instead of calling sqlmap or saying why it couldn't, with no signal to
+  the operator that the requested tool was unavailable. Confirmed live:
+  this is exactly what happened in the second trial. A visible "phase X
+  doesn't offer that tool yet" signal (narration or a guardrail-style
+  note) is the likely fix; not attempted tonight.
+- [ ] **Verify once, at the end:** two full before/after engagements
+  (reports/graphs sent to the user) — the "after" run: 8 resolved
+  findings across whatweb/wafw00f/gobuster (0 in the "before" run for
+  those same three tools' real output), full suite green throughout
+  (786 passed; 3 pre-existing xdist-only snapshot flakes, pass serially).
