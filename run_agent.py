@@ -152,6 +152,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--base-url requires --model")
     if args.live_tools and not args.scope.strip():
         parser.error("--live-tools requires --scope (comma-separated CIDRs/domains)")
+    if args.max_tokens is not None and args.max_tokens < 512:
+        # Confirmed live 2026-10-12 against lfm2.5-8b-a1b: this reasoning
+        # model spends ~150-190 tokens of hidden "thinking" on even a
+        # single trivial tool decision, before any tool_calls/content is
+        # emitted. A cap below that truncates mid-thought — the response
+        # comes back with empty content AND no tool_calls, which looks
+        # identical to "the model decided not to call a tool" but is
+        # actually just running out of room before it got there.
+        parser.error(
+            f"--max-tokens {args.max_tokens} is too low for a reasoning model's "
+            "hidden thinking tokens — it can truncate the reply before any tool "
+            "call is emitted, which looks like a missed tool call but isn't. "
+            "512 is a hard floor; 2048+ (see --help) is the safe default."
+        )
     return args
 
 

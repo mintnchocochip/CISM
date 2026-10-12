@@ -40,6 +40,21 @@ def test_key_env_var_can_be_overridden() -> None:
     assert args.key_env_var == "OTHER_KEY"
 
 
+def test_max_tokens_below_the_reasoning_floor_is_an_error(capsys) -> None:
+    """lfm2.5-8b-a1b spends ~150-190 tokens of hidden reasoning before any
+    content/tool_calls — confirmed live 2026-10-12 with an artificially
+    tight cap: the reply truncated mid-thought, empty content, no
+    tool_calls, indistinguishable from "decided not to call a tool"."""
+    with pytest.raises(SystemExit):
+        parse_args(["--max-tokens", "200"])
+    assert "--max-tokens" in capsys.readouterr().err
+
+
+def test_max_tokens_at_or_above_the_floor_parses_cleanly() -> None:
+    args = parse_args(["--max-tokens", "512"])
+    assert args.max_tokens == 512
+
+
 def test_live_tools_without_scope_is_an_error(capsys) -> None:
     with pytest.raises(SystemExit):
         parse_args(["--live-tools"])
