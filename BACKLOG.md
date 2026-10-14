@@ -509,3 +509,30 @@ from model non-determinism.
   test_sandboxed_tool_decorator.py test_toolkit_integration.py`) green
   after each fix; full suite 790/792 (2 pre-existing TUI-snapshot flakes,
   unrelated — diff never touches `cism/tui/`).
+
+## 9. `wip-overeager-tool-calls` branch — all three fixes landed (2026-10-14)
+
+- [x] **Fixed, live-verified:** `--max-tokens` below 512 silently truncated
+  a reasoning model's hidden thinking tokens before any tool call or
+  content was emitted — looked identical to "model chose not to act" from
+  the outside. Hard floor added in `run_agent.py`/`scripts/benchmark.py`.
+- [x] **Fixed, live-verified (5/5 trials):** every phase prompt in
+  `profiles.py` is an unconditional standing order ("map hosts...", etc.)
+  with nothing conditioning it on the user's message, so a bare "HI"
+  triggered a full scan. Fixed with `_ACT_ONLY_WHEN_ASKED`, prepended to
+  every phase's system prompt — greetings/status questions now get a
+  plain-text reply, real requests still trigger tools.
+- [x] **Fixed, live-verified:** separately from the max-tokens case, the
+  model sometimes still produces a genuinely empty opening move (no tool
+  call, no text) even with a healthy token budget — real reasoning-model
+  flakiness, not truncation. `think()` now retries once, but only when
+  the attempt is truly empty (no tool call AND no text after stripping);
+  a deliberate text answer (e.g. the greeting case above) is never
+  second-guessed. An earlier version of this fix tagged the first
+  attempt's stream as "discardable" and suppressed its live narration in
+  `core.py` — dropped after it silently ate every normal reply's live
+  streaming; proved unnecessary anyway, since an attempt that triggers
+  the retry produced zero content chunks in the first place (message-
+  chunk content only ever concatenates, never erases), so there was
+  nothing to suppress. `state.py`/`core.py` are back to exactly their
+  pre-branch content; the whole fix now lives in `nodes.py` alone.
