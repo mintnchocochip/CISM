@@ -91,33 +91,55 @@ def _compact_history(messages: list, system_prompt: str, context_window: int) ->
 
 
 _DEPG_CONTEXT_CAP_PER_TARGET = 8
+_DEPG_CONTEXT_MAX_TARGETS = 12
 _MEMORY_CONTEXT_CAP = 10
 
 
 def _depg_context(depg_nodes: dict) -> str:
     """Per-target findings summary, rebuilt fresh every think() call from
     DEPG state rather than chat history -- this is what survives once
-    _compact_history drops the turns a finding actually came from."""
+    _compact_history drops the turns a finding actually came from. Both
+    targets and, within a target, nodes are capped and priority-sorted
+    (unresolved first) so a big multi-host run can't grow this unboundedly
+    or bury a live finding behind older resolved ones."""
     if not depg_nodes:
         return ""
     by_target: dict[str, list] = {}
     for node in depg_nodes.values():
         by_target.setdefault(node.target, []).append(node)
+    for nodes in by_target.values():
+        nodes.sort(key=lambda n: n.state == "resolved")  # unresolved/contested first
+    targets = sorted(
+        by_target,
+        key=lambda t: (
+            -sum(1 for n in by_target[t] if n.state != "resolved"),
+            -len(by_target[t]),
+            t,
+        ),
+    )
     lines = ["Findings so far, by target (from the dependency graph, not the chat above):"]
-    for target in sorted(by_target):
+    for target in targets[:_DEPG_CONTEXT_MAX_TARGETS]:
         nodes = by_target[target]
         shown = nodes[:_DEPG_CONTEXT_CAP_PER_TARGET]
         parts = [f"{n.cause_class}:{n.signal or n.id} ({n.state})" for n in shown]
         if len(nodes) > len(shown):
             parts.append(f"+{len(nodes) - len(shown)} more")
         lines.append(f"  {target}: {', '.join(parts)}")
+    if len(targets) > _DEPG_CONTEXT_MAX_TARGETS:
+        lines.append(f"  +{len(targets) - _DEPG_CONTEXT_MAX_TARGETS} more target(s)")
     return "\n".join(lines)
 
 
-def _memory_context(memory_items: dict) -> str:
+def _memory_context(memory_items: dict, screen=None) -> str:
     """Narrative memory (failures, phase changes, narration) only -- DEPG-
     derived items (source_type="depg_node") are already in _depg_context,
-    so skip them here rather than showing the same finding twice."""
+    so skip them here rather than showing the same finding twice.
+
+    `screen`, when given, runs over a tool-failure snippet before it's
+    shown -- that text is raw target-controlled tool output (C1,
+    AUDIT.md), same as a ToolMessage in history, and needs the same
+    injection screening history already gets; narration is the model's
+    own prior output, not externally sourced, so it's shown as-is."""
     items = [m for m in memory_items.values() if m.source_type != "depg_node"]
     if not items:
         return ""
@@ -125,7 +147,9 @@ def _memory_context(memory_items: dict) -> str:
     items.sort(key=lambda m: (tier_order.get(m.tier, 3), -m.hits))
     shown = items[:_MEMORY_CONTEXT_CAP]
     lines = ["Retained memory (most important first):"]
-    lines += [f"  [{m.tier}] {m.snippet}" for m in shown]
+    for m in shown:
+        snippet = screen(m.snippet) if screen and m.source_type == "tool-failure" else m.snippet
+        lines.append(f"  [{m.tier}] {snippet}")
     if len(items) > len(shown):
         lines.append(f"  +{len(items) - len(shown)} more")
     return "\n".join(lines)
@@ -347,9 +371,15 @@ def make_think_node(
             else "No target configured yet."
         )
         act_rule = f"\n\n{_ACT_ONLY_WHEN_ASKED}" if phase_tools else ""
+
+        def _for_model(text: str) -> str:
+            screened = screen.run(text).value
+            return privacy.anonymize(screened) if privacy is not None else screened
+
         context_summary = "\n\n".join(
             part for part in (
-                _depg_context(state["depg_nodes"]), _memory_context(state["memory_items"])
+                _depg_context(state["depg_nodes"]),
+                _memory_context(state["memory_items"], screen=_for_model),
             ) if part
         )
         context_block = f"\n\n{context_summary}" if context_summary else ""
@@ -358,11 +388,6 @@ def make_think_node(
         system_prompt = f"{target_line}{act_rule}{context_block}\n\n{profile.system_prompt}{rules}{hint}"
         context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
         history, dropped = _compact_history(state["messages"], system_prompt, context_window)
-
-        def _for_model(text: str) -> str:
-            screened = screen.run(text).value
-            return privacy.anonymize(screened) if privacy is not None else screened
-
         history = [
             m.model_copy(update={"content": _for_model(str(m.content))})
             if isinstance(m, ToolMessage) else m
