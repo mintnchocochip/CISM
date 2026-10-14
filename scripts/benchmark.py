@@ -69,7 +69,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="a message to submit; repeat for multiple turns. Default: one recon prompt.",
     )
     ap.add_argument("--out", default="", help="write the JSON report here too")
-    return ap.parse_args(argv)
+    args = ap.parse_args(argv)
+    if args.max_tokens < 512:
+        # See run_agent.py's parse_args for why: a reasoning model's hidden
+        # thinking tokens can exceed a too-tight cap before any tool call
+        # is emitted, which looks identical to "decided not to call a
+        # tool" but isn't. Confirmed live 2026-10-12 against lfm2.5-8b-a1b.
+        ap.error(
+            f"--max-tokens {args.max_tokens} is too low for a reasoning model's "
+            "hidden thinking tokens — it can truncate the reply before any tool "
+            "call is emitted. 512 is a hard floor; the default (2048) is safer."
+        )
+    return args
 
 
 async def _run(args: argparse.Namespace) -> dict:
