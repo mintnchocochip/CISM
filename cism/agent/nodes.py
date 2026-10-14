@@ -89,6 +89,47 @@ def _compact_history(messages: list, system_prompt: str, context_window: int) ->
         kept = [note, *kept]
     return kept, dropped
 
+
+_DEPG_CONTEXT_CAP_PER_TARGET = 8
+_MEMORY_CONTEXT_CAP = 10
+
+
+def _depg_context(depg_nodes: dict) -> str:
+    """Per-target findings summary, rebuilt fresh every think() call from
+    DEPG state rather than chat history -- this is what survives once
+    _compact_history drops the turns a finding actually came from."""
+    if not depg_nodes:
+        return ""
+    by_target: dict[str, list] = {}
+    for node in depg_nodes.values():
+        by_target.setdefault(node.target, []).append(node)
+    lines = ["Findings so far, by target (from the dependency graph, not the chat above):"]
+    for target in sorted(by_target):
+        nodes = by_target[target]
+        shown = nodes[:_DEPG_CONTEXT_CAP_PER_TARGET]
+        parts = [f"{n.cause_class}:{n.signal or n.id} ({n.state})" for n in shown]
+        if len(nodes) > len(shown):
+            parts.append(f"+{len(nodes) - len(shown)} more")
+        lines.append(f"  {target}: {', '.join(parts)}")
+    return "\n".join(lines)
+
+
+def _memory_context(memory_items: dict) -> str:
+    """Narrative memory (failures, phase changes, narration) only -- DEPG-
+    derived items (source_type="depg_node") are already in _depg_context,
+    so skip them here rather than showing the same finding twice."""
+    items = [m for m in memory_items.values() if m.source_type != "depg_node"]
+    if not items:
+        return ""
+    tier_order = {"T1": 0, "T2": 1, "T3": 2}
+    items.sort(key=lambda m: (tier_order.get(m.tier, 3), -m.hits))
+    shown = items[:_MEMORY_CONTEXT_CAP]
+    lines = ["Retained memory (most important first):"]
+    lines += [f"  [{m.tier}] {m.snippet}" for m in shown]
+    if len(items) > len(shown):
+        lines.append(f"  +{len(items) - len(shown)} more")
+    return "\n".join(lines)
+
 #: The two extractors with a fixed, non-LLM vocabulary — the only
 #: cause_class literals _phase_ready can safely match on directly.
 _OPEN_PORT_CAUSE = "open-port"
@@ -306,9 +347,15 @@ def make_think_node(
             else "No target configured yet."
         )
         act_rule = f"\n\n{_ACT_ONLY_WHEN_ASKED}" if phase_tools else ""
+        context_summary = "\n\n".join(
+            part for part in (
+                _depg_context(state["depg_nodes"]), _memory_context(state["memory_items"])
+            ) if part
+        )
+        context_block = f"\n\n{context_summary}" if context_summary else ""
         rules = f"\n\n{_ONE_CALL_RULE}" if phase_tools else ""
         hint = _FALLBACK_HINT if phase_tools else ""
-        system_prompt = f"{target_line}{act_rule}\n\n{profile.system_prompt}{rules}{hint}"
+        system_prompt = f"{target_line}{act_rule}{context_block}\n\n{profile.system_prompt}{rules}{hint}"
         context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
         history, dropped = _compact_history(state["messages"], system_prompt, context_window)
 
