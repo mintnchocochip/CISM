@@ -180,6 +180,102 @@ async def test_think_node_still_works_against_a_non_streaming_model() -> None:
     assert update["messages"][0].tool_calls[0]["name"] == "dummy_nmap"
 
 
+class _SequencedChatModel(BaseChatModel):
+    """Returns the next reply from `replies` on each successive astream() call."""
+
+    replies: list = []
+    calls: list = []
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-sequenced-chat-model"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+        raise NotImplementedError
+
+    def bind_tools(self, tools, **kwargs):
+        return self
+
+    async def astream(self, messages, **kwargs):
+        self.calls.append(messages)
+        reply = self.replies[len(self.calls) - 1]
+        yield AIMessageChunk(content=reply.content, tool_calls=reply.tool_calls)
+
+
+_TOOL_PROFILES = PhaseProfiles(
+    {Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="", tool_names=frozenset({"dummy_nmap"}))}
+)
+
+
+def _toolcall_reply(name: str = "dummy_nmap") -> AIMessage:
+    return AIMessage(content="", tool_calls=[{"id": "c1", "name": name, "args": {}}])
+
+
+def _textonly_reply(text: str = "not calling anything") -> AIMessage:
+    return AIMessage(content=text)
+
+
+def _empty_reply() -> AIMessage:
+    return AIMessage(content="")
+
+
+async def test_think_retries_once_when_the_opening_move_is_truly_empty() -> None:
+    llm = _SequencedChatModel(replies=[_empty_reply(), _toolcall_reply()])
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it")])
+
+    update = await think(state)
+
+    assert len(llm.calls) == 2
+    assert update["messages"][0].tool_calls[0]["name"] == "dummy_nmap"
+
+
+async def test_think_does_not_retry_a_deliberate_text_answer_on_the_opening_move() -> None:
+    """Regression guard: a real answer (e.g. _ACT_ONLY_WHEN_ASKED declining
+    to act on a greeting) must stand, not get overridden by a forced retry."""
+    llm = _SequencedChatModel(replies=[_textonly_reply("hey, how can I help?")])
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="hi")])
+
+    update = await think(state)
+
+    assert len(llm.calls) == 1
+    assert update["messages"][0].content == "hey, how can I help?"
+
+
+async def test_think_does_not_retry_when_the_opening_move_already_calls_a_tool() -> None:
+    llm = _SequencedChatModel(replies=[_toolcall_reply()])
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it")])
+
+    await think(state)
+
+    assert len(llm.calls) == 1
+
+
+async def test_think_does_not_retry_a_legitimate_final_answer_after_real_tool_use() -> None:
+    ai, result = _tool_round("call-1", "dummy_nmap", "3 open ports")
+    llm = _SequencedChatModel(replies=[_textonly_reply("here's what I found")])
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it"), ai, result])
+
+    update = await think(state)
+
+    assert len(llm.calls) == 1
+    assert update["messages"][0].content == "here's what I found"
+
+
+async def test_think_accepts_the_retrys_text_when_it_also_misses() -> None:
+    llm = _SequencedChatModel(replies=[_empty_reply(), _textonly_reply("second miss")])
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it")])
+
+    update = await think(state)
+
+    assert len(llm.calls) == 2
+    assert update["messages"][0].content == "second miss"
+
+
 async def test_a_successful_tool_call_produces_a_depg_node_for_the_target() -> None:
     ai, result = _tool_round("call-1", "dummy_nmap", "[dummy] nmap -sV 10.0.0.5 -> 3 open ports")
     state = _state([HumanMessage(content="scan it"), ai, result])
