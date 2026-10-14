@@ -434,19 +434,26 @@ survive a process restart.
   ```
 
 - **Guardrails** (`cism/agent/guardrails/`) — chain of responsibility, three
-  seams (input, action, output). Input and output are still pass-through;
-  the action chain has three real stages: `ScopeGuardStage`
-  (`guardrails/scope.py`), which blocks a tool call whose target falls
-  outside a declared `EngagementScope` (a CIDR/domain allowlist);
-  `DangerousFlagGuardStage` (`guardrails/dangerous_flags.py`), a denylist
-  that blocks a call whose free-form flags could read/write outside the
-  sandbox scratch dir or trigger code execution (e.g. nmap NSE scripting);
-  and `PhaseToolGuardStage` (`guardrails/phase_tool.py`), which re-checks a
+  seams (input, action, output). `LangGraphAgent()`'s own default is
+  `GuardrailSeam.no_op()` — pass-through on all three — matching its
+  dummy-tools default; `--live-tools` (`_enable_live_tools` in
+  `run_agent.py`) wires in real stages on every seam: `InputGuardStage`
+  (a length cap) on input, `OutputRedactionStage` (credential/secret
+  redaction) on the final answer, `ToolOutputScreenStage` (prompt-injection
+  marker detection on tool output fed back to the model) on tool output,
+  and on the action chain, `ScopeGuardStage` (`guardrails/scope.py`), which
+  blocks a tool call whose target falls outside a declared
+  `EngagementScope` (a CIDR/domain allowlist), and `DangerousFlagGuardStage`
+  (`guardrails/dangerous_flags.py`), a denylist that blocks a call whose
+  free-form flags could read/write outside the sandbox scratch dir or
+  trigger code execution (e.g. nmap NSE scripting). `PhaseToolGuardStage`
+  (`guardrails/phase_tool.py`) runs on the same action path but isn't in
+  that list — it's built per-phase inside `profiles.py`, re-checking a
   call's tool against the current phase's catalog-derived allowlist at call
-  time. All three are heuristic safety nets — they can only check what they
-  can actually find in a call's arguments, not a formal guarantee. Adding
-  another real check is still just appending a stage; neither the chain
-  runner nor the graph shape changes.
+  time. All of these are heuristic safety nets — they can only check what
+  they can actually find in a call's arguments, not a formal guarantee.
+  Adding another real check is still just appending a stage; neither the
+  chain runner nor the graph shape changes.
 - **Tools** (`cism/agent/tools/`) — `ToolRegistry` is a hard allowlist: a
   tool is reachable only if it was explicitly constructed into the registry,
   and looking up a name that wasn't raises rather than failing silently.
@@ -479,11 +486,15 @@ survive a process restart.
   dot stripped) before it becomes part of a node's identity, so
   `10.0.0.5`/`ssh://10.0.0.5:22`/`10.0.0.5.` collapse onto one node family
   instead of fragmenting. `to_event()`/`Graph.to_event()` are the only
-  places any of this touches `cism.tui.events`. `generality`/`downstream`
-  are defined on every node but not yet computed anywhere — they render as
-  `γ=0.00 (0 downstream)` in the DEPG modal until that's wired in. γ/graded
-  propagation (`Edge.weight` is stored but inert; a precondition is
-  currently live-or-dead, not soft-weakened) is later work.
+  places any of this touches `cism.tui.events`. `generality` (cross-target
+  transfer: what share of this run's targets already produced this
+  cause_class) and `downstream` (descendant count) are computed by
+  `Graph.compute_metrics()` right after `settle()`/`prune()` each step
+  (`depg_update` in `nodes.py`) and render as real values — `γ=0.72 (3
+  downstream)` — in the DEPG modal. Graded propagation (`Edge.weight`,
+  soft-weakening a precondition instead of treating it as live-or-dead) is
+  opt-in via `--graded-propagation` and still early; see `GradedSupport`
+  in `depg/reducer.py`.
 - **Memory** (`cism/memory/`) — `MemoryStore` (`memory/store.py`), the
   working container `memory_update` mutates each step, mirroring `Graph`'s
   role for the DEPG. A DEPG-derived row keys on the node's own id; a
@@ -551,12 +562,12 @@ sudo $EDITOR /usr/share/wordlists/common-passwords.txt
 ```
 
 What isn't here yet: a real model by default (still `DummyChatModel` unless
-`--base-url`/`--model` is passed), a bigger tool catalog beyond the six
-above, computed `generality`/`downstream` weighting in the DEPG view, LLM
-reconciliation of near-duplicate DEPG nodes, IP/hostname alias merging, and
-guardrail logic beyond the action chain (input and output are still
-pass-through). Each was designed with a single, explicit seam to extend
-into, so none of it should require reshaping what's already built. See
+`--base-url`/`--model` is passed), a bigger tool catalog beyond the nine
+above, graded propagation validated against a real run (`GradedSupport` is
+opt-in via `--graded-propagation`; `BinarySupport` stays the default), LLM
+reconciliation of near-duplicate DEPG nodes, and IP/hostname alias merging.
+Each was designed with a single, explicit seam to extend into, so none of
+it should require reshaping what's already built. See
 [docs/next-phase-roadmap.md](docs/next-phase-roadmap.md) for the fuller,
 file:line-cited list.
 
@@ -653,7 +664,7 @@ For the full suite, `pytest -n auto` (via `pytest-xdist`) parallelizes across
 CPU cores — roughly 2x faster, same pass/fail result. Stick to plain `pytest`
 when debugging a single test with `-s`/`-vv`, since worker output interleaves.
 
-624 tests: the event contract and its serialisation, the replayer, transcript
+799 tests: the event contract and its serialisation, the replayer, transcript
 and composer behaviour, every keybinding, status-line elision at ten widths,
 credential masking end to end, both modals, and ten SVG snapshots pinning the
 look — plus, for the agent core, the phase state machine's legal and illegal
