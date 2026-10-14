@@ -172,6 +172,24 @@ _ONE_CALL_RULE = (
     "after that."
 )
 
+#: 2026-10-12, live: a bare "HI" with no scan request triggered a full,
+#: unprompted nmap -> whatweb -> nikto chain against the configured
+#: target. Root cause: every phase prompt below is phrased as a standing
+#: order ("Start with nmap against the target") with nothing conditioning
+#: it on the user's current message actually calling for it — true
+#: regardless of phase, so this is prepended once rather than reworded
+#: five times. The phase text still answers "what tool, once something
+#: needs doing"; this answers "should anything be done on this turn at
+#: all", which the phase text was never written to cover.
+_ACT_ONLY_WHEN_ASKED = (
+    "Only call a tool when the user's current message actually calls for "
+    "it — a new scan, a continuation of testing already underway, or an "
+    "explicit request. A greeting, small talk, or a question about status "
+    "or findings is not a request to act: answer in plain text instead. "
+    "Having a target configured and tools available is not, by itself, a "
+    "reason to call one."
+)
+
 
 def _extract_balanced_json(text: str, start: int) -> str | None:
     """The first balanced {...} object in text at or after start."""
@@ -251,9 +269,10 @@ def make_think_node(
             if state["target"]
             else "No target configured yet."
         )
+        act_rule = f"\n\n{_ACT_ONLY_WHEN_ASKED}" if phase_tools else ""
         rules = f"\n\n{_ONE_CALL_RULE}" if phase_tools else ""
         hint = _FALLBACK_HINT if phase_tools else ""
-        system_prompt = f"{target_line}\n\n{profile.system_prompt}{rules}{hint}"
+        system_prompt = f"{target_line}{act_rule}\n\n{profile.system_prompt}{rules}{hint}"
         context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
         history, dropped = _compact_history(state["messages"], system_prompt, context_window)
 
