@@ -536,3 +536,56 @@ from model non-determinism.
   chunk content only ever concatenates, never erases), so there was
   nothing to suppress. `state.py`/`core.py` are back to exactly their
   pre-branch content; the whole fix now lives in `nodes.py` alone.
+
+## 10. Extensive live testing round (2026-10-14, containerized, real model + real lab)
+
+Driven through the real `CISMApp` + `LangGraphAgent` via Textual's pilot —
+same code path the interactive TUI uses, not a scripted shortcut — against
+Metasploitable2 (172.28.0.2) and DVWA (172.28.0.3), live tools, real bwrap
+sandbox, real model.
+
+- [x] **Fixed, live-verified (the main one):** `think()` never read
+  `depg_nodes`/`memory_items` — the model's only memory was raw chat
+  history, which `_compact_history` drops wholesale (just a bare "[N
+  turns omitted]" note) once the context window fills. Added a per-target
+  DEPG findings block and a narrative-memory block to the system prompt
+  every turn, rebuilt fresh from state, independent of history
+  compaction. Live-verified: forced `context_window` to 1200, scanned a
+  real host, sent filler turns until 10 earlier turns were dropped from
+  raw history, then asked "what ports did we find again" — answered
+  correctly, visibly quoting the DEPG block's own "+N more" cap notation.
+- [x] **Fixed, live-verified:** gobuster's model-facing description
+  didn't mention a wordlist is already forced — live run added a
+  gratuitous, wrong `extra: '-e <path>'` (a boolean flag in gobuster's
+  dir mode, not a wordlist flag) pointing at a file that doesn't exist,
+  causing a real `exited 1`. Same hallucinated-`extra` pattern as the
+  earlier sqlmap fix. Fixed by naming the forced wordlist in the
+  description and telling the model not to add its own.
+- [x] **Confirmed working, not a bug:** manual `/phase` override. Legal
+  transition (`/phase enumeration` from RECON) succeeds; illegal
+  (`/phase exploitation` from RECON) is correctly refused. If this reads
+  as "can't control the phase," it's a discoverability/UX gap, not a
+  functional one.
+- [x] **Confirmed working, not a bug:** per-call target attribution.
+  Mid-engagement question about a different host than the configured
+  target correctly ran `sqlmap` against that host, not the default.
+- [ ] **Not fixed, newly observed, low severity:** a plain acknowledgment
+  ("ok, noted" — not a request) triggered an unprompted `nikto` call —
+  an `_ACT_ONLY_WHEN_ASKED` miss distinct from the plain-greeting case
+  that command already handles correctly. Not investigated this round.
+- Test-harness lesson (not a product bug): driving the real agent via
+  `agent.events.join()` to detect "turn finished" is wrong for a slow
+  real model — the queue can drain momentarily mid-run and the next
+  submit() cancels the one in flight ("superseded by new submission").
+  Poll `agent._task.done()` instead when scripting a multi-turn session
+  against a real backend.
+- Sandbox lesson (not a product bug): a quick test container without the
+  README's documented `--cap-add=SYS_ADMIN`/seccomp/no-new-privileges
+  flags makes every real tool call fail identically with "bwrap: No
+  permissions to create a new namespace" — looks like a tool/product bug
+  until you check the container's own flags against `docker/README.md`.
+- Docs fixed (`ac468a6`): README claimed guardrails' input/output seams
+  are "still pass-through" (false once `--live-tools` is used) and that
+  `generality`/`downstream` are "not yet computed" (false —
+  `Graph.compute_metrics()` already fills both, DEPG modal renders real
+  values). Test count and tool-catalog count were stale too.
