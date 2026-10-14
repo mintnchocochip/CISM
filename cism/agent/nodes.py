@@ -190,6 +190,42 @@ _ACT_ONLY_WHEN_ASKED = (
     "reason to call one."
 )
 
+#: Appended only for the one bounded retry below, never part of the
+#: standing system prompt otherwise — a last-resort nudge, not a rule the
+#: model should see every turn.
+_RETRY_NUDGE = (
+    "You did not make a tool call just now, on the opening move of a turn "
+    "that calls for one. Make exactly one tool call now, using the "
+    "tool-calling mechanism, with the real target value already given "
+    "above — do not write text instead."
+)
+
+
+def _already_has_a_tool_result_this_turn(messages: list) -> bool:
+    """True once this turn has already produced at least one real tool
+    result — only the turn's opening move (nothing yet since the last
+    HumanMessage) is eligible for the empty-response retry in think()
+    below; a later step legitimately concluding with text (a genuine
+    final answer after real tool use) must never be retried."""
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            return False
+        if isinstance(message, ToolMessage):
+            return True
+    return False
+
+
+async def _stream_response(bound: BaseChatModel, messages: list) -> AIMessage:
+    """One model call, accumulated from its stream."""
+    response = None
+    async for chunk in bound.astream(messages):
+        response = chunk if response is None else response + chunk
+    if response is None:
+        # A provider that errors or returns nothing leaves zero chunks;
+        # an empty answer is a better default than a later crash on None.
+        return AIMessage(content="")
+    return response
+
 
 def _extract_balanced_json(text: str, start: int) -> str | None:
     """The first balanced {...} object in text at or after start."""
@@ -288,19 +324,31 @@ def make_think_node(
         if privacy is not None:
             system_prompt = privacy.anonymize(system_prompt)
         messages = [SystemMessage(content=system_prompt), *history]
-        response = None
-        async for chunk in bound.astream(messages):
-            response = chunk if response is None else response + chunk
-        if response is None:
-            # A provider that errors or returns nothing leaves zero chunks;
-            # an empty answer is a better default than a later crash on None.
-            response = AIMessage(content="")
+        # Only the turn's opening move is eligible for the retry below — a
+        # later step legitimately concluding with text (a genuine final
+        # answer after real tool use) must never be retried.
+        is_opening_move = bool(phase_tools) and not _already_has_a_tool_result_this_turn(
+            state["messages"]
+        )
+        response = await _stream_response(bound, messages)
         if phase_tools and not response.tool_calls:
             # Weak/non-tool-calling models often describe the call in prose
             # instead of the API's structured field — recover it from text.
             parsed = _parse_text_tool_call(str(response.content))
             if parsed is not None:
                 response = response.model_copy(update={"tool_calls": [parsed]})
+        # Only a truly empty attempt (no tool call AND no text) is retried —
+        # real text means the model deliberately answered instead of acting
+        # (e.g. _ACT_ONLY_WHEN_ASKED on a greeting), which must stand as-is.
+        # An empty attempt streamed no content either, so there's nothing
+        # live viewers already saw that this retry contradicts.
+        if is_opening_move and not response.tool_calls and not str(response.content).strip():
+            retry_messages = [*messages, SystemMessage(content=_RETRY_NUDGE)]
+            response = await _stream_response(bound, retry_messages)
+            if phase_tools and not response.tool_calls:
+                parsed = _parse_text_tool_call(str(response.content))
+                if parsed is not None:
+                    response = response.model_copy(update={"tool_calls": [parsed]})
         return {"messages": [response], "compacted": dropped}
 
     return think
