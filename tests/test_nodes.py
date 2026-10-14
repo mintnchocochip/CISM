@@ -22,11 +22,19 @@ from langchain_core.tools import StructuredTool
 
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam
 from cism.agent.llm import DummyChatModel
-from cism.agent.nodes import _compact_history, make_act_node, make_depg_update_node, make_think_node
+from cism.agent.nodes import (
+    _compact_history,
+    _depg_context,
+    _memory_context,
+    make_act_node,
+    make_depg_update_node,
+    make_think_node,
+)
 from cism.agent.profiles import PhaseProfile, PhaseProfiles
 from cism.agent.state import Phase
 from cism.agent.tools import ToolRegistry, dummy_msfconsole, dummy_nmap
 from cism.depg import Extraction, ExtractorRegistry, GenericExtractor, Node
+from cism.memory import MemoryItem
 
 #: The three plain think-node tests below don't care about phase-scoped
 #: prompts/tools, just that make_think_node's streaming accumulation works
@@ -50,12 +58,13 @@ class _RecordingChatModelForNodesTest(BaseChatModel):
         return self
 
 
-def _state(messages, depg_nodes=None, depg_edges=None) -> dict:
+def _state(messages, depg_nodes=None, depg_edges=None, memory_items=None) -> dict:
     return {
         "messages": messages,
         "phase": Phase.RECON,
         "depg_nodes": depg_nodes or {},
         "depg_edges": depg_edges or [],
+        "memory_items": memory_items or {},
         "run_id": "run-1",
         "target": "10.0.0.5",
     }
@@ -796,7 +805,7 @@ async def test_think_always_binds_tool_help_even_when_the_profile_declares_no_to
     )
     think = make_think_node(_RecordsBoundTools(), ToolRegistry([help_tool]), profiles)
 
-    await think({"messages": [HumanMessage(content="go")], "phase": Phase.REPORTING, "target": "10.0.0.5"})
+    await think(_state([HumanMessage(content="go")]) | {"phase": Phase.REPORTING})
 
     assert [t.name for t in recorded[0]] == ["tool_help"]
 
@@ -867,7 +876,7 @@ async def test_think_skips_the_text_fallback_when_the_phase_offers_no_tools() ->
     )
     llm = _TextOnlyChatModel(text='TOOL_CALL: {"name": "dummy_nmap", "args": {}}')
     think = make_think_node(llm, ToolRegistry([]), profiles)
-    state = {"messages": [HumanMessage(content="go")], "phase": Phase.REPORTING, "target": "10.0.0.5"}
+    state = _state([HumanMessage(content="go")]) | {"phase": Phase.REPORTING}
 
     update = await think(state)
 
@@ -1135,3 +1144,78 @@ async def test_act_runs_a_slow_sync_tool_without_blocking_the_event_loop() -> No
 
     assert result["messages"][0].content == "done"
     assert ticks >= 5  # event loop kept running while the "tool" slept
+
+
+def _node(id: str, cause_class: str, target: str, signal: str = "", state: str = "resolved") -> Node:
+    return Node(id=id, cause_class=cause_class, target=target, signal=signal, state=state)
+
+
+def test_depg_context_groups_by_target_and_caps_each_target() -> None:
+    nodes = {
+        f"n{i}": _node(f"n{i}", "open-port", "10.0.0.2", f"{i}/tcp")
+        for i in range(10)
+    }
+    nodes["other"] = _node("other", "open-port", "10.0.0.3", "80/tcp")
+
+    text = _depg_context(nodes)
+
+    assert "10.0.0.2:" in text
+    assert "10.0.0.3:" in text
+    assert "+2 more" in text  # 10 nodes on .2, capped at 8
+
+
+def test_depg_context_empty_when_no_nodes() -> None:
+    assert _depg_context({}) == ""
+
+
+def test_memory_context_skips_depg_derived_items() -> None:
+    items = {
+        "a": MemoryItem(id="a", tier="T2", phase_tag="recon", snippet="22/tcp ssh",
+                        created_at=0.0, source_type="depg_node"),
+        "b": MemoryItem(id="b", tier="T3", phase_tag="recon", snippet="nmap timed out",
+                        created_at=0.0, source_type="tool-failure"),
+    }
+
+    text = _memory_context(items)
+
+    assert "22/tcp ssh" not in text  # already shown by _depg_context
+    assert "nmap timed out" in text
+
+
+def test_memory_context_empty_when_nothing_but_depg_derived_items() -> None:
+    items = {
+        "a": MemoryItem(id="a", tier="T2", phase_tag="recon", snippet="22/tcp ssh",
+                        created_at=0.0, source_type="depg_node"),
+    }
+    assert _memory_context(items) == ""
+
+
+async def test_think_puts_depg_and_memory_context_in_the_system_prompt() -> None:
+    llm = _RecordingMessagesChatModel(seen=[])
+    think = make_think_node(llm, ToolRegistry([]), _NO_OP_PROFILES)
+    depg_nodes = {"n1": _node("n1", "open-port", "10.0.0.5", "22/tcp ssh")}
+    memory_items = {
+        "f1": MemoryItem(id="f1", tier="T3", phase_tag="recon", snippet="nmap timed out",
+                         created_at=0.0, source_type="tool-failure"),
+    }
+    state = _state([HumanMessage(content="what have we found?")], depg_nodes=depg_nodes,
+                    memory_items=memory_items)
+
+    await think(state)
+
+    system = next(m for m in llm.seen[-1] if isinstance(m, SystemMessage))
+    assert "10.0.0.5" in str(system.content)
+    assert "22/tcp ssh" in str(system.content)
+    assert "nmap timed out" in str(system.content)
+
+
+async def test_think_adds_no_context_block_when_nothing_to_summarize() -> None:
+    llm = _RecordingMessagesChatModel(seen=[])
+    think = make_think_node(llm, ToolRegistry([]), _NO_OP_PROFILES)
+    state = _state([HumanMessage(content="hi")])
+
+    await think(state)
+
+    system = next(m for m in llm.seen[-1] if isinstance(m, SystemMessage))
+    assert "Findings so far" not in str(system.content)
+    assert "Retained memory" not in str(system.content)
