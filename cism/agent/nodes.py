@@ -43,9 +43,8 @@ _CHARS_PER_TOKEN = 4
 _RESPONSE_RESERVE_TOKENS = 512
 DEFAULT_CONTEXT_WINDOW = 32_768
 
-#: Flat per-message overhead (role wrapper, message-boundary tokens a chars/4
-#: count on content alone can't see) — small, but keeps a long run of
-#: near-empty messages from estimating as free.
+#: Flat per-message overhead chars/4 can't see on content alone — keeps a
+#: long run of near-empty messages from estimating as free.
 _PER_MESSAGE_OVERHEAD_TOKENS = 4
 
 
@@ -54,12 +53,10 @@ def _estimate_tokens(text: str) -> int:
 
 
 def _message_cost(message) -> int:
-    """Cost of one message as it actually goes on the wire — not just
-    ``.content``. An AIMessage's ``tool_calls`` (Q2, CODE_REVIEW.md: a large
-    call like ``nmap`` with a long ``extra`` arg) and a ToolMessage's
-    ``tool_call_id`` carry real tokens too; counting content alone means
-    exactly the multi-tool run B2 exists to bound is under-counted and never
-    compacted."""
+    """Cost of one message as it goes on the wire, not just ``.content`` —
+    an AIMessage's ``tool_calls`` and a ToolMessage's ``tool_call_id`` carry
+    real tokens too, and skipping them would under-count exactly the
+    multi-tool runs B2 exists to bound."""
     content = str(getattr(message, "content", ""))
     tool_calls = getattr(message, "tool_calls", None)
     extra = str(tool_calls) if tool_calls else ""
@@ -97,11 +94,9 @@ _MEMORY_CONTEXT_CAP = 10
 
 def _depg_context(depg_nodes: dict) -> str:
     """Per-target findings summary, rebuilt fresh every think() call from
-    DEPG state rather than chat history -- this is what survives once
-    _compact_history drops the turns a finding actually came from. Both
-    targets and, within a target, nodes are capped and priority-sorted
-    (unresolved first) so a big multi-host run can't grow this unboundedly
-    or bury a live finding behind older resolved ones."""
+    DEPG state so it survives _compact_history dropping the turns a finding
+    came from. Targets and nodes are capped and unresolved-first sorted so
+    a big multi-host run can't grow this unboundedly or bury a live finding."""
     if not depg_nodes:
         return ""
     by_target: dict[str, list] = {}
@@ -131,15 +126,10 @@ def _depg_context(depg_nodes: dict) -> str:
 
 
 def _memory_context(memory_items: dict, screen=None) -> str:
-    """Narrative memory (failures, phase changes, narration) only -- DEPG-
-    derived items (source_type="depg_node") are already in _depg_context,
-    so skip them here rather than showing the same finding twice.
-
-    `screen`, when given, runs over a tool-failure snippet before it's
-    shown -- that text is raw target-controlled tool output (C1,
-    AUDIT.md), same as a ToolMessage in history, and needs the same
-    injection screening history already gets; narration is the model's
-    own prior output, not externally sourced, so it's shown as-is."""
+    """Narrative memory only -- DEPG-derived items (source_type="depg_node")
+    are already in _depg_context, so skip them here. `screen`, when given,
+    runs over a tool-failure snippet first since that's raw target-controlled
+    output needing the same injection screening a ToolMessage gets."""
     items = [m for m in memory_items.values() if m.source_type != "depg_node"]
     if not items:
         return ""
@@ -173,23 +163,12 @@ _FORWARD_PHASE: dict[Phase, Phase] = {
 
 
 def _phase_ready(phase: Phase, nodes: dict[str, Node]) -> bool:
-    """Whether this phase's own objective has real DEPG evidence behind it —
-    not "some tool call exited zero", which is what the old placeholder
-    (advance on any successful call) actually checked. Looks at nodes
-    tagged with this phase (Node.phase, set in depg_update from the phase
-    active when they were extracted) that reached "resolved" — alive
-    verdict *and* supported, per reduce_state. depg_update always runs
-    before phase_router in the graph, so this step's own extraction is
-    already reflected.
-
-    RECON and EXPLOITATION gate on their phase's one deterministic
-    cause_class (nmap's open-port, hydra's credential-found) so a scan
-    that finds nothing, or a credential attempt that fails, correctly
-    doesn't count as done. The other phases have no fixed cause_class
-    vocabulary to match against — LLM-extracted, free text — so they
-    accept any resolved node produced while in that phase: still real
-    evidence, just not a named-finding requirement.
-    """
+    """Whether this phase's objective has real DEPG evidence behind it, not
+    just "some tool call exited zero". Looks at this phase's own resolved
+    nodes (Node.phase, set in depg_update, which always runs first). RECON
+    and EXPLOITATION gate on their one deterministic cause_class (open-port,
+    credential-found); other phases accept any resolved node, since their
+    extraction is free-text LLM output with no fixed vocabulary to match."""
     phase_tag = phase.to_wire()
     in_phase_resolved = [
         node for node in nodes.values() if node.phase == phase_tag and node.state == "resolved"
@@ -223,13 +202,8 @@ _FALLBACK_HINT = (
     '{"name": "<tool>", "args": {...}}.'
 )
 
-#: 2026-10-12 live-test against a real small local model (lfm2.5-8b-a1b):
-#: given an open-ended instruction, it twice produced zero tool calls —
-#: once by writing a JSON *array* of several planned future calls as prose
-#: instead of one structured call, once by asking the user to re-confirm
-#: the target that was already on the line above. Both are prompt gaps,
-#: not model-capability gaps: the same model handled a single, explicit
-#: instruction (name the tool, give the target) correctly on the first try.
+#: Live-test fix: an open-ended instruction made a small local model write
+#: several planned calls as prose, or re-ask for a target already given.
 _ONE_CALL_RULE = (
     "Make exactly one tool call per turn, using the tool-calling mechanism "
     "— never write out a list of several planned calls as text or JSON. "
@@ -237,15 +211,9 @@ _ONE_CALL_RULE = (
     "after that."
 )
 
-#: 2026-10-12, live: a bare "HI" with no scan request triggered a full,
-#: unprompted nmap -> whatweb -> nikto chain against the configured
-#: target. Root cause: every phase prompt below is phrased as a standing
-#: order ("Start with nmap against the target") with nothing conditioning
-#: it on the user's current message actually calling for it — true
-#: regardless of phase, so this is prepended once rather than reworded
-#: five times. The phase text still answers "what tool, once something
-#: needs doing"; this answers "should anything be done on this turn at
-#: all", which the phase text was never written to cover.
+#: Live-test fix: a bare "HI" triggered an unprompted nmap->whatweb->nikto
+#: chain, because every phase prompt is a standing order with nothing
+#: conditioning it on the user actually asking. Prepended once for all phases.
 _ACT_ONLY_WHEN_ASKED = (
     "Only call a tool when the user's current message actually calls for "
     "it — a new scan, a continuation of testing already underway, or an "
@@ -267,11 +235,9 @@ _RETRY_NUDGE = (
 
 
 def _already_has_a_tool_result_this_turn(messages: list) -> bool:
-    """True once this turn has already produced at least one real tool
-    result — only the turn's opening move (nothing yet since the last
-    HumanMessage) is eligible for the empty-response retry in think()
-    below; a later step legitimately concluding with text (a genuine
-    final answer after real tool use) must never be retried."""
+    """True once this turn has produced a real tool result — only the
+    opening move is eligible for think()'s empty-response retry below; a
+    later step concluding with text is a genuine final answer, never retried."""
     for message in reversed(messages):
         if isinstance(message, HumanMessage):
             return False
@@ -343,10 +309,8 @@ def make_think_node(
     *,
     privacy: PrivacyGateway | None = None,
 ) -> Callable[[AgentState], dict]:
-    # C1 (AUDIT.md): screened here, at prompt-build time, not when act()
-    # appends the ToolMessage to state — depg_update's regex extractors and
-    # the audit log both need the raw tool output; only what the model sees
-    # needs the untrusted-data wrapper.
+    # C1 (AUDIT.md): screened here, at prompt-build time, not on act()'s
+    # ToolMessage — depg_update and the audit log still need the raw output.
     screen = tool_output_chain or GuardrailChain([])
 
     async def think(state: AgentState) -> dict:
@@ -358,12 +322,8 @@ def make_think_node(
             names.add("tool_help")
         phase_tools = [tools.get(name) for name in names]
         bound = _bind_tools_if_supported(llm, phase_tools)
-        # Prepended for this invocation only, never appended to state. The
-        # target line exists because profile.system_prompt is phase-only and
-        # never mentions it — without this, the model has no way to know
-        # what "the target" or "our target" refers to. "Already decided...
-        # never ask" was added after a live run asked the user to re-supply
-        # a target that was sitting right here (see _ONE_CALL_RULE's note).
+        # Prepended for this invocation only, never appended to state —
+        # profile.system_prompt is phase-only and never names the target.
         target_line = (
             f"Target: {state['target']} — already decided for this run; use it "
             "directly in tool calls. Never ask the user to confirm or supply it."
@@ -396,24 +356,19 @@ def make_think_node(
         if privacy is not None:
             system_prompt = privacy.anonymize(system_prompt)
         messages = [SystemMessage(content=system_prompt), *history]
-        # Only the turn's opening move is eligible for the retry below — a
-        # later step legitimately concluding with text (a genuine final
-        # answer after real tool use) must never be retried.
+        # Only the opening move is retry-eligible — a later step legitimately
+        # concluding with text must never be retried.
         is_opening_move = bool(phase_tools) and not _already_has_a_tool_result_this_turn(
             state["messages"]
         )
         response = await _stream_response(bound, messages)
         if phase_tools and not response.tool_calls:
-            # Weak/non-tool-calling models often describe the call in prose
-            # instead of the API's structured field — recover it from text.
+            # Weak models often describe the call in prose; recover it from text.
             parsed = _parse_text_tool_call(str(response.content))
             if parsed is not None:
                 response = response.model_copy(update={"tool_calls": [parsed]})
-        # Only a truly empty attempt (no tool call AND no text) is retried —
-        # real text means the model deliberately answered instead of acting
-        # (e.g. _ACT_ONLY_WHEN_ASKED on a greeting), which must stand as-is.
-        # An empty attempt streamed no content either, so there's nothing
-        # live viewers already saw that this retry contradicts.
+        # Retry only a truly empty attempt — real text is a deliberate
+        # answer (e.g. _ACT_ONLY_WHEN_ASKED on a greeting) and must stand.
         if is_opening_move and not response.tool_calls and not str(response.content).strip():
             retry_messages = [*messages, SystemMessage(content=_RETRY_NUDGE)]
             response = await _stream_response(bound, retry_messages)
@@ -526,15 +481,10 @@ def _trailing_tool_results(messages: list) -> list[tuple[ToolCall | None, ToolMe
 
 
 def _call_target(call: ToolCall | None, default: str) -> str:
-    """The host a tool call's own findings belong to is the target argument
-    *that call* was made with, never the session's one declared/startup
-    target — a multi-host engagement calls the same tools against several
-    hosts, and stamping every node with state["target"] regardless of which
-    host was actually scanned silently merges unrelated hosts' findings onto
-    one node family. Confirmed live 2026-10-12: a second nmap call against a
-    different host had all 19 of its open ports attributed to the first
-    host instead. Falls back to the session default only for a call with no
-    target argument of its own (e.g. tool_help) or no call at all."""
+    """A finding belongs to the target *that call* used, never the session
+    default — a multi-host engagement would otherwise merge every host's
+    findings onto one node family. Falls back to the default only for a
+    call with no target argument of its own (e.g. tool_help)."""
     if call is not None:
         raw = (call.get("args") or {}).get("target")
         if raw:
@@ -548,17 +498,15 @@ def make_depg_update_node(
     async def depg_update(state: AgentState) -> dict:
         graph = Graph.from_state(state["depg_nodes"], state["depg_edges"])
         phase_tag = state["phase"].to_wire()
-        # Only a fallback for a call with no target argument of its own
-        # (e.g. tool_help) — see _call_target below for why this must not
-        # be used for every call in a multi-host engagement.
+        # Fallback only — see _call_target for why this must not be used
+        # for every call in a multi-host engagement.
         default_target = normalize_target(state["target"])
 
         for call, message in _trailing_tool_results(state["messages"]):
             extractor = extractors.get(message.name or "")
             target = _call_target(call, default_target)
-            # to_thread: extraction can be a ~20s blocking LLM call, off the
-            # loop thread so it doesn't freeze the TUI. Stays sequential
-            # (not gathered) — find_precondition needs each call's nodes
+            # to_thread: extraction can block ~20s on an LLM call. Stays
+            # sequential — find_precondition needs each call's nodes
             # upserted before the next call links against them.
             extraction = await asyncio.to_thread(extractor.extract, call, message, graph, target)
             # Resolved before any of this message's own nodes land, or two
