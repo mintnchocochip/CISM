@@ -97,8 +97,10 @@ gobuster:
   capability: reads
   description: >-
     Brute-force a web server's directories/files from a wordlist. "dir"
-    mode is forced — gobuster also has vhost/dns/s3/etc. modes this catalog
-    row doesn't support.
+    mode and a real wordlist are already forced — never add your own -w,
+    -e, or any other wordlist/output flag in `extra`; the call needs
+    nothing beyond the target. gobuster also has vhost/dns/s3/etc. modes
+    this catalog row doesn't support.
   target: "-u"
   # -z: gobuster's live progress indicator rewrites the current line with
   # a raw \r + ANSI clear-line before every hit it prints — confirmed live
