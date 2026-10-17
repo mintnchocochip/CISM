@@ -62,8 +62,21 @@ class ToolSpec(BaseModel):
         return frozenset(Phase[p.upper().replace("-", "_")] for p in value)
 
 
+#: 2026-10-17, live (round 12): a read-only tool (gobuster) with no
+#: explicit `phases:` override silently vanished once the engagement
+#: raced past vulnerability-discovery into exploitation -- "brute force
+#: directories" got no gobuster call because it had already disappeared
+#: from the bound set, and the model (correctly, given what it actually
+#: had) claimed no tool supports it. A read-only tool stays just as
+#: useful after exploitation starts (re-running gobuster once a shell
+#: reveals a new path, say), so this default now matches nmap/curl's own
+#: explicit phase lists, which already run through post-exploitation —
+#: `reporting` stays tool-free everywhere, unchanged.
 _DEFAULT_PHASES_BY_CAPABILITY: dict[Capability, frozenset[Phase]] = {
-    "reads": frozenset({Phase.RECON, Phase.ENUMERATION, Phase.VULNERABILITY_DISCOVERY}),
+    "reads": frozenset({
+        Phase.RECON, Phase.ENUMERATION, Phase.VULNERABILITY_DISCOVERY,
+        Phase.EXPLOITATION, Phase.POST_EXPLOITATION,
+    }),
     "writes": frozenset(),
     "executes": frozenset(),
     "destructive": frozenset(),
