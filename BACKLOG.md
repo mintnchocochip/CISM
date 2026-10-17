@@ -658,3 +658,121 @@ sandbox, real model.
   `generality`/`downstream` are "not yet computed" (false —
   `Graph.compute_metrics()` already fills both, DEPG modal renders real
   values). Test count and tool-catalog count were stale too.
+
+## 11. Live testing round 12 (2026-10-17, full re-run after §10's fixes)
+
+A fresh 13-turn engagement through the real `LangGraphAgent` + real
+`lfm2.5-8b-a1b` backend + real sandboxed tools, driving dvwa then
+pivoting to metasploitable2, deliberately re-exercising every fix landed
+in §7-§10 plus a few scenarios no prior round's script covered (a
+phase-gated tool requested before it's offered, a status question
+mid-engagement, acknowledgments at three different points in one
+engagement). Regression check first, new findings second.
+
+**Regression check — all still holding:**
+- #1 (retry+retraction), #2 (placeholder-target rejection), the
+  Metasploitable2 SSH/hydra kex fix, and the structural "ok, noted" fix
+  (zero tools bound) all confirmed working live, unchanged from §10.
+  Every "ok, noted"/"thanks"/"got it" turn produced **0 real tool calls**
+  across both this round and the follow-up round below.
+- #3 (phase-gate reason surfacing): asking for `sqlmap` while still in
+  `recon` (it isn't offered in that phase yet) got a clear "I don't have
+  the ability to run sqlmap... would you like an nmap scan instead?" —
+  not a generic blocked-call message.
+
+**New findings, fixed and live-verified this round:**
+- [x] **Context-overflow 400, mid-engagement:** two consecutive turns
+  near the end of the 13-turn run failed outright —
+  `request (17245 tokens) exceeds the available context size (16384
+  tokens)` — despite `_compact_history`'s own budget estimate saying it
+  fit. Root cause: `_CHARS_PER_TOKEN = 4` is a flat heuristic tuned
+  against average English prose; several turns of markdown-heavy model
+  output (bullets, bold, backticks) tokenize less efficiently than that,
+  so the estimate quietly ran ~8-9% low. Tightened to `3`, deliberately
+  biased toward compacting one turn earlier than strictly necessary
+  (cheap — the DEPG/memory context block already covers what's lost)
+  over a real mid-engagement 400 (a whole turn lost outright). Re-ran the
+  same engagement shape afterward: no overflow, including at the exact
+  turn that failed before.
+- [x] **hydra `service="web"` — real exit-255 instead of actionable
+  feedback:** asked to "brute force SSH credentials" earlier in the
+  engagement, then later asked to attack the web login, the model reused
+  `hydra` with `service: "web"` — satisfies the required-field check
+  (unlike the earlier, already-fixed "no service at all" bug) but isn't
+  a real hydra module name, so hydra itself exited 255 with a raw usage
+  error. The tool's own docstring already says "never a web page... use
+  sqlmap or curl instead" — nothing enforced it. Added an explicit
+  allow-list of real hydra service names (`credentials.py`); an unknown
+  one now raises `ValueError` with the same guidance the docstring
+  already gives, before a real subprocess ever runs. Verified by direct
+  `hydra.invoke()` (bypassing the LLM) with `service="web"`.
+- [x] **Plain-acknowledgment turns showing raw model-internal syntax as
+  the final answer:** the structural "zero tools bound" fix (§10)
+  correctly stops the *call*, but the model still sometimes *writes* one
+  in its own native template tokens (e.g.
+  `<|tool_call_start|>[curl(...)]<|tool_call_end|>`), and with nothing to
+  parse/consume it, that raw text became the turn's entire visible
+  narration — confusing, looks broken, could read as if a real call
+  happened when nothing executed. Tried a prompt-only nudge first
+  (`_ACK_NO_TOOLS_NOTE`, telling the model not to write any tool-call
+  syntax this turn) — live-tested, cut the rate down but didn't
+  eliminate it (1/3 leaked in one re-run). Real fix: `respond()` now
+  strips any `<|tool_call_start|>...<|tool_call_end|>` span from the
+  final content before it's shown (`_strip_leaked_tool_call_syntax`,
+  falls back to `"Noted."` if that's all there was) — generic, not
+  ack-mode-specific, since this syntax is never legitimate content
+  regardless of which turn produced it. **Live-verification lesson:**
+  the first attempt to verify this live wrongly reported the fix as
+  *not* working — the test script only inspected `Narration` events and
+  missed that `core.py`'s existing `NarrationRedacted` mechanism (built
+  for the output-guardrail-withheld case) already fires whenever
+  `respond()`'s final text differs from what streamed live, fully
+  *replacing* the displayed text with the clean version. Re-checked with
+  `NarrationRedacted.reason` included: 0/4 raw leaks in the actual final
+  displayed text across a repeated trial, even though the model still
+  wrote the raw syntax live in the stream itself every time.
+
+**New finding, understood but not fixed — a product decision, not a bug
+fix:**
+- [ ] Directory brute-forcing was requested mid-engagement
+  ("brute force directories on it") and got no `gobuster` call at all —
+  the model tried an `nmap --script=dirb` workaround (blocked by
+  `dangerous-flag-guard`) and then claimed "none of the available tools
+  support this," which is **false against the full catalog** but was
+  very likely **true against what was actually bound that turn**:
+  `gobuster`'s (and `nikto`/`whatweb`/`wafw00f`/`dnsenum`'s) default
+  `reads`-capability phases are `recon, enumeration,
+  vulnerability-discovery` only (`catalog.yaml`) — if the engagement had
+  already raced past `vulnerability-discovery` into `exploitation` by
+  this turn (very plausible: §8's already-known "eager phase
+  progression" means several resolved findings across a handful of
+  turns can walk the phase forward more than once per turn), those tools
+  would have genuinely disappeared from the bound set, and `nmap`/`curl`/
+  `sqlmap` (all explicitly offered through `exploitation`) would be all
+  that's left — exactly what the model still had access to. This
+  reframes §8's "eager phase progression" item: it isn't just a
+  cosmetic/logging concern, advancing early can silently take away
+  still-useful passive recon/enum tools with no signal to the user about
+  why. The `e916f9a`/2026-10-17 decision to leave phase-advance capping
+  alone (the demo flow needs it) still stands — but extending the
+  default `reads` phase set further into `exploitation`/`post-
+  exploitation`, or giving `gobuster` its own explicit phase list like
+  `nmap`/`curl` already have, is a real option worth a deliberate
+  product call, not something to change unilaterally here.
+- [ ] A status question ("what have we found so far?") once got a
+  genuinely empty final answer (no tool call, no text) — the documented,
+  accepted "real reasoning-model flakiness" category from §9 (`think()`
+  retries once on a truly-empty opening move; a second empty attempt in
+  a row is left as-is rather than retried again). Not re-opened.
+- Test-harness lesson (not a product bug, learned the hard way this
+  round): any live-test script checking the model's final narration must
+  also check `NarrationRedacted` events, not just `Narration` — the
+  latter can be stale once the former fires. Missing this produced a
+  false "fix doesn't work" result above before it was caught and
+  corrected.
+- Verification: targeted suite green after each fix; full suite
+  825/825 (no flakes this run). Live-verified via two full engagement
+  passes (13-turn original + a focused 9-turn re-run) plus two isolated
+  checks (direct `hydra.invoke()`, a 4-trial repeated-acknowledgment
+  spot-check) against the real `lfm2.5-8b-a1b` backend and real
+  dvwa/metasploitable2 targets.
