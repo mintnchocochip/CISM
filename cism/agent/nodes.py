@@ -39,8 +39,16 @@ __all__ = [
 MAX_AI_TURNS = 6
 
 #: No local-model tokenizer is available generically, so this is a rough
-#: chars-per-token estimate (B2, AUDIT.md) — good enough for a budget, not billing.
-_CHARS_PER_TOKEN = 4
+#: chars-per-token estimate (B2, AUDIT.md) — good enough for a budget, not
+#: billing. 2026-10-17, live (round 12): a real request still overflowed
+#: the server's actual context window ("17245 tokens... n_ctx: 16384") by
+#: ~1300 tokens despite fitting this budget, because several turns of
+#: markdown-heavy model output (bullets, bold, backticks) tokenize less
+#: efficiently than the flat chars/4 this was tuned against. Tightened
+#: with a safety margin deliberately biased toward compacting one turn
+#: too early (cheap — DEPG/memory context already covers what's lost)
+#: over a real 400 mid-engagement (a whole turn lost outright).
+_CHARS_PER_TOKEN = 3
 _RESPONSE_RESERVE_TOKENS = 512
 DEFAULT_CONTEXT_WINDOW = 32_768
 
@@ -347,6 +355,25 @@ def _is_plain_acknowledgment(text: str) -> bool:
     return normalized in _PLAIN_ACKNOWLEDGMENTS
 
 
+#: 2026-10-17, live (round 12): binding zero tools on a plain-acknowledgment
+#: turn correctly stops the call from executing, but the model still tries
+#: to *write* one in whatever native tool-call syntax it was trained on
+#: (e.g. "<|tool_call_start|>[curl(...)]<|tool_call_end|>") since nothing
+#: told it tool-calling itself is off the table this turn -- that raw,
+#: broken-looking text then becomes the turn's entire visible narration.
+#: Placed at the very end of the system prompt, after the phase's own
+#: standing order, not up near _ACT_ONLY_WHEN_ASKED -- the same ordering
+#: lesson that motivated the structural fix above: on a small model, later
+#: text in the prompt outweighs earlier text.
+_ACK_NO_TOOLS_NOTE = (
+    "No tools are available to you on this turn. Reply with a brief "
+    "plain-text acknowledgment only -- do not write a tool call in any "
+    "form (JSON, a TOOL_CALL: line, <|tool_call_start|>, or similar), "
+    "since nothing will execute it and it will only show up as broken "
+    "text."
+)
+
+
 async def _stream_response(
     bound: BaseChatModel, messages: list, *, retriable: bool = False
 ) -> AIMessage:
@@ -436,7 +463,10 @@ def make_think_node(
         # _parse_text_tool_call text fallback below can produce a call this
         # turn, regardless of what the standing phase order or fresh DEPG
         # findings context might otherwise pull the model toward.
-        if phase_tools and _is_plain_acknowledgment(_last_human_text(state["messages"]) or ""):
+        is_plain_ack = bool(phase_tools) and _is_plain_acknowledgment(
+            _last_human_text(state["messages"]) or ""
+        )
+        if is_plain_ack:
             phase_tools = []
         bound = _bind_tools_if_supported(llm, phase_tools)
         # Prepended for this invocation only, never appended to state. The
@@ -466,7 +496,11 @@ def make_think_node(
         context_block = f"\n\n{context_summary}" if context_summary else ""
         rules = f"\n\n{_ONE_CALL_RULE}" if phase_tools else ""
         hint = _fallback_hint(state["target"]) if phase_tools else ""
-        system_prompt = f"{target_line}{act_rule}{context_block}\n\n{profile.system_prompt}{rules}{hint}"
+        ack_note = f"\n\n{_ACK_NO_TOOLS_NOTE}" if is_plain_ack else ""
+        system_prompt = (
+            f"{target_line}{act_rule}{context_block}\n\n{profile.system_prompt}"
+            f"{rules}{hint}{ack_note}"
+        )
         context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
         history, dropped = _compact_history(state["messages"], system_prompt, context_window)
         history = [
@@ -752,13 +786,31 @@ def make_memory_update_node() -> Callable[[AgentState], dict]:
     return memory_update
 
 
+#: 2026-10-17, live (round 12): the _ACK_NO_TOOLS_NOTE above cuts how
+#: often this happens but doesn't eliminate it -- a small model
+#: occasionally still writes its own native tool-call template syntax as
+#: plain text (e.g. "<|tool_call_start|>[curl(...)]<|tool_call_end|>")
+#: when no tools are bound to actually consume it, and that becomes the
+#: turn's entire visible answer. Nothing executes it either way (no tools
+#: bound means no structured call is ever produced from it), so this is
+#: purely a display problem: strip the leaked span rather than show it
+#: verbatim. Generic, not ack-mode-specific -- this syntax is never
+#: legitimate content regardless of which turn produced it.
+_LEAKED_TOOL_CALL_RE = re.compile(r"<\|tool_call_start\|>.*?<\|tool_call_end\|>", re.DOTALL)
+
+
+def _strip_leaked_tool_call_syntax(text: str) -> str:
+    stripped = _LEAKED_TOOL_CALL_RE.sub("", text).strip()
+    return stripped or "Noted."
+
+
 def make_respond_node(output_chain: GuardrailChain) -> Callable[[AgentState], dict]:
     def respond(state: AgentState) -> dict:
         """Always returns an explicit message, even when the guardrail
         passes content through unchanged — so core.py never narrates a
         "think" message before the output guardrail has seen it."""
         last = state["messages"][-1]
-        content = str(last.content)
+        content = _strip_leaked_tool_call_syntax(str(last.content))
         result = output_chain.run(content)
         text = (
             result.value

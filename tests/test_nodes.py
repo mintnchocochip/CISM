@@ -28,6 +28,7 @@ from cism.agent.nodes import (
     _memory_context,
     make_act_node,
     make_depg_update_node,
+    make_respond_node,
     make_think_node,
 )
 from cism.agent.profiles import PhaseProfile, PhaseProfiles
@@ -977,6 +978,49 @@ async def test_think_ignores_a_fallback_text_tool_call_on_a_plain_acknowledgment
     assert update["messages"][0].tool_calls == []
 
 
+async def test_think_tells_the_model_not_to_write_a_tool_call_on_a_plain_acknowledgment() -> None:
+    """Live, round 12 (2026-10-17): binding zero tools stopped the call
+    from executing, but the model still wrote one in its own native
+    syntax ("<|tool_call_start|>[curl(...)]<|tool_call_end|>"), which then
+    became the turn's entire visible narration -- ugly, confusing text
+    even though nothing dangerous happened. The note must land, and land
+    after the phase's own standing order (recency beats the earlier rule
+    on a small model, same lesson as the structural fix itself)."""
+    recorded_messages: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+            recorded_messages.extend(messages)
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    think = make_think_node(_Recording(), ToolRegistry([dummy_nmap]), _recon_profile_with("dummy_nmap"))
+    state = _state([HumanMessage(content="ok, noted")])
+
+    await think(state)
+
+    system_prompt = str(next(m for m in recorded_messages if isinstance(m, SystemMessage)).content)
+    assert system_prompt.rstrip().endswith(
+        "since nothing will execute it and it will only show up as broken text."
+    )
+
+
+async def test_think_adds_no_ack_note_for_a_real_request() -> None:
+    recorded_messages: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+            recorded_messages.extend(messages)
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    think = make_think_node(_Recording(), ToolRegistry([dummy_nmap]), _recon_profile_with("dummy_nmap"))
+    state = _state([HumanMessage(content="scan it")])
+
+    await think(state)
+
+    system_prompt = str(next(m for m in recorded_messages if isinstance(m, SystemMessage)).content)
+    assert "do not write a tool call in any form" not in system_prompt
+
+
 async def test_think_still_binds_tools_for_a_message_that_merely_starts_with_an_ack_word() -> None:
     """Exact-match, not substring: "ok, run nikto" must still get tools."""
     recorded: list = []
@@ -1418,3 +1462,39 @@ async def test_think_screens_a_tool_failure_snippet_in_the_system_prompt() -> No
     system = next(m for m in llm.seen[-1] if isinstance(m, SystemMessage))
     assert "UNTRUSTED TOOL OUTPUT" in str(system.content)
     assert "connection refused" in str(system.content)
+
+
+def test_respond_strips_a_leaked_native_tool_call_down_to_a_plain_acknowledgment() -> None:
+    """Live, round 12 (2026-10-17): a plain acknowledgment turn with no
+    tools bound still got the model's own native tool-call template
+    syntax as its entire final answer -- nothing executes it (no tools
+    were bound to parse it into), but showing it verbatim reads as
+    broken text."""
+    respond = make_respond_node(GuardrailChain([]))
+    state = {"messages": [AIMessage(
+        content="<|tool_call_start|>[curl(target='http://172.28.0.3/login.php')]<|tool_call_end|>"
+    )]}
+
+    update = respond(state)
+
+    assert update["messages"][0].content == "Noted."
+
+
+def test_respond_strips_only_the_leaked_span_and_keeps_real_prose() -> None:
+    respond = make_respond_node(GuardrailChain([]))
+    state = {"messages": [AIMessage(
+        content="Here's what I found.\n<|tool_call_start|>[nmap(target='x')]<|tool_call_end|>\nDone."
+    )]}
+
+    update = respond(state)
+
+    assert update["messages"][0].content == "Here's what I found.\n\nDone."
+
+
+def test_respond_leaves_ordinary_content_untouched() -> None:
+    respond = make_respond_node(GuardrailChain([]))
+    state = {"messages": [AIMessage(content="The scan found 3 open ports.")]}
+
+    update = respond(state)
+
+    assert update["messages"][0].content == "The scan found 3 open ports."
