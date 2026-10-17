@@ -82,6 +82,22 @@ def test_an_unknown_named_wordlist_raises() -> None:
         )
 
 
+def test_a_web_shaped_service_raises_instead_of_reaching_hydra() -> None:
+    """Live, 2026-10-17: the model called hydra with service="web" against
+    a DVWA login URL, satisfying the required field but not naming a real
+    hydra module — hydra itself exited 255 with a raw usage error instead
+    of the actionable guidance the docstring already gives."""
+    with pytest.raises(ValueError, match="not a network service this tool supports"):
+        hydra.invoke(
+            {
+                "target": "172.28.0.3",
+                "service": "web",
+                "usernames": ["admin"],
+                "passwords": ["admin"],
+            }
+        )
+
+
 def test_threads_are_capped_at_sixteen() -> None:
     _, mock_run = _invoke(
         target="10.0.0.5",

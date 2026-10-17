@@ -19,6 +19,19 @@ _WORDLISTS: dict[str, Path] = {
 }
 
 
+#: Real hydra module names this tool supports -- deliberately excludes
+#: http-get/http-post-form and anything else web-shaped. The docstring
+#: below already says "never a web page", but nothing enforced it until a
+#: live run (2026-10-17) passed service="web" against DVWA anyway and got
+#: a raw hydra exit-255 usage error ("[ERROR] Unknown service", not caught
+#: by this tool's own validation) instead of an actionable message.
+_SERVICES = frozenset({
+    "ssh", "ftp", "ftps", "telnet", "smtp", "smtps", "pop3", "pop3s",
+    "imap", "imaps", "mysql", "postgres", "mssql", "oracle", "rdp", "vnc",
+    "smb", "snmp",
+})
+
+
 def _materialize(values: list[str], path: Path) -> None:
     path.write_text("\n".join(values) + "\n")
 
@@ -70,6 +83,13 @@ def hydra(
     Exactly one of usernames/userlist and one of passwords/passwordlist
     must be given; threads is capped at 16 — real safety here is the scope
     guardrail and the run timeout, not argv tricks."""
+    if service not in _SERVICES:
+        raise ValueError(
+            f"{service!r} is not a network service this tool supports (choose "
+            f"one of {sorted(_SERVICES)}); there is no web-form module here — "
+            "use sqlmap for injection or curl to test credentials against a "
+            "login page instead."
+        )
     argv = ["-t", str(min(threads, _MAX_THREADS))]
     argv += _cred_flag("-L", usernames, userlist, scratch / "users.txt")
     argv += _cred_flag("-P", passwords, passwordlist, scratch / "pass.txt")
