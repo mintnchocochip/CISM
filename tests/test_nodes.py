@@ -1632,3 +1632,38 @@ def test_respond_still_uses_noted_when_the_emptiness_came_from_a_leaked_tool_cal
     update = respond(state)
 
     assert update["messages"][0].content == "Noted."
+
+
+def test_respond_names_the_dropped_call_when_the_turn_cap_discarded_one() -> None:
+    """Live, 2026-10-17: the only way respond() ever sees a message with
+    tool_calls still attached is route_after_think's MAX_AI_TURNS cap
+    tripping while the model still wanted to act -- the other route into
+    respond() (no tool_calls at all) never reaches this branch. Before
+    this fix, the lead-in text ("Let me test the injection...") was shown
+    verbatim as if it were a deliberate conclusion, with the pending call
+    silently dropped."""
+    respond = make_respond_node(GuardrailChain([]))
+    state = {"messages": [AIMessage(
+        content="Let me test the injection directly with a boolean-based payload.",
+        tool_calls=[{"id": "c1", "name": "sqlmap", "args": {}}],
+    )]}
+
+    update = respond(state)
+
+    text = update["messages"][0].content
+    assert "investigation-step limit" in text
+    assert "sqlmap" in text
+    assert "Let me test the injection directly" in text
+
+
+def test_respond_still_names_the_dropped_call_with_no_lead_in_text() -> None:
+    respond = make_respond_node(GuardrailChain([]))
+    state = {"messages": [AIMessage(
+        content="",
+        tool_calls=[{"id": "c1", "name": "nikto", "args": {}}],
+    )]}
+
+    update = respond(state)
+
+    assert "investigation-step limit" in update["messages"][0].content
+    assert "nikto" in update["messages"][0].content
