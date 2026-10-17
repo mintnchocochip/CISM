@@ -406,44 +406,62 @@ submits (recon → enumerate → sqlmap) against the live `dvwa` container,
   `allowed_msgpack_modules` — every single checkpoint read/write was
   logging a "will be blocked in a future version" warning for
   Phase/Node/Edge/Evidence/Decision/MemoryItem.
-- [ ] **Not fixed, reverted after breaking 6 tests:** attempted a bounded
-  "retry once on zero tool calls" to recover the model's live,
-  reproducible tendency to answer a tool-offering turn with a text
-  question for information already given (e.g. "Please provide the
-  target host or IP address") instead of calling a tool — confirmed to
-  still happen even after the §3.9-era prompt fix, non-deterministically,
-  same prompt/model/target, side by side with a clean 5-tool-call run.
-  The attempted fix is unsafe as built: `core.py`'s event-translation
-  loop streams every token from *any* `bound.astream()` call made inside
-  `think()` straight to the TUI/event bus in real time (via LangGraph's
-  own `stream_mode="messages"`), so a discarded first attempt's text
-  still leaks into the visible narration and double-counts tokens —
-  confirmed by 6 broken tests expecting exactly one narration/TokenDelta
-  sequence per turn. A real fix needs `core.py`'s streaming translation to
-  know "this attempt is discardable" before any retry can be safe; that's
-  its own change, not a `nodes.py`-only one.
-- [ ] **Not fixed, newly observed, not yet root-caused:** the same model
-  separately called nmap with the literal arg `{'target': '<target>'}` —
-  the placeholder token itself, not the real IP — causing a real tool
-  call that still produced nothing (nmap: `Failed to resolve "<target>"`).
-  Different failure shape than the "asks a question" case above (this one
-  *does* call the tool, just with a templated-looking arg); needs its own
-  investigation, not assumed to share a cause or a fix with the above.
-- [ ] **Not fixed, structural, not yet addressed:** when an early turn's
-  tool call produces no usable finding (either failure above), the PTES
-  phase never advances past `recon` — so a *later* turn asking explicitly
-  for sqlmap (which `catalog.yaml` only offers from `enumeration` onward)
-  silently can't get it; the model substituted other recon-phase tools
-  instead of calling sqlmap or saying why it couldn't, with no signal to
-  the operator that the requested tool was unavailable. Confirmed live:
-  this is exactly what happened in the second trial. A visible "phase X
-  doesn't offer that tool yet" signal (narration or a guardrail-style
-  note) is the likely fix; not attempted tonight.
-- [ ] **Verify once, at the end:** two full before/after engagements
-  (reports/graphs sent to the user) — the "after" run: 8 resolved
-  findings across whatweb/wafw00f/gobuster (0 in the "before" run for
-  those same three tools' real output), full suite green throughout
-  (786 passed; 3 pre-existing xdist-only snapshot flakes, pass serially).
+- [x] **Fixed (2026-10-17):** the retry now streams live exactly as
+  before (no buffering, no "eat every normal reply's streaming" repeat
+  of the earlier mistake) and retracts after the fact if discarded.
+  `nodes.py`'s `think()` tags only the opening move's first attempt
+  retriable; `core.py`'s `_run()` tracks it, and if a retry starts
+  streaming for `think()` while a retriable attempt was still open, it
+  truncates the leaked narration and emits a corrective negative
+  `TokenDelta` — new `NarrationRetracted` event, same precedent as the
+  existing `NarrationRedacted`. The retry trigger itself widened: beyond
+  the already-landed truly-empty case, it now also fires when the
+  response asks for the target when it's already been given
+  (`_is_asking_for_known_target`, a narrow regex gated on the target
+  being set — doesn't fire on a legitimate text reply like a greeting).
+  All existing streaming/token tests pass unmodified (confirms the happy
+  path truly didn't change); new tests cover the retried case.
+- [x] **Fixed (2026-10-17):** two parts. `_FALLBACK_HINT`'s abstract
+  `<tool>` placeholder template was replaced with a concrete example —
+  but a live re-test immediately surfaced that this wasn't the real fix:
+  the model started parroting *that* literal example value (`10.0.0.5`)
+  into real nmap/sqlmap/whatweb calls instead of the actual configured
+  target, caught only by ScopeGuardStage (it was outside the declared
+  scope). Real fix: `_fallback_hint(target)` now interpolates the actual
+  configured target into its own example, so parroting it is harmless.
+  Confirmed live, 3 clean re-runs (15 turns total) against DVWA: every
+  tool call used the real target, zero scope-guard rejections. Second,
+  independent part: the args model now rejects a placeholder-shaped
+  target (`<`/`>`/`{`/`}`) outright via a pydantic validator, and
+  `ScopeGuardStage`'s `_candidate_hosts` fails closed instead of open on
+  an unparseable value on a tool with a known target-arg mapping (it
+  already had this pattern for a sibling CIDR case, just not applied
+  here) — defense in depth beyond the specific placeholder string.
+- [x] **Fixed (2026-10-17):** `act()` now surfaces `PhaseToolGuardStage`'s
+  real reason (e.g. `"'sqlmap' [capability=executes] is not offered in
+  phase recon"`) as the blocked call's actual message content, instead of
+  the generic "blocked by action guardrail" every other guardrail stage
+  still gets — carved out specifically for this one stage since which
+  tools are offered when isn't secret the way a scope/flag rule is (the
+  existing security test guarding the generic message for other stages
+  is untouched and still passes). Not independently live-forced this
+  round — the model declined directly in text both times it was asked,
+  without ever attempting the blocked call — so this is verified via a
+  dedicated unit test (`test_act_surfaces_the_real_reason_when_phase_
+  tool_guard_blocks_a_call`) rather than a live trigger.
+- [x] **Verify once, at the end:** targeted suite green after each fix
+  (`test_langgraph_agent.py test_nodes.py test_scope_guard.py
+  test_tool_catalog_build.py test_sandboxed_tool_decorator.py`), full
+  suite 816 passed. Live: 3 full fresh engagements (15 turns) against
+  DVWA through the real llama.cpp backend inside the hardened container —
+  nmap/sqlmap/whatweb all executed for real against the correct target
+  every time, zero crashes, zero `NarrationRetracted` events (the
+  retry/retraction path didn't need to fire this round — non-
+  deterministic, consistent with how it was originally found).
+  Original two-run before/after comparison from this round's first pass
+  (prior to the DEPG-context work in §10): 8 resolved findings across
+  whatweb/wafw00f/gobuster (0 before), full suite green throughout (786
+  passed; 3 pre-existing xdist-only snapshot flakes, pass serially).
 
 ## 8. Live-test findings, round 2 (2026-10-12, two-host engagement: dvwa + metasploitable2)
 
@@ -488,21 +506,48 @@ from model non-determinism.
   server host key algo`) is metasploitable2's SSH server offering only
   `ssh-rsa`/`ssh-dss`, which this container's modern libssh/hydra build
   refuses to negotiate by default. That's a target/tool compatibility gap
-  in an 18-year-old intentionally-vulnerable image, not a CISM bug — not
-  fixed, not planned, noted here so it isn't mistaken for one later.
-- [ ] **Not fixed, newly observed:** phase progression looks too eager
-  within a single turn — one turn's wafw00f + whatweb calls advanced the
-  phase straight from enumeration to vulnerability-discovery to
-  exploitation. Not investigated this round.
-- [ ] **Not fixed, newly observed:** asked to "brute force directories,"
-  the model called bare `curl` against a guessed `/admin` path instead of
-  `gobuster` (the catalog's actual directory-brute-force tool) — a
-  tool-selection miss, not a catalog/argv bug. Not investigated this
-  round.
-- [ ] **Not fixed, newly observed, low severity:** sqlmap was called once
-  with a hallucinated `extra: 'service=http'` token — not a real sqlmap
-  flag. Appears to have been silently absorbed without breaking the run
-  (confirmed: sqlmap still crawled and tested correctly), so left alone.
+  in an 18-year-old intentionally-vulnerable image, not a CISM bug.
+- [x] **Fixed (2026-10-17), on request:** the kex-algo gap just above
+  recurred verbatim in a fresh live re-test, user asked for it to be
+  addressed properly. `cism-runner.Dockerfile` now writes a global
+  `/etc/ssh/ssh_config` with `HostKeyAlgorithms`/`KexAlgorithms`/`MACs`/
+  `Ciphers` all `+`-appended (never replacing libssh's own defaults, so a
+  modern target still negotiates modern algorithms first) — confirmed by
+  iterating live against metasploitable2:22 directly (bare `docker run`,
+  not yet sandboxed) that host-key-algo alone wasn't enough: fixing it
+  just exposed the *next* mismatch, a legacy MAC algo, which needed its
+  own addition. `cism/agent/tools/sandbox.py`'s `BubblewrapRunner.
+  _RO_BIND_ETC` now ro-binds this file in too — without it the image has
+  the file but bwrap's sandboxed hydra process never sees it (confirmed:
+  the fix verified bare-`docker run` first, then separately through the
+  real `BubblewrapRunner` + `hydra.invoke()` path, non-root, inside the
+  hardened container — negotiation succeeds both ways, 0 valid password
+  found against the wrong username used in that test, not a negotiation
+  failure).
+- [x] **Investigated (2026-10-12, `e916f9a`) and deliberately left alone —
+  revisited and reconfirmed (2026-10-17), still correct, not re-fixed:**
+  phase progression looks too eager within a single turn — one turn's
+  wafw00f + whatweb calls advanced the phase straight from enumeration to
+  vulnerability-discovery to exploitation. A cap of one phase-advance per
+  user submission was built and tested in `e916f9a`'s branch, then
+  reverted in that same commit after `tests/test_langgraph_agent.py`
+  showed the dummy demo flow itself relies on exactly two phase changes in
+  one submit — not a bug, a deliberate product decision made the night
+  before a demo. 2026-10-17: re-implemented this exact cap from scratch
+  without having read this note first, re-discovered the same test
+  failure, reverted again. **If this keeps surfacing, the test itself
+  (not the cap) is probably what needs revisiting — but that's a product
+  call, not one to make unilaterally again.**
+- [x] **Fixed (`e916f9a`):** asked to "brute force directories," the model
+  called bare `curl` against a guessed `/admin` path instead of `gobuster`
+  (the catalog's actual directory-brute-force tool) — a tool-selection
+  miss, not a catalog/argv bug. curl's description now explicitly says
+  it's for one known URL, not directory discovery, and points to gobuster
+  for that.
+- [x] **Fixed (`e916f9a`):** sqlmap was called once with a hallucinated
+  `extra: 'service=http'` token — not a real sqlmap flag. The `extra`
+  field every `allow_raw` tool exposes had no description at all; added a
+  concrete description with real examples so the model stops guessing.
 - [ ] **Verify once, at the end:** targeted suite
   (`test_nodes.py test_tool_catalog_build.py test_credentials.py
   test_depg_extractors.py test_depg_linking.py test_langgraph_agent.py
@@ -569,10 +614,34 @@ sandbox, real model.
 - [x] **Confirmed working, not a bug:** per-call target attribution.
   Mid-engagement question about a different host than the configured
   target correctly ran `sqlmap` against that host, not the default.
-- [ ] **Not fixed, newly observed, low severity:** a plain acknowledgment
-  ("ok, noted" — not a request) triggered an unprompted `nikto` call —
-  an `_ACT_ONLY_WHEN_ASKED` miss distinct from the plain-greeting case
-  that command already handles correctly. Not investigated this round.
+- [x] **Fixed (2026-10-17), live-verified (0/3 tool calls after the fix,
+  vs. multiple real tool calls per turn before it):** a plain
+  acknowledgment ("ok, noted" — not a request) triggered an unprompted
+  `nikto` call — an `_ACT_ONLY_WHEN_ASKED` miss distinct from the
+  plain-greeting case that rule already handled correctly. First attempt
+  (broadening `_ACT_ONLY_WHEN_ASKED`'s wording to explicitly name "ok",
+  "noted", "got it", "thanks" as examples) was **not enough** —
+  live-tested mid-engagement (a real finding already on the board) and
+  the model still called tools on all 3/3 repeated "ok, noted" turns
+  (`nmap`/`hydra`/`curl`, once caught by `dangerous-flag-guard`). Reading
+  `nodes.py`'s system-prompt assembly order explains why: `_ACT_ONLY_
+  WHEN_ASKED` is prepended *before* the DEPG findings block and the
+  phase's own standing order ("start with nmap against the target..."),
+  so on a small model the later, more concrete text apparently wins over
+  the earlier rule — a wording-only fix can't reliably out-compete that.
+  **Real fix is structural, not prompt-only:** `think()` now detects an
+  exact-match plain acknowledgment (`_is_plain_acknowledgment` —
+  "ok"/"noted"/"got it"/etc., the *whole* message, never a substring, so
+  "ok, run nikto" is unaffected) and binds **zero tools** for that turn,
+  which also disables the `TOOL_CALL:` text-fallback parser
+  (`_parse_text_tool_call`, gated on `phase_tools` being non-empty) — so
+  neither path the model has for producing a tool call is available,
+  regardless of what the prompt text says. Live-verified against the real
+  `lfm2.5-8b-a1b` backend mid-engagement on `dvwa`: the model still
+  visibly *tried* to call a tool (once via its own non-standard
+  `<|tool_call_start|>...<|tool_call_end|>` text format), but with no
+  tools bound it just streamed as inert narration — 0 real tool calls
+  across all 3 repeated turns.
 - Test-harness lesson (not a product bug): driving the real agent via
   `agent.events.join()` to detect "turn finished" is wrong for a slow
   real model — the queue can drain momentarily mid-run and the next
