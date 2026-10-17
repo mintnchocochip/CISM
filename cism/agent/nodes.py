@@ -78,10 +78,56 @@ def _message_cost(message) -> int:
     return _estimate_tokens(content) + _estimate_tokens(extra) + _PER_MESSAGE_OVERHEAD_TOKENS
 
 
+#: 2026-10-17, live (round 12 follow-up): a full nmap/nikto/sqlmap dump
+#: from an earlier, already-completed turn sat in history at full size
+#: even though depg_update (which always runs right after act(), before
+#: the next think()) had already condensed its finding into the
+#: DEPG/memory block that's injected into the system prompt separately
+#: and regardless of this history. Paying full token cost for the same
+#: signal twice made whole-turn dropping (below) kick in sooner than it
+#: needed to. Mirrors the one existing precedent for "shrink old content,
+#: mark that it happened, never mutate the original" in this codebase —
+#: cism/depg/extractors.py's _MAX_PROMPT_CHARS/truncated_note.
+_OLD_TOOL_OUTPUT_HEAD_CHARS = 350
+_OLD_TOOL_OUTPUT_TAIL_CHARS = 100
+
+
+def _truncate_old_tool_output(content: str) -> str:
+    cap = _OLD_TOOL_OUTPUT_HEAD_CHARS + _OLD_TOOL_OUTPUT_TAIL_CHARS
+    if len(content) <= cap:
+        return content
+    omitted = len(content) - cap
+    head = content[:_OLD_TOOL_OUTPUT_HEAD_CHARS]
+    tail = content[-_OLD_TOOL_OUTPUT_TAIL_CHARS:]
+    return f"{head}\n...[{omitted} chars truncated — already summarized in the findings above]...\n{tail}"
+
+
+def _shrink_old_tool_output(messages: list) -> list:
+    """Truncates ToolMessage.content for every turn before the most recent
+    HumanMessage -- the turn in progress keeps its own tool results in
+    full, since the model may still need exact detail from them to decide
+    its next move. No HumanMessage found at all (shouldn't happen in
+    practice) means nothing is eligible: show more, not less, when the
+    boundary is unclear."""
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            boundary = index
+            break
+    else:
+        return messages
+    return [
+        message.model_copy(update={"content": _truncate_old_tool_output(str(message.content))})
+        if index < boundary and isinstance(message, ToolMessage)
+        else message
+        for index, message in enumerate(messages)
+    ]
+
+
 def _compact_history(messages: list, system_prompt: str, context_window: int) -> tuple[list, int]:
     """Keeps the most recent messages that fit the budget; drops older ones
     and, if any were dropped, prepends one summary line in their place.
     Full history stays in state — this only shapes what's sent to the model."""
+    messages = _shrink_old_tool_output(messages)
     budget = context_window - _RESPONSE_RESERVE_TOKENS - _estimate_tokens(system_prompt)
     kept: list = []
     used = 0
