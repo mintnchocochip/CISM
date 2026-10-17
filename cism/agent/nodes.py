@@ -910,13 +910,36 @@ def _strip_leaked_tool_call_syntax(text: str) -> str:
     return "Noted." if _LEAKED_TOOL_CALL_RE.search(text) else _NOTHING_TO_ADD
 
 
+#: 2026-10-17, live (new local model, longer per-step investigations): the
+#: only way route_after_think ever sends a message with tool_calls still
+#: attached into respond() is the MAX_AI_TURNS cap tripping -- the other
+#: route into respond() (no tool_calls at all) never reaches this branch.
+#: Before this, that message's lead-in prose ("Let me test the injection
+#: directly...") was shown verbatim as if it were a deliberate final
+#: answer, with the pending call silently discarded. Named honestly
+#: instead of pretending the investigation concluded.
+_STEP_LIMIT_NOTE = (
+    "(Reached this turn's investigation-step limit before finishing -- the "
+    "next planned step ({tools}) did not run. Ask me to continue and I'll "
+    "pick up from here.)"
+)
+
+
 def make_respond_node(output_chain: GuardrailChain) -> Callable[[AgentState], dict]:
     def respond(state: AgentState) -> dict:
         """Always returns an explicit message, even when the guardrail
         passes content through unchanged — so core.py never narrates a
         "think" message before the output guardrail has seen it."""
         last = state["messages"][-1]
-        content = _strip_leaked_tool_call_syntax(str(last.content))
+        if last.tool_calls:
+            tools_pending = ", ".join(
+                sorted({str(call.get("name", "?")) for call in last.tool_calls})
+            )
+            note = _STEP_LIMIT_NOTE.format(tools=tools_pending)
+            lead_in = _LEAKED_TOOL_CALL_RE.sub("", str(last.content)).strip()
+            content = f"{note}\n\n{lead_in}" if lead_in else note
+        else:
+            content = _strip_leaked_tool_call_syntax(str(last.content))
         result = output_chain.run(content)
         text = (
             result.value
