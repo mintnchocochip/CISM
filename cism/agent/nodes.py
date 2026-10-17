@@ -36,7 +36,18 @@ __all__ = [
 
 #: Runaway-loop safety valve. Counts AI turns only since this run's own
 #: HumanMessage, not the whole persisted session — otherwise it'd exhaust once, ever.
-MAX_AI_TURNS = 6
+#: 2026-10-17, live (lowered from 6): turns bound by real tool execution
+#: time (sqlmap/nikto/gobuster/hydra each have their own 60-120s sandbox
+#: timeout) aren't helped by this cap either way -- one slow tool call
+#: already dominates. But turns using only fast tools (curl/nmap) dropped
+#: from ~110-180s to ~45s at this value, with the step-limit cap now
+#: hitting it an honest "reached this turn's step limit" message
+#: (respond()) instead of silently discarding a pending call. Separately
+#: confirmed live with the cap raised to 30 (effectively off): the model
+#: converges and stops on its own well before even 4 rounds when left
+#: alone -- it isn't runaway-looping, a capped-at-4 turn just occasionally
+#: trades a bit of depth for the latency win.
+MAX_AI_TURNS = 4
 
 #: No local-model tokenizer is available generically, so this is a rough
 #: chars-per-token estimate (B2, AUDIT.md) — good enough for a budget, not
