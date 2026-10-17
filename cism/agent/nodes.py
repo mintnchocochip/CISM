@@ -628,8 +628,19 @@ def make_think_node(
             and _is_announcing_an_unexecuted_action(content)
         )
         if should_retry_opening_move or should_retry_later_step:
+            # 2026-10-17, live (new local model): appending a *second*
+            # SystemMessage at the end of the list, as this used to do,
+            # crashes this model's chat template outright ("Jinja
+            # Exception: System message must be at the beginning") --
+            # latent since the very first version of this retry, just
+            # never triggered until a later-step retry made this path
+            # fire often enough to hit it. Folding the nudge into the
+            # one leading SystemMessage keeps exactly one, first, always.
             nudge = _RETRY_NUDGE if should_retry_opening_move else _FOLLOW_THROUGH_NUDGE
-            retry_messages = [*messages, SystemMessage(content=nudge)]
+            leading_system = messages[0].model_copy(
+                update={"content": f"{messages[0].content}\n\n{nudge}"}
+            )
+            retry_messages = [leading_system, *messages[1:]]
             response = await _stream_response(bound, retry_messages)
             if phase_tools and not response.tool_calls:
                 parsed = _parse_text_tool_call(str(response.content))
