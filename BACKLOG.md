@@ -831,3 +831,17 @@ actually managing tokens efficiently.
   into `exploitation`, inspecting real graph state via
   `agent._graph.aget_state()`, then re-triggering the exact round-12
   failure).
+- [x] **Fixed:** §11's previously-accepted "status question gets a
+  genuinely empty final answer" flakiness now gets a substitute instead
+  of true silence. Reused `respond()`'s existing leaked-tool-call filter
+  (`_strip_leaked_tool_call_syntax`) rather than add new plumbing — it
+  already substitutes something when stripped content is empty; the fix
+  is distinguishing *why* it's empty. A leaked `<|tool_call_start|>...`
+  fragment still falls back to `"Noted."` (something non-substantive was
+  attempted); genuine emptiness with no leaked fragment at all now falls
+  back to `"I don't have anything further to add right now."` —
+  `"Noted."` would be a non-sequitur for an unanswered question. Covered
+  directly by unit tests (crafted empty-content and leaked-syntax
+  inputs); a 6-trial live re-run of the exact status-question trigger
+  didn't happen to reproduce genuine emptiness this time (expected —
+  it's rare), confirming no regression on the normal path.
