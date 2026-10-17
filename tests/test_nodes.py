@@ -23,6 +23,7 @@ from langchain_core.tools import StructuredTool
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam
 from cism.agent.llm import DummyChatModel
 from cism.agent.nodes import (
+    MAX_AI_TURNS,
     _RETRY_NUDGE,
     _compact_history,
     _depg_context,
@@ -31,6 +32,7 @@ from cism.agent.nodes import (
     make_depg_update_node,
     make_respond_node,
     make_think_node,
+    route_after_think,
 )
 from cism.agent.profiles import PhaseProfile, PhaseProfiles
 from cism.agent.state import Phase
@@ -228,6 +230,26 @@ def _textonly_reply(text: str = "not calling anything") -> AIMessage:
 
 def _empty_reply() -> AIMessage:
     return AIMessage(content="")
+
+
+def test_route_after_think_stops_at_the_turn_cap_even_with_a_pending_tool_call() -> None:
+    """2026-10-17, live: this is the only way respond() ever sees a message
+    with tool_calls still attached -- confirmed live that a message at
+    exactly the cap still routes to "respond", discarding the call (named
+    honestly by respond() itself, see its own tests)."""
+    messages = [HumanMessage(content="scan it")]
+    messages.extend(_toolcall_reply() for _ in range(MAX_AI_TURNS))
+    state = _state(messages)
+
+    assert route_after_think(state) == "respond"
+
+
+def test_route_after_think_still_acts_one_short_of_the_turn_cap() -> None:
+    messages = [HumanMessage(content="scan it")]
+    messages.extend(_toolcall_reply() for _ in range(MAX_AI_TURNS - 1))
+    state = _state(messages)
+
+    assert route_after_think(state) == "act"
 
 
 async def test_think_retries_once_when_the_opening_move_is_truly_empty() -> None:

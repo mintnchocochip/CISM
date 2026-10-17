@@ -845,3 +845,89 @@ actually managing tokens efficiently.
   inputs); a 6-trial live re-run of the exact status-question trigger
   didn't happen to reproduce genuine emptiness this time (expected —
   it's rare), confirming no regression on the normal path.
+
+---
+
+## 13. Local model swap: Ornith-1.5-9B-MTP (IQ3_M) replacing lfm2.5-8b-a1b (2026-10-17)
+
+The user swapped the local llama.cpp backend to a different model — a
+9B-parameter reasoning model (separate `reasoning_content` field) at a
+lossy 3-bit quant (IQ3_M), 16K context. Re-ran the live-test harness
+against it (dvwa + metasploitable2, real tools) to compare against the
+old model and fix what broke.
+
+**Initial read, confirmed better on several axes**, live: zero timeouts/
+hangs across an 8-turn engagement (the old model's logs were full of
+them), no leaked `<|tool_call_start|>...` raw template syntax, real
+credential extraction from a backup config file, clean ack-turn handling,
+never truly silent across repeated status questions.
+
+**But a new failure mode surfaced** — "transitional narration": a turn
+ending with the model describing its next move ("Let me run nikto
+again...") instead of either a tool call or a real answer, shown to the
+user as if it were the final answer. Recounted properly (not from a
+rough first read): roughly 2/3 of tool-heavy turns across two test
+batches ended this way — the dominant failure mode for this model, not
+an edge case.
+
+- [x] **Fixed, live-verified:** a narrower sibling of the opening-move
+  retry (`cism/agent/nodes.py`'s `think()`) for the genuine "no tool_calls
+  attached at all" case on a *later* step — `_is_announcing_an_unexecuted_
+  action`, gated on the trailing sentence only (so a real answer that
+  merely opens with a future-tense verb, e.g. "I'll check back once the
+  scan settles. Found 3 open ports.", is untouched). Reuses the exact
+  same retriable-narration-retraction plumbing in `core.py`, which turned
+  out to never actually be tied to "opening move" specifically, just to
+  the `think` node's own streaming attempts.
+- [x] **Fixed, live-verified — this was the dominant cause, not the
+  above:** direct inspection of the raw `AIMessage` (not just streamed
+  text) showed most "transitional narration" turns actually had a real
+  `tool_calls` entry attached — `route_after_think`'s `MAX_AI_TURNS` cap
+  had tripped while the model still wanted to act, and `respond()` was
+  silently discarding the pending call, showing only its lead-in prose as
+  if it were a deliberate conclusion. `respond()` now names the dropped
+  call honestly instead: `"(Reached this turn's investigation-step limit
+  before finishing -- the next planned step ({tool}) did not run. Ask me
+  to continue and I'll pick up from here.)"`. `last.tool_calls` being
+  non-empty is unambiguous proof this is why respond() was reached at all
+  — the other route into respond() always has an empty list.
+- [x] **Fixed, live-verified — a real crash, not just the above two:**
+  both fixes above made retries fire far more often than before (only the
+  opening move could ever retry previously), which surfaced a latent bug
+  in the retry mechanism itself: appending a second `SystemMessage` at
+  the *end* of the message list (`[*messages, SystemMessage(nudge)]`)
+  crashes this model's chat template outright — `Jinja Exception: System
+  message must be at the beginning`. The old model's template tolerated
+  it; this one doesn't. Present since the very first version of this
+  retry, never triggered until a later-step retry made the path fire
+  often enough to hit it. Fixed by folding the nudge into the one leading
+  `SystemMessage` instead of appending a second one — keeps exactly one,
+  first, always, which is also just a more broadly correct shape
+  regardless of model.
+- **Latency investigation** (not a bug, a real cost): raw generation
+  speed measured directly against the server (bypassing the agent and
+  Docker) is ~30ms/token — not the bottleneck. The actual driver is
+  `sqlmap`/`nikto`/`gobuster`/`hydra`'s own sandbox timeouts (90s/75s/
+  60s/120s respectively, `catalog.yaml`/`credentials.py`, deliberately
+  generous so these tools return real findings) compounding across
+  rounds — identical cost under any model. `MAX_AI_TURNS` lowered 6→4:
+  real ~2.5-3x win on turns bound by round count using only fast tools
+  (curl/nmap: ~110-180s → ~45s), no effect on turns already bound by one
+  slow tool's own timeout. Separately confirmed live with the cap raised
+  to 30 (effectively off): the model converges and stops on its own after
+  just 3 rounds when left alone ("I have a confirmed exploit and
+  credentials... this is complete") — not a runaway loop, the 384s it
+  took was genuine tool execution + reasoning time, visible live in the
+  TUI the whole time, not a hang.
+- **Verdict:** keep the new model. Its one real gap (transitional
+  narration) is now fixed at the root (two distinct causes, both fixed);
+  its latency is dominated by real tool execution time any model would
+  incur identically; the old model's problems (hangs, leaked template
+  syntax, crashes) were harder failures that could prevent a turn from
+  completing at all, not just make it slower.
+- Verification: `pytest -n auto` 839/839 after all four fixes (narration
+  retry, honest step-limit message, SystemMessage shape, `MAX_AI_TURNS`
+  lowered), targeted suite re-run after each. Every fix live-verified
+  against the real stack before committing; the SystemMessage crash fix
+  specifically confirmed by reproducing the exact Jinja error pre-fix and
+  its absence post-fix across repeated runs.
