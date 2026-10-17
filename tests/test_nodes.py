@@ -315,6 +315,59 @@ async def test_think_does_not_retry_asking_for_target_when_none_is_configured() 
     assert update["messages"][0].content == "Please provide the target host."
 
 
+async def test_think_retries_a_later_step_that_announces_an_unexecuted_action() -> None:
+    """2026-10-17, live (new reasoning-tuned local model, 3-bit quant): a
+    later think() step -- mid tool-chain, after a real tool result already
+    landed this turn -- sometimes narrates its next move instead of
+    attaching the tool call for it ("Let me run nikto again...") and that
+    stub becomes the whole turn's visible answer. Distinct from the
+    opening-move retries above, which this reply is not (a real tool result
+    already landed before it)."""
+    ai, result = _tool_round("call-1", "dummy_nmap", "3 open ports")
+    llm = _SequencedChatModel(
+        replies=[_textonly_reply("Let me run nikto again to confirm."), _toolcall_reply()]
+    )
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it"), ai, result])
+
+    update = await think(state)
+
+    assert len(llm.calls) == 2
+    assert update["messages"][0].tool_calls[0]["name"] == "dummy_nmap"
+
+
+async def test_think_does_not_retry_a_later_steps_real_answer_that_merely_mentions_a_verb() -> None:
+    """Only the trailing sentence is checked -- a real answer that happens
+    to open with a future-tense verb must still stand as-is, same
+    principle as _is_asking_for_known_target's narrowness."""
+    ai, result = _tool_round("call-1", "dummy_nmap", "3 open ports")
+    llm = _SequencedChatModel(
+        replies=[_textonly_reply(
+            "I'll check back once the scan settles. Found 3 open ports on 10.0.0.5."
+        )]
+    )
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it"), ai, result])
+
+    update = await think(state)
+
+    assert len(llm.calls) == 1
+
+
+async def test_think_does_not_retry_a_later_steps_offer_to_help_further() -> None:
+    """"let me know" must never match -- "know" isn't one of the gated verbs."""
+    ai, result = _tool_round("call-1", "dummy_nmap", "3 open ports")
+    llm = _SequencedChatModel(
+        replies=[_textonly_reply("Found 3 open ports. Let me know if you want more detail.")]
+    )
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it"), ai, result])
+
+    update = await think(state)
+
+    assert len(llm.calls) == 1
+
+
 async def test_a_successful_tool_call_produces_a_depg_node_for_the_target() -> None:
     ai, result = _tool_round("call-1", "dummy_nmap", "[dummy] nmap -sV 10.0.0.5 -> 3 open ports")
     state = _state([HumanMessage(content="scan it"), ai, result])

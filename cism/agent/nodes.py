@@ -377,6 +377,39 @@ def _last_human_text(messages: list) -> str | None:
     return None
 
 
+#: Appended only for the one bounded retry below (a later think() step that
+#: narrated an action but never attached the tool call for it), never part
+#: of the standing system prompt otherwise.
+_FOLLOW_THROUGH_NUDGE = (
+    "You described your next action in text just now but did not actually "
+    "make the tool call for it. Either make that exact tool call now, using "
+    "the tool-calling mechanism, or if you are genuinely done, give your "
+    "complete final answer instead — do not just describe what you were "
+    "about to do."
+)
+
+#: 2026-10-17, live (new local model, reasoning-tuned, 3-bit quant): a
+#: *later* think() step (already past the opening move, mid tool-chain)
+#: sometimes narrates its next move instead of attaching the tool call for
+#: it -- "Let me run nikto again..." becomes the entire turn's visible
+#: answer once routing sees no tool_calls and ends the turn. Checked only
+#: against the trailing sentence, not the whole message: a genuine final
+#: answer may legitimately close with an unrelated clause (e.g. "...let me
+#: know if you'd like to go further") that must not trip this. "let me
+#: know" itself never matches -- "know" isn't one of the gated verbs.
+_ANNOUNCED_ACTION_RE = re.compile(
+    r"\b(?:let me|let's|i'll|i will)\b[^.!?]{0,40}?"
+    r"\b(run|check|try|test|use|attempt|fetch|scan|enumerate|probe|brute[- ]?force)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_announcing_an_unexecuted_action(text: str) -> bool:
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    last = sentences[-1] if sentences else ""
+    return bool(_ANNOUNCED_ACTION_RE.search(last))
+
+
 #: 2026-10-14, live (BACKLOG.md §10): a plain acknowledgment ("ok, noted")
 #: triggered an unprompted nikto call. 2026-10-17, live: broadening
 #: _ACT_ONLY_WHEN_ASKED's wording to explicitly name this phrasing was NOT
@@ -557,13 +590,20 @@ def make_think_node(
         if privacy is not None:
             system_prompt = privacy.anonymize(system_prompt)
         messages = [SystemMessage(content=system_prompt), *history]
-        # Only the turn's opening move is eligible for the retry below — a
-        # later step legitimately concluding with text (a genuine final
-        # answer after real tool use) must never be retried.
+        # The opening move gets its own retry trigger below
+        # (_is_asking_for_known_target / truly empty). A later step gets a
+        # narrower one (_is_announcing_an_unexecuted_action) — most later
+        # steps legitimately conclude with text (a genuine final answer
+        # after real tool use) and must never be retried, only the specific
+        # narrated-but-unexecuted-action shape does. Either way, marking the
+        # attempt retriable is harmless when no retry ends up happening —
+        # core.py's retraction only fires if a second "think" attempt
+        # actually streams.
         is_opening_move = bool(phase_tools) and not _already_has_a_tool_result_this_turn(
             state["messages"]
         )
-        response = await _stream_response(bound, messages, retriable=is_opening_move)
+        is_later_tool_step = bool(phase_tools) and not is_opening_move
+        response = await _stream_response(bound, messages, retriable=bool(phase_tools))
         if phase_tools and not response.tool_calls:
             # Weak/non-tool-calling models often describe the call in prose
             # instead of the API's structured field — recover it from text.
@@ -579,11 +619,17 @@ def make_think_node(
         # are retracted by core.py's _run() (tagged via retriable= above) —
         # an empty attempt streamed nothing, so there's nothing to retract.
         content = str(response.content)
-        should_retry = is_opening_move and not response.tool_calls and (
+        should_retry_opening_move = is_opening_move and not response.tool_calls and (
             not content.strip() or _is_asking_for_known_target(content, state["target"])
         )
-        if should_retry:
-            retry_messages = [*messages, SystemMessage(content=_RETRY_NUDGE)]
+        should_retry_later_step = (
+            is_later_tool_step
+            and not response.tool_calls
+            and _is_announcing_an_unexecuted_action(content)
+        )
+        if should_retry_opening_move or should_retry_later_step:
+            nudge = _RETRY_NUDGE if should_retry_opening_move else _FOLLOW_THROUGH_NUDGE
+            retry_messages = [*messages, SystemMessage(content=nudge)]
             response = await _stream_response(bound, retry_messages)
             if phase_tools and not response.tool_calls:
                 parsed = _parse_text_tool_call(str(response.content))
