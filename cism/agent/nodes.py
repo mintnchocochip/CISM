@@ -845,9 +845,23 @@ def make_memory_update_node() -> Callable[[AgentState], dict]:
 _LEAKED_TOOL_CALL_RE = re.compile(r"<\|tool_call_start\|>.*?<\|tool_call_end\|>", re.DOTALL)
 
 
+#: 2026-10-17, live (round 12, §11): a status question ("what have we
+#: found so far?") once got a genuinely empty final answer -- no tool
+#: call, no text, not even a leaked tool-call fragment -- documented at
+#: the time as accepted "real reasoning-model flakiness" (think()'s
+#: single opening-move retry can still come back empty a second time).
+#: Reusing _strip_leaked_tool_call_syntax's "stripped to nothing ->
+#: substitute something" mechanism for this case too, but "Noted." is
+#: the wrong substitute here: it reads as acknowledging a statement, not
+#: answering a question that got silently dropped.
+_NOTHING_TO_ADD = "I don't have anything further to add right now."
+
+
 def _strip_leaked_tool_call_syntax(text: str) -> str:
     stripped = _LEAKED_TOOL_CALL_RE.sub("", text).strip()
-    return stripped or "Noted."
+    if stripped:
+        return stripped
+    return "Noted." if _LEAKED_TOOL_CALL_RE.search(text) else _NOTHING_TO_ADD
 
 
 def make_respond_node(output_chain: GuardrailChain) -> Callable[[AgentState], dict]:
