@@ -39,6 +39,7 @@ from cism.tui.events import (
     ModelInfo,
     Narration,
     NarrationRedacted,
+    NarrationRetracted,
     PhaseChanged,
     RunFinished,
     RunStarted,
@@ -935,6 +936,73 @@ async def test_final_answer_streams_as_multiple_events_then_one_close(tmp_path, 
     assert [n.done for n in narrations] == [False] * (len(narrations) - 1) + [True]
     assert narrations[-1].text == ""
     assert "".join(n.text for n in narrations) == "Scan complete."
+
+
+class _AsksForTargetThenAnswersChatModel(BaseChatModel):
+    """The BACKLOG.md §7 bug, reproduced: the opening move answers with a
+    clarifying question asking for the target instead of calling a tool,
+    streamed in real chunks with real usage, then — once nodes.py retries —
+    a plain, accepted answer on the second (uncapped, un-retried) attempt."""
+
+    call_count: int = 0
+
+    @property
+    def _llm_type(self) -> str:
+        return "test-asks-for-target-then-answers"
+
+    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+        raise NotImplementedError("this test double only supports astream")
+
+    async def _astream(self, messages, stop=None, run_manager=None, **kwargs):
+        self.call_count += 1
+        if self.call_count == 1:
+            for piece in ["Please ", "provide the target host."]:
+                yield ChatGenerationChunk(message=AIMessageChunk(content=piece))
+            usage = {"input_tokens": 50, "output_tokens": 6, "total_tokens": 56}
+        else:
+            yield ChatGenerationChunk(message=AIMessageChunk(content="Scanning now."))
+            usage = {"input_tokens": 60, "output_tokens": 4, "total_tokens": 64}
+        yield ChatGenerationChunk(message=AIMessageChunk(content="", usage_metadata=usage))
+
+    def bind_tools(self, tools, *, tool_choice=None, **kwargs):
+        return self
+
+
+async def test_a_retried_opening_move_retracts_its_leaked_narration_and_tokens(
+    tmp_path, monkeypatch
+) -> None:
+    """The fix for the bug test_final_answer_streams_as_multiple_events_
+    then_one_close's design had to not break: core.py streams the
+    discarded attempt live (same as any normal reply), then retracts it
+    once nodes.py's retry proves it was discarded, instead of buffering
+    and silently eating the live streaming of the (far more common)
+    non-retried case."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    llm = _AsksForTargetThenAnswersChatModel()
+    agent = LangGraphAgent(llm=llm, target="10.0.0.5")
+
+    events = await _run_to_completion(agent, "scan it")
+    await agent.aclose()
+
+    narrations = [e for e in events if isinstance(e, Narration)]
+    retractions = [e for e in events if isinstance(e, NarrationRetracted)]
+    deltas = [e for e in events if isinstance(e, TokenDelta)]
+
+    # The discarded attempt's text streamed live, exactly like any normal
+    # reply — the leak is real, momentarily, same as before the fix.
+    assert "".join(n.text for n in narrations[:2]) == "Please provide the target host."
+    # ...then retracted once the retry proves it was discarded.
+    assert len(retractions) == 1
+    assert retractions[0].entry_id == narrations[0].entry_id
+    assert retractions[0].chars == len("Please provide the target host.")
+    # A corrective negative TokenDelta undoes the discarded attempt's
+    # 6 output tokens before the retry's own usage (4) is added for real.
+    assert deltas[0].delta == 6
+    assert deltas[0].total == 6
+    assert deltas[1].delta == -6
+    assert deltas[1].total == 0
+    assert deltas[2].delta == 4
+    assert deltas[2].total == 4
 
 
 class _UsageReportingChatModel(BaseChatModel):

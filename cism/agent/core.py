@@ -55,6 +55,7 @@ from cism.tui.events import (
     ModelInfo,
     Narration,
     NarrationRedacted,
+    NarrationRetracted,
     PhaseChanged,
     RunFinished,
     RunStarted,
@@ -646,6 +647,13 @@ class LangGraphAgent:
 
         pending_calls: dict[str, ToolCall] = {}
         streamed: dict[str, str] = {"text": ""}
+        # Tracks a "think" attempt tagged retriable (nodes.py's
+        # _stream_response(..., retriable=True), the turn's opening move)
+        # while it might still be discarded and retried. `checkpoint` is
+        # streamed["text"]'s length right before this attempt's chunks
+        # started; `tokens` is its own output_tokens so far. See the retry
+        # case below for how this gets retracted.
+        retriable: dict[str, int] | None = None
         ok = True
         try:
             async for stream_mode, payload in graph.astream(
@@ -657,6 +665,32 @@ class LangGraphAgent:
                     # final message duplicates what the "updates" branch already handles.
                     if metadata.get("langgraph_node") != "think":
                         continue
+                    is_retriable = bool(metadata.get("cism_retriable"))
+                    if is_retriable and retriable is None:
+                        retriable = {"checkpoint": len(streamed["text"]), "tokens": 0}
+                    elif not is_retriable and retriable is not None:
+                        # A non-retriable chunk for "think" while a retriable
+                        # attempt was active: think() discarded that attempt
+                        # and retried — retract what it already leaked.
+                        discarded_len = len(streamed["text"]) - retriable["checkpoint"]
+                        if discarded_len > 0:
+                            streamed["text"] = streamed["text"][: retriable["checkpoint"]]
+                            await self._emit(
+                                NarrationRetracted(
+                                    entry_id=f"{run_id}-final", chars=discarded_len
+                                )
+                            )
+                        if retriable["tokens"]:
+                            self._token_total -= retriable["tokens"]
+                            await self._emit(
+                                TokenDelta(
+                                    delta=-retriable["tokens"],
+                                    total=self._token_total,
+                                    ctx_used=0,
+                                    ctx_max=self._context_window,
+                                )
+                            )
+                        retriable = None
                     content = getattr(chunk, "content", "")
                     if content:
                         streamed["text"] += content
@@ -671,6 +705,8 @@ class LangGraphAgent:
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
                         self._token_total += output_tokens
+                        if retriable is not None:
+                            retriable["tokens"] += output_tokens
                         await self._emit(
                             TokenDelta(
                                 delta=output_tokens,
@@ -683,6 +719,9 @@ class LangGraphAgent:
                 for node, update in payload.items():
                     if not update:
                         continue
+                    if node == "think" and retriable is not None:
+                        # The attempt was accepted (no retry) — nothing to retract.
+                        retriable = None
                     await self._translate(node, update, run_id, pending_calls, streamed)
         except asyncio.CancelledError:  # submit() cancelled us for a new run — mirror interrupt()
             await self._emit(Interrupted(reason="superseded by new submission"))

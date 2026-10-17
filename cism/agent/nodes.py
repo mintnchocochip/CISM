@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import uuid
 from typing import Awaitable, Callable
 
@@ -217,11 +218,20 @@ def _bind_tools_if_supported(llm: BaseChatModel, tools: list) -> BaseChatModel:
 #: 'TOOL_CALL: {"name": "nmap", "args": {"target": "10.0.0.5"}}'.
 _TOOL_CALL_MARKER = "TOOL_CALL:"
 
-_FALLBACK_HINT = (
-    "\n\nIf you can't make a structured tool call, end your reply with a "
-    f'line starting with {_TOOL_CALL_MARKER} followed by a JSON object like '
-    '{"name": "<tool>", "args": {...}}.'
-)
+#: 2026-10-17, live: replacing this with a concrete IP (10.0.0.5) instead
+#: of an abstract <tool>/<target> placeholder wasn't enough — the model
+#: parroted *that* literal example value into a real nmap call instead of
+#: the actual configured target (caught by ScopeGuardStage, since
+#: 10.0.0.5 was outside the declared scope, but still a real miss). The
+#: real fix: make the example's target the actual one from target_line
+#: above, so parroting it is harmless — it's already the right value.
+def _fallback_hint(target: str | None) -> str:
+    example_target = target or "10.0.0.5"
+    return (
+        "\n\nIf you can't make a structured tool call, end your reply with a "
+        f'line starting with {_TOOL_CALL_MARKER} followed by a JSON object '
+        f'like {{"name": "nmap", "args": {{"target": "{example_target}"}}}}.'
+    )
 
 #: 2026-10-12 live-test against a real small local model (lfm2.5-8b-a1b):
 #: given an open-ended instruction, it twice produced zero tool calls —
@@ -246,10 +256,16 @@ _ONE_CALL_RULE = (
 #: five times. The phase text still answers "what tool, once something
 #: needs doing"; this answers "should anything be done on this turn at
 #: all", which the phase text was never written to cover.
+#: 2026-10-14, live (BACKLOG.md §10): a plain acknowledgment ("ok,
+#: noted" — not a request) triggered an unprompted nikto call — the
+#: existing rule's examples (greeting/small talk/status question) didn't
+#: cover this phrasing, so it slipped through the same gap by a
+#: different route.
 _ACT_ONLY_WHEN_ASKED = (
     "Only call a tool when the user's current message actually calls for "
     "it — a new scan, a continuation of testing already underway, or an "
-    "explicit request. A greeting, small talk, or a question about status "
+    "explicit request. A greeting, small talk, a plain acknowledgment "
+    '(e.g. "ok", "noted", "got it", "thanks"), or a question about status '
     "or findings is not a request to act: answer in plain text instead. "
     "Having a target configured and tools available is not, by itself, a "
     "reason to call one."
@@ -264,6 +280,26 @@ _RETRY_NUDGE = (
     "tool-calling mechanism, with the real target value already given "
     "above — do not write text instead."
 )
+
+#: 2026-10-12, live (BACKLOG.md §7): the model's opening move sometimes
+#: answers with a clarifying question ("please provide the target host")
+#: instead of calling a tool, even though target_line above already gave
+#: it the real value — non-deterministic, same prompt/model/target.
+#: Narrow on purpose: must not match a legitimate text reply (e.g. a
+#: greeting under _ACT_ONLY_WHEN_ASKED), which never asks for the target.
+_ASKING_FOR_TARGET_RE = re.compile(
+    r"\b(provide|supply|confirm|specify|give me|let me know)\b[^.?!]{0,60}"
+    r"\b(target|host|ip\s*address|ip)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_asking_for_known_target(text: str, target: str | None) -> bool:
+    """True if the response is asking for the target when it's already
+    been given (target_line above) — the retryable half of the bug this
+    exists for. Gated on target being set so this can't fire when there
+    genuinely isn't one yet."""
+    return bool(target) and bool(_ASKING_FOR_TARGET_RE.search(text))
 
 
 def _already_has_a_tool_result_this_turn(messages: list) -> bool:
@@ -280,10 +316,48 @@ def _already_has_a_tool_result_this_turn(messages: list) -> bool:
     return False
 
 
-async def _stream_response(bound: BaseChatModel, messages: list) -> AIMessage:
-    """One model call, accumulated from its stream."""
+def _last_human_text(messages: list) -> str | None:
+    for message in reversed(messages):
+        if isinstance(message, HumanMessage):
+            return str(message.content)
+    return None
+
+
+#: 2026-10-14, live (BACKLOG.md §10): a plain acknowledgment ("ok, noted")
+#: triggered an unprompted nikto call. 2026-10-17, live: broadening
+#: _ACT_ONLY_WHEN_ASKED's wording to explicitly name this phrasing was NOT
+#: enough -- re-tested mid-engagement (an active DEPG finding already on
+#: the board) and the model still called tools 3/3 times, apparently
+#: reading the standing phase order ("start with nmap...") and the fresh
+#: findings context below it as permission to continue, despite the rule
+#: above both saying not to. A wording-only fix can't out-compete that
+#: pull reliably on a small model. Exact-match on purpose, not a substring
+#: scan: "ok, run nikto" must never match this, only a message that is
+#: *entirely* a closing acknowledgment does.
+_PLAIN_ACKNOWLEDGMENTS = frozenset({
+    "ok", "okay", "k", "kk", "noted", "ok, noted", "ok noted",
+    "got it", "gotcha", "thanks", "thank you", "thanks a lot",
+    "sure", "alright", "all right", "sounds good", "no problem",
+    "roger", "understood", "cool", "great", "nice", "ack",
+})
+
+
+def _is_plain_acknowledgment(text: str) -> bool:
+    normalized = text.strip().lower().rstrip(".!")
+    return normalized in _PLAIN_ACKNOWLEDGMENTS
+
+
+async def _stream_response(
+    bound: BaseChatModel, messages: list, *, retriable: bool = False
+) -> AIMessage:
+    """One model call, accumulated from its stream. ``retriable`` tags
+    this attempt's streamed chunks (via run config metadata) so core.py's
+    _run() can retract them from the live transcript/token count if
+    think() goes on to discard this attempt and retry — see core.py's
+    ``retriable`` tracking in _run()."""
+    config = {"metadata": {"cism_retriable": True}} if retriable else None
     response = None
-    async for chunk in bound.astream(messages):
+    async for chunk in bound.astream(messages, config=config):
         response = chunk if response is None else response + chunk
     if response is None:
         # A provider that errors or returns nothing leaves zero chunks;
@@ -310,7 +384,7 @@ def _extract_balanced_json(text: str, start: int) -> str | None:
 
 def _parse_text_tool_call(content: str) -> ToolCall | None:
     """Recovers a tool call a model without native tool-calling wrote as
-    text instead — see _FALLBACK_HINT. None if nothing usable is found."""
+    text instead — see _fallback_hint. None if nothing usable is found."""
     marker_idx = content.find(_TOOL_CALL_MARKER)
     if marker_idx == -1:
         return None
@@ -357,6 +431,13 @@ def make_think_node(
         if "tool_help" in tools:
             names.add("tool_help")
         phase_tools = [tools.get(name) for name in names]
+        # Structural, not prompt-only: a plain acknowledgment gets no tools
+        # bound at all, so neither the native tool-calling path nor the
+        # _parse_text_tool_call text fallback below can produce a call this
+        # turn, regardless of what the standing phase order or fresh DEPG
+        # findings context might otherwise pull the model toward.
+        if phase_tools and _is_plain_acknowledgment(_last_human_text(state["messages"]) or ""):
+            phase_tools = []
         bound = _bind_tools_if_supported(llm, phase_tools)
         # Prepended for this invocation only, never appended to state. The
         # target line exists because profile.system_prompt is phase-only and
@@ -384,7 +465,7 @@ def make_think_node(
         )
         context_block = f"\n\n{context_summary}" if context_summary else ""
         rules = f"\n\n{_ONE_CALL_RULE}" if phase_tools else ""
-        hint = _FALLBACK_HINT if phase_tools else ""
+        hint = _fallback_hint(state["target"]) if phase_tools else ""
         system_prompt = f"{target_line}{act_rule}{context_block}\n\n{profile.system_prompt}{rules}{hint}"
         context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
         history, dropped = _compact_history(state["messages"], system_prompt, context_window)
@@ -402,19 +483,26 @@ def make_think_node(
         is_opening_move = bool(phase_tools) and not _already_has_a_tool_result_this_turn(
             state["messages"]
         )
-        response = await _stream_response(bound, messages)
+        response = await _stream_response(bound, messages, retriable=is_opening_move)
         if phase_tools and not response.tool_calls:
             # Weak/non-tool-calling models often describe the call in prose
             # instead of the API's structured field — recover it from text.
             parsed = _parse_text_tool_call(str(response.content))
             if parsed is not None:
                 response = response.model_copy(update={"tool_calls": [parsed]})
-        # Only a truly empty attempt (no tool call AND no text) is retried —
-        # real text means the model deliberately answered instead of acting
-        # (e.g. _ACT_ONLY_WHEN_ASKED on a greeting), which must stand as-is.
-        # An empty attempt streamed no content either, so there's nothing
-        # live viewers already saw that this retry contradicts.
-        if is_opening_move and not response.tool_calls and not str(response.content).strip():
+        # Retried cases: a truly empty attempt (no tool call AND no text),
+        # or one that asks for the target when it's already been given
+        # (_is_asking_for_known_target) — both are the model declining to
+        # act when it should have. A *different* deliberate text answer
+        # (e.g. _ACT_ONLY_WHEN_ASKED on a greeting) must stand as-is, never
+        # retried. Any live-streamed text/tokens from the discarded attempt
+        # are retracted by core.py's _run() (tagged via retriable= above) —
+        # an empty attempt streamed nothing, so there's nothing to retract.
+        content = str(response.content)
+        should_retry = is_opening_move and not response.tool_calls and (
+            not content.strip() or _is_asking_for_known_target(content, state["target"])
+        )
+        if should_retry:
             retry_messages = [*messages, SystemMessage(content=_RETRY_NUDGE)]
             response = await _stream_response(bound, retry_messages)
             if phase_tools and not response.tool_calls:
@@ -456,9 +544,25 @@ def make_act_node(
         for call in tool_calls:
             guard = action_chain.run(call)
             if not guard.allowed:
+                # Most stages' reasons must stay hidden from the model (see
+                # test_act_reports_a_blocked_call_with_a_generic_message_
+                # not_the_rich_reason — an adversarial/injected model must
+                # not get a live oracle for scope/dangerous-flags rules).
+                # phase-tool-guard is categorically different: which tools
+                # are offered when isn't secret (the model already sees the
+                # bound-tools list every turn), and BACKLOG.md §7 found the
+                # model silently giving up instead of telling the operator
+                # why a requested tool (e.g. sqlmap pre-enumeration) was
+                # unavailable — so this one stage's real reason is safe,
+                # and useful, to surface.
+                content = (
+                    guard.reason
+                    if guard.stage == "phase-tool-guard" and guard.reason
+                    else "blocked by action guardrail"
+                )
                 results.append(
                     ToolMessage(
-                        content="blocked by action guardrail",
+                        content=content,
                         tool_call_id=call["id"],
                         name=call["name"],
                         status="error",
