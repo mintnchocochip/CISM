@@ -42,11 +42,16 @@ def test_an_invalid_capability_literal_raises_a_validation_error() -> None:
         ToolSpec(binary="x", capability="deletes-everything", description="d")
 
 
-def test_phases_for_a_reads_tool_with_no_override_defaults_to_early_phases() -> None:
+def test_phases_for_a_reads_tool_with_no_override_runs_through_post_exploitation() -> None:
+    """2026-10-17: a reads-capability tool stays useful well past
+    vulnerability-discovery (re-running it once exploitation reveals new
+    ground), so the default now matches nmap/curl's own explicit phase
+    lists, which stop at post-exploitation — reporting stays tool-free."""
     spec = ToolSpec(binary="x", capability="reads", description="d")
-    assert phases_for(spec) == frozenset(
-        {Phase.RECON, Phase.ENUMERATION, Phase.VULNERABILITY_DISCOVERY}
-    )
+    assert phases_for(spec) == frozenset({
+        Phase.RECON, Phase.ENUMERATION, Phase.VULNERABILITY_DISCOVERY,
+        Phase.EXPLOITATION, Phase.POST_EXPLOITATION,
+    })
 
 
 def test_phases_for_an_executes_tool_with_no_override_is_unreachable() -> None:

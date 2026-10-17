@@ -39,16 +39,20 @@ def test_default_profiles_covers_every_phase() -> None:
         assert profile.system_prompt
 
 
-def test_default_profiles_exploitation_includes_hydra_but_not_recon_only_tools() -> None:
-    """Adding tools with a real per-tool phase policy means phase tool sets
-    are no longer a monotonically growing superset (the old hand-written
-    _TOOLS table happened to make RECON <= EXPLOITATION true by omission,
-    not by design) — a recon-only scanner like nikto correctly disappears
-    from EXPLOITATION's tool set."""
+def test_default_profiles_exploitation_includes_hydra_and_still_offers_reads_tools() -> None:
+    """2026-10-17, live (round 12): a read-only tool (gobuster) silently
+    disappearing once the engagement moved past vulnerability-discovery
+    meant a legitimate mid-exploitation request ("brute force
+    directories") got no tool call at all, even though re-running a
+    passive recon/enum tool is still useful once exploitation has
+    started. The reads-capability default now runs through
+    post-exploitation (matching nmap/curl's own explicit phase lists),
+    so nikto correctly stays available in EXPLOITATION — reversing the
+    older, deliberate "window" design this test used to pin."""
     profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
 
     assert "hydra" in profiles.get(Phase.EXPLOITATION).tool_names
-    assert "nikto" not in profiles.get(Phase.EXPLOITATION).tool_names
+    assert "nikto" in profiles.get(Phase.EXPLOITATION).tool_names
 
 
 def test_default_profiles_recon_includes_every_reads_capability_catalog_tool() -> None:
@@ -69,6 +73,19 @@ def test_default_profiles_name_a_concrete_tool_and_a_done_criterion() -> None:
     assert "whatweb" in profiles.get(Phase.ENUMERATION).system_prompt
     assert "nikto" in profiles.get(Phase.VULNERABILITY_DISCOVERY).system_prompt
     assert "hydra" in profiles.get(Phase.EXPLOITATION).system_prompt
+
+
+def test_default_profiles_a_reads_tool_stays_available_through_post_exploitation_but_not_reporting() -> None:
+    """Pins the new monotonic contract so a future change can't silently
+    narrow the reads-capability window again without a visible failure."""
+    profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
+
+    for phase in (
+        Phase.ENUMERATION, Phase.VULNERABILITY_DISCOVERY,
+        Phase.EXPLOITATION, Phase.POST_EXPLOITATION,
+    ):
+        assert "nikto" in profiles.get(phase).tool_names
+    assert "nikto" not in profiles.get(Phase.REPORTING).tool_names
 
 
 def test_default_profiles_reporting_phase_has_no_tools() -> None:
