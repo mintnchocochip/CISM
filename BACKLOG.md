@@ -776,3 +776,58 @@ fix:**
   checks (direct `hydra.invoke()`, a 4-trial repeated-acknowledgment
   spot-check) against the real `lfm2.5-8b-a1b` backend and real
   dvwa/metasploitable2 targets.
+
+## 12. Cumulative phase-tool gating + compaction truncation (2026-10-17)
+
+Two follow-ups from §11's "directory brute-forcing got no gobuster call"
+finding and a direct question about whether history compaction was
+actually managing tokens efficiently.
+
+- [x] **Fixed, live-verified:** `cism/agent/tools/catalog.py`'s
+  `_DEFAULT_PHASES_BY_CAPABILITY["reads"]` was a *fixed window*
+  (`recon, enumeration, vulnerability-discovery`) — any reads-capability
+  tool with no explicit `phases:` override (nikto, whatweb, dnsenum,
+  gobuster, wafw00f) permanently disappeared once the engagement moved
+  into exploitation, even though it's still legitimately useful there
+  (re-running gobuster after a shell reveals a new path, say). Extended
+  the default through `post-exploitation`, matching `nmap`/`curl`'s own
+  explicit lists — `reporting` stays tool-free everywhere, unchanged.
+  `tests/test_phase_profiles.py`'s
+  `test_default_profiles_exploitation_includes_hydra_but_not_recon_only_tools`
+  explicitly pinned the *old* window design (its own docstring said so);
+  renamed and flipped, plus a new test pinning the monotonic contract.
+  Live-verified: drove a real engagement into `Phase.EXPLOITATION`
+  (confirmed by reading the actual graph state), then asked to "brute
+  force directories on it" — `gobuster` was called this time, where
+  round 12 got a false "no tool supports this."
+  - Also newly observed, not fixed: that same live gobuster call failed
+    on its own — the model passed `extra: '-p 1-1000'` (a port-range
+    flag, meaningless in gobuster's dir-brute-force mode), so gobuster
+    errored with a clear "pattern file '1-1000' does not exist" message.
+    Benign (clear error, nothing dangerous) and the same flavor as the
+    earlier sqlmap/hydra hallucinated-flag bugs. Not investigated this
+    round.
+- [x] **Fixed, live-verified:** `_compact_history` (`cism/agent/nodes.py`)
+  only ever dropped whole old messages by recency — an old turn's full
+  `ToolMessage` content (a real nmap/nikto/sqlmap dump, sometimes several
+  KB) stayed in the kept history at full size even though `depg_update`
+  (which always runs right after `act()`, before the next `think()`) had
+  already condensed its finding into the DEPG/memory block injected
+  separately into the system prompt. Added `_shrink_old_tool_output`, a
+  pre-pass before the existing budget loop: any `ToolMessage` before the
+  most recent `HumanMessage` gets truncated to a 350/100-char head/tail
+  with a marker pointing back at the findings block; the turn in progress
+  keeps its own tool results in full. Mirrors the one existing precedent
+  for this in the codebase — `cism/depg/extractors.py`'s
+  `_MAX_PROMPT_CHARS`/`truncated_note` slice-and-mark pattern. Runs
+  unconditionally (not just when the budget would otherwise be
+  exceeded), so it also lets more whole turns fit before anything needs
+  dropping outright. Live-verified by reading the real accumulated graph
+  state mid-engagement: 4 of 7 real `ToolMessage`s (sizes up to 7770
+  chars, including a full nikto dump) shrank to ~522 chars each with the
+  marker; the short and current-turn ones were untouched.
+- Verification: `pytest -n auto` 829/829 after both fixes; targeted suite
+  re-run after each. Live-verified together in one engagement (driving
+  into `exploitation`, inspecting real graph state via
+  `agent._graph.aget_state()`, then re-triggering the exact round-12
+  failure).
