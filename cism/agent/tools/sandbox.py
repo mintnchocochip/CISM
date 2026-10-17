@@ -354,9 +354,16 @@ class BubblewrapRunner:
     #: DNS, ssl for the CA store, ld.so.cache for the linker, alternatives
     #: because Debian/Ubuntu route shared libs through /etc/alternatives/...
     #: (see _etc_symlink_hops/_dynamic_etc_binds).
+    #: ssh_config here, built into the image (cism-runner.Dockerfile), adds
+    #: legacy algorithms hydra's ssh module needs to even negotiate a
+    #: connection to an intentionally-ancient target like Metasploitable2
+    #: (confirmed live: "kex error: no match for method server host key
+    #: algo" against ssh-rsa/ssh-dss-only servers) — additive (`+`), so a
+    #: modern target still gets modern algorithms first. --ro-bind-try
+    #: makes this a no-op if the image never wrote the file.
     _RO_BIND_ETC: tuple[str, ...] = (
         "/etc/resolv.conf", "/etc/nsswitch.conf", "/etc/hosts",
-        "/etc/ssl", "/etc/ld.so.cache", "/etc/alternatives",
+        "/etc/ssl", "/etc/ld.so.cache", "/etc/alternatives", "/etc/ssh/ssh_config",
     )
 
     def __init__(self) -> None:

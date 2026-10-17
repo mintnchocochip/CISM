@@ -36,6 +36,19 @@ RUN install -d /usr/share/wordlists && \
     printf 'admin\nlogin\nconfig\ndocs\nbackup\nuploads\nimages\nincludes\nsetup.php\nphpinfo.php\nrobots.txt\n.git\ntest\napi\ndashboard\n' \
         > /usr/share/wordlists/common-dirs.txt
 
+# Live, 2026-10-17: hydra's ssh module (libssh) refuses by default to
+# negotiate with an intentionally-ancient target like Metasploitable2
+# ("kex error: no match for method server host key algo: server
+# [ssh-rsa,ssh-dss]"), then with a legacy MAC algo once the host-key algo
+# is allowed. Every addition here is `+` (appended to libssh's own
+# defaults, never replacing them), so a modern target still negotiates
+# modern algorithms first — this only ever matters as a fallback against
+# a server that offers nothing better. sandbox.py's BubblewrapRunner
+# ro-binds this file in (_RO_BIND_ETC) so hydra sees it inside bwrap too.
+RUN install -d /etc/ssh && \
+    printf 'Host *\n    HostKeyAlgorithms +ssh-rsa,ssh-dss\n    KexAlgorithms +diffie-hellman-group14-sha1,diffie-hellman-group1-sha1\n    PubkeyAcceptedKeyTypes +ssh-rsa,ssh-dss\n    MACs +hmac-sha1,hmac-md5,hmac-ripemd160\n    Ciphers +aes128-cbc,3des-cbc\n' \
+        > /etc/ssh/ssh_config
+
 WORKDIR /cism
 COPY pyproject.toml .
 COPY requirements.txt .
