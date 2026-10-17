@@ -230,6 +230,17 @@ def test_a_cidr_target_entirely_outside_the_declared_scope_is_blocked() -> None:
     assert result.allowed is False
 
 
+def test_an_entirely_unparseable_target_on_a_mapped_tool_is_blocked_not_dropped() -> None:
+    """BACKLOG.md §7, live: nmap once got the literal, unfilled call-
+    template placeholder "<target>" as its target — _extract_host returned
+    None, _candidate_hosts silently dropped it (nothing to check), and the
+    call reached real execution unscoped. Same fail-closed pattern as the
+    CIDR case above, now also applied to a value that isn't host-shaped at
+    all on a tool with a known target-arg mapping (nmap -> target)."""
+    result = _stage().check(_call("nmap", target="<target>"))
+    assert result.allowed is False
+
+
 def test_a_cidr_smuggled_into_extra_entirely_outside_scope_is_blocked() -> None:
     """Task 1's exact threat model: render_argv places extra's tokens
     before the positional target, so `nmap 10.0.0.5` with

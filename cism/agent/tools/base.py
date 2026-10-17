@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from langchain_core.tools import BaseTool, StructuredTool
-from pydantic import Field, create_model
+from pydantic import Field, create_model, field_validator
 
 from cism.agent.tools.catalog import Capability, ToolSpec
 from cism.agent.tools.registry import ToolRegistry
@@ -43,8 +43,28 @@ def render_argv(spec: ToolSpec, target: str, **kwargs: Any) -> list[str]:
     return argv
 
 
+#: BACKLOG.md §7, live: nmap once got a literal, unfilled call-template
+#: placeholder as its target (target="<target>") instead of the real IP —
+#: satisfied this field's bare `str` type trivially and reached real
+#: execution before ScopeGuardStage's fail-open-on-unparseable gap (see
+#: scope.py's _candidate_hosts) let it through too. Reject the pattern
+#: directly, here, so the model gets immediate structured feedback instead
+#: of a confusing tool-level failure three layers downstream.
+def _reject_placeholder_target(cls: Any, value: str) -> str:
+    if any(ch in value for ch in "<>{}"):
+        raise ValueError(
+            f"{value!r} looks like an unfilled call-template placeholder, "
+            "not a real target — use the actual host/IP given in the "
+            "system prompt's Target line."
+        )
+    return value
+
+
 def _args_model(name: str, spec: ToolSpec):
     fields: dict[str, Any] = {"target": (str, ...)}
+    validators = {
+        "_reject_placeholder_target": field_validator("target")(_reject_placeholder_target)
+    }
     for flag_name, flag in spec.flags.items():
         fields[flag_name] = (bool, False) if flag.kind == "bool" else (str | None, None)
     if spec.allow_raw:
@@ -65,7 +85,7 @@ def _args_model(name: str, spec: ToolSpec):
                 ),
             ),
         )
-    return create_model(f"{name.title()}Args", **fields)
+    return create_model(f"{name.title()}Args", __validators__=validators, **fields)
 
 
 def _build_one(name: str, spec: ToolSpec) -> BaseTool:

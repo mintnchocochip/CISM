@@ -58,7 +58,7 @@ class _RecordingChatModelForNodesTest(BaseChatModel):
         return self
 
 
-def _state(messages, depg_nodes=None, depg_edges=None, memory_items=None) -> dict:
+def _state(messages, depg_nodes=None, depg_edges=None, memory_items=None, target="10.0.0.5") -> dict:
     return {
         "messages": messages,
         "phase": Phase.RECON,
@@ -66,7 +66,7 @@ def _state(messages, depg_nodes=None, depg_edges=None, memory_items=None) -> dic
         "depg_edges": depg_edges or [],
         "memory_items": memory_items or {},
         "run_id": "run-1",
-        "target": "10.0.0.5",
+        "target": target,
     }
 
 
@@ -282,7 +282,36 @@ async def test_think_accepts_the_retrys_text_when_it_also_misses() -> None:
     update = await think(state)
 
     assert len(llm.calls) == 2
-    assert update["messages"][0].content == "second miss"
+
+
+async def test_think_retries_when_the_opening_move_asks_for_the_already_known_target() -> None:
+    """BACKLOG.md §7, live: the model answered the opening move with a
+    clarifying question asking for the target instead of calling a tool,
+    even though target_line already gave it the real value. Distinct from
+    the truly-empty case above — this response has real text."""
+    llm = _SequencedChatModel(
+        replies=[_textonly_reply("Please provide the target host or IP address."), _toolcall_reply()]
+    )
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it")], target="10.0.0.5")
+
+    update = await think(state)
+
+    assert len(llm.calls) == 2
+    assert update["messages"][0].tool_calls[0]["name"] == "dummy_nmap"
+
+
+async def test_think_does_not_retry_asking_for_target_when_none_is_configured() -> None:
+    """The retry is gated on a target actually being set — without one,
+    asking for it is the correct answer, not a bug to retry."""
+    llm = _SequencedChatModel(replies=[_textonly_reply("Please provide the target host.")])
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it")], target=None)
+
+    update = await think(state)
+
+    assert len(llm.calls) == 1
+    assert update["messages"][0].content == "Please provide the target host."
 
 
 async def test_a_successful_tool_call_produces_a_depg_node_for_the_target() -> None:
@@ -671,6 +700,30 @@ async def test_think_binds_only_the_current_phases_tools() -> None:
     assert [t.name for t in recorded[0]] == ["dummy_nmap"]
 
 
+async def test_fallback_hint_example_uses_the_real_target_not_a_stale_one() -> None:
+    """Live, 2026-10-17: replacing the fallback hint's abstract <tool>/
+    <target> placeholder with a fixed, concrete example (10.0.0.5) wasn't
+    enough — the model parroted *that* literal value into a real nmap
+    call instead of the actual configured target. Caught by
+    ScopeGuardStage (10.0.0.5 was outside the declared scope), but still
+    a real miss. The hint's example target must track target_line."""
+    recorded_messages: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs) -> ChatResult:
+            recorded_messages.extend(messages)
+            return super()._generate(messages, stop, run_manager, **kwargs)
+
+    think = make_think_node(_Recording(), ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it")], target="172.28.0.3")
+
+    await think(state)
+
+    system_prompt = recorded_messages[0].content
+    assert '"target": "172.28.0.3"' in system_prompt
+    assert "10.0.0.5" not in system_prompt
+
+
 async def test_think_anonymizes_the_target_line_when_a_privacy_gateway_is_given() -> None:
     from cism.agent.guardrails.privacy import PrivacyGateway
 
@@ -883,6 +936,64 @@ async def test_think_skips_the_text_fallback_when_the_phase_offers_no_tools() ->
     assert update["messages"][0].tool_calls == []
 
 
+async def test_think_binds_no_tools_at_all_for_a_plain_acknowledgment() -> None:
+    """Live, 2026-10-17 (BACKLOG.md §10): broadening _ACT_ONLY_WHEN_ASKED's
+    wording to name "ok, noted" explicitly wasn't enough — mid-engagement,
+    with real findings already in the DEPG context block, the model still
+    called tools on a plain acknowledgment. Structural fix: no tools are
+    bound at all for that turn, so recorded (the actual bind_tools call)
+    must be empty — not just "the response has no tool_calls", which a
+    wording-only fix could also achieve on a lucky run."""
+    recorded: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def bind_tools(self, tools, **kwargs):
+            recorded.append(list(tools))
+            return self
+
+    think = make_think_node(_Recording(), ToolRegistry([dummy_nmap]), _recon_profile_with("dummy_nmap"))
+    state = _state([HumanMessage(content="ok, noted")])
+
+    await think(state)
+
+    # _bind_tools_if_supported never calls bind_tools at all for an empty
+    # tool list (it short-circuits to the plain, unbound llm) — that
+    # early return is itself the proof no tools were offered this turn.
+    assert recorded == []
+
+
+async def test_think_ignores_a_fallback_text_tool_call_on_a_plain_acknowledgment() -> None:
+    """Same bug, the other path: even a non-tool-calling model that writes
+    a TOOL_CALL: marker in prose must not have it parsed into a real call
+    when the human turn was only an acknowledgment."""
+    llm = _TextOnlyChatModel(
+        text='Noted. TOOL_CALL: {"name": "dummy_nmap", "args": {"target": "10.0.0.5"}}'
+    )
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _recon_profile_with("dummy_nmap"))
+    state = _state([HumanMessage(content="got it")])
+
+    update = await think(state)
+
+    assert update["messages"][0].tool_calls == []
+
+
+async def test_think_still_binds_tools_for_a_message_that_merely_starts_with_an_ack_word() -> None:
+    """Exact-match, not substring: "ok, run nikto" must still get tools."""
+    recorded: list = []
+
+    class _Recording(_RecordingChatModelForNodesTest):
+        def bind_tools(self, tools, **kwargs):
+            recorded.append(list(tools))
+            return self
+
+    think = make_think_node(_Recording(), ToolRegistry([dummy_nmap]), _recon_profile_with("dummy_nmap"))
+    state = _state([HumanMessage(content="ok, run nikto")])
+
+    await think(state)
+
+    assert [t.name for t in recorded[0]] == ["dummy_nmap"]
+
+
 async def test_think_prefers_native_tool_calls_over_the_text_fallback() -> None:
     class _NativeAndTextChatModel(BaseChatModel):
         @property
@@ -1035,6 +1146,31 @@ async def test_act_reports_a_blocked_call_with_a_generic_message_not_the_rich_re
     assert message.content == "blocked by action guardrail"
     assert "10.0.0.99" not in message.content
     assert "outside scope" not in message.content
+
+
+async def test_act_surfaces_the_real_reason_when_phase_tool_guard_blocks_a_call() -> None:
+    """BACKLOG.md §7, live: a request for sqlmap while still in recon
+    silently failed with no indication why — the real reason was already
+    computed (PhaseToolGuardStage) but discarded in favor of the generic
+    message. Carved out from the test above's security property: which
+    tools are offered when isn't secret (the model already sees the
+    bound-tools list every turn), unlike a scope/flag rule."""
+    from cism.agent.guardrails import PhaseToolGuardStage
+
+    action_chain = GuardrailChain(
+        [PhaseToolGuardStage(Phase.RECON, frozenset(), {"dummy_nmap": "executes"})]
+    )
+    profiles = PhaseProfiles(
+        {Phase.RECON: PhaseProfile(phase=Phase.RECON, system_prompt="", tool_names=frozenset())}
+    )
+    act = make_act_node(ToolRegistry([dummy_nmap]), action_chain, profiles)
+    call = {"id": "c1", "name": "dummy_nmap", "args": {"target": "10.0.0.5"}, "type": "tool_call"}
+    state = _state([AIMessage(content="", tool_calls=[call])])
+
+    result = await act(state)
+
+    message = result["messages"][0]
+    assert message.content == "'dummy_nmap' [capability=executes] is not offered in phase recon"
 
 
 async def test_act_preserves_the_rich_guardrail_reason_in_additional_kwargs() -> None:

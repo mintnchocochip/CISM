@@ -34,6 +34,7 @@ from .events import (
     ModelInfo,
     Narration,
     NarrationRedacted,
+    NarrationRetracted,
     PhaseChanged,
     RunFinished,
     RunStarted,
@@ -293,6 +294,11 @@ class CISMApp(App[None]):
             entry = transcript.existing_narration(event.entry_id)
             if entry is not None:
                 entry.redact(event.reason)
+
+        elif isinstance(event, NarrationRetracted):
+            entry = transcript.existing_narration(event.entry_id)
+            if entry is not None:
+                entry.retract(event.chars)
 
         elif isinstance(event, ToolStarted):
             transcript.add_tool(event.call_id, event.tool, event.args)

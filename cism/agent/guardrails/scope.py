@@ -275,6 +275,12 @@ class ScopeGuardStage:
 
 
 def _scan_all_args(args: dict) -> list[str]:
+    # Indiscriminate scan over every string arg (used only when this tool
+    # has no _TARGET_ARG_BY_TOOL entry) — most non-host-shaped values here
+    # are legitimately not hosts (flag values, free text), so staying
+    # lenient (skip, don't deny) is correct. _candidate_hosts' other branch
+    # below handles the "this exact arg is supposed to be the target"
+    # case, where failing closed on an unparseable value is the right call.
     hosts: list[str] = []
     for key, value in args.items():
         # `extra` gets its own dedicated token-by-token pass in _candidate_hosts.
@@ -292,9 +298,7 @@ def _candidate_hosts(call: ToolCall) -> list[str]:
     key = _TARGET_ARG_BY_TOOL.get(call.get("name", ""))
     value = args.get(key) if key is not None else None
     if key is not None and isinstance(value, str):
-        host = _extract_host(value)
-        if host:
-            hosts.append(host)
+        hosts.append(_extract_host(value) or "<unparseable-target>")
     else:
         # No per-tool mapping, or the mapped key isn't present on this call —
         # scan every arg so a new catalog tool can't end up unchecked.

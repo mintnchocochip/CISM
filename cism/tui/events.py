@@ -235,6 +235,16 @@ class NarrationRedacted(_Event):
 
 
 @dataclass(frozen=True, slots=True)
+class NarrationRetracted(_Event):
+    """Cuts the last ``chars`` characters shown for ``entry_id`` — a
+    discarded retry attempt's leaked output. Unlike NarrationRedacted, the
+    entry stays live; more chunks (the accepted attempt's) still follow."""
+
+    entry_id: str = ""
+    chars: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class ToolStarted(_Event):
     call_id: str
     tool: str

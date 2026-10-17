@@ -83,6 +83,27 @@ def test_a_built_tool_routes_through_run_sandboxed() -> None:
     assert mock_run.call_args.args[0] == ["nikto", "-host", "10.0.0.5"]
 
 
+def test_a_placeholder_shaped_target_is_rejected_before_it_runs() -> None:
+    """BACKLOG.md §7, live: nmap once got the literal, unfilled call-
+    template placeholder "<target>" as its target and reached real
+    execution (nmap: Failed to resolve "<target>"). The args model now
+    rejects it outright instead of letting it reach run_sandboxed."""
+    catalog = {
+        "nikto": ToolSpec(binary="nikto", capability="reads", description="d", target="-host")
+    }
+    (tool,) = build_catalog(catalog)
+
+    with patch("cism.agent.tools.base.run_sandboxed", return_value="ok") as mock_run:
+        try:
+            tool.invoke({"target": "<target>"})
+            raised = False
+        except Exception:
+            raised = True
+
+    assert raised is True
+    mock_run.assert_not_called()
+
+
 def test_nmap_catalog_row_builds_argv_from_target_and_extra() -> None:
     (tool,) = build_catalog({"nmap": CATALOG["nmap"]})
 

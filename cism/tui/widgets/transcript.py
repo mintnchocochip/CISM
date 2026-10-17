@@ -85,6 +85,17 @@ class NarrationEntry(Static):
         self._text = Text(reason or "[response withheld by output guardrail]")
         self._flush()
 
+    def retract(self, chars: int) -> None:
+        """Cuts the last ``chars`` characters — a discarded retry attempt's
+        output that already streamed in, per core.py's retriable-attempt
+        tracking. Unlike redact(), more chunks may still follow on this
+        same entry."""
+        if chars <= 0:
+            return
+        self._text = self._text[: len(self._text) - chars]
+        if self._timer is None:
+            self._timer = self.set_timer(self.FLUSH_INTERVAL, self._flush)
+
     def toggle(self) -> None:
         if not self.done:
             return
