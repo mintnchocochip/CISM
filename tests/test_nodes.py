@@ -1553,3 +1553,29 @@ def test_respond_leaves_ordinary_content_untouched() -> None:
     update = respond(state)
 
     assert update["messages"][0].content == "The scan found 3 open ports."
+
+
+def test_respond_substitutes_a_question_appropriate_fallback_for_genuine_emptiness() -> None:
+    """Live, round 12 (2026-10-17): a status question ("what have we found
+    so far?") once got a truly empty final answer -- real reasoning-model
+    flakiness surviving the single opening-move retry, not a leaked
+    tool-call fragment. "Noted." (the fallback for the leaked-syntax case)
+    would be a non-sequitur here -- nothing was said to acknowledge, a
+    question just went unanswered."""
+    respond = make_respond_node(GuardrailChain([]))
+    state = {"messages": [AIMessage(content="")]}
+
+    update = respond(state)
+
+    assert update["messages"][0].content == "I don't have anything further to add right now."
+
+
+def test_respond_still_uses_noted_when_the_emptiness_came_from_a_leaked_tool_call() -> None:
+    respond = make_respond_node(GuardrailChain([]))
+    state = {"messages": [AIMessage(
+        content="<|tool_call_start|>[curl(target='x')]<|tool_call_end|>"
+    )]}
+
+    update = respond(state)
+
+    assert update["messages"][0].content == "Noted."
