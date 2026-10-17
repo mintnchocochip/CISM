@@ -23,6 +23,7 @@ from langchain_core.tools import StructuredTool
 from cism.agent.guardrails import GuardrailChain, GuardrailResult, GuardrailSeam
 from cism.agent.llm import DummyChatModel
 from cism.agent.nodes import (
+    _RETRY_NUDGE,
     _compact_history,
     _depg_context,
     _memory_context,
@@ -238,6 +239,25 @@ async def test_think_retries_once_when_the_opening_move_is_truly_empty() -> None
 
     assert len(llm.calls) == 2
     assert update["messages"][0].tool_calls[0]["name"] == "dummy_nmap"
+
+
+async def test_think_retry_keeps_exactly_one_leading_system_message() -> None:
+    """Live, 2026-10-17: a second SystemMessage appended at the end (the
+    original shape of this retry) crashes this model's chat template
+    outright ("Jinja Exception: System message must be at the
+    beginning"). The nudge must be folded into the one leading
+    SystemMessage instead, never appended as a second one."""
+    llm = _SequencedChatModel(replies=[_empty_reply(), _toolcall_reply()])
+    think = make_think_node(llm, ToolRegistry([dummy_nmap]), _TOOL_PROFILES)
+    state = _state([HumanMessage(content="scan it")])
+
+    await think(state)
+
+    retry_messages = llm.calls[1]
+    system_messages = [m for m in retry_messages if isinstance(m, SystemMessage)]
+    assert len(system_messages) == 1
+    assert isinstance(retry_messages[0], SystemMessage)
+    assert _RETRY_NUDGE in str(retry_messages[0].content)
 
 
 async def test_think_does_not_retry_a_deliberate_text_answer_on_the_opening_move() -> None:
