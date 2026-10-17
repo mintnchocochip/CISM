@@ -1126,6 +1126,61 @@ def test_compact_history_counts_fat_tool_calls_not_just_empty_content() -> None:
     assert len(kept) < len(messages)
 
 
+def test_compact_history_truncates_old_tool_output_but_keeps_the_current_turns_full() -> None:
+    """Live, round 12 follow-up (2026-10-17): an old turn's full nmap/nikto
+    dump sat in history at full size even though depg_update had already
+    condensed its finding into the DEPG/memory block shown separately —
+    paying full token cost twice for the same signal. The current turn's
+    own tool results must stay untouched; the model may still need exact
+    detail from them to decide its next move."""
+    old_tool = ToolMessage(content="A" * 2000, tool_call_id="c1", name="nmap")
+    new_tool = ToolMessage(content="B" * 2000, tool_call_id="c2", name="nmap")
+    messages = [
+        HumanMessage(content="scan it"),
+        AIMessage(content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {}}]),
+        old_tool,
+        HumanMessage(content="scan again"),
+        AIMessage(content="", tool_calls=[{"id": "c2", "name": "nmap", "args": {}}]),
+        new_tool,
+    ]
+
+    kept, dropped = _compact_history(messages, "sys", 32_768)
+
+    assert dropped == 0
+    old_kept = kept[2]
+    assert len(old_kept.content) < 2000
+    assert "truncated" in old_kept.content
+    assert kept[-1].content == "B" * 2000
+
+
+def test_compact_history_leaves_short_old_tool_output_untouched() -> None:
+    old_tool = ToolMessage(content="short output", tool_call_id="c1", name="nmap")
+    messages = [
+        HumanMessage(content="scan it"),
+        AIMessage(content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {}}]),
+        old_tool,
+        HumanMessage(content="what next"),
+    ]
+
+    kept, _ = _compact_history(messages, "sys", 32_768)
+
+    assert kept[2].content == "short output"
+
+
+def test_compact_history_never_truncates_non_tool_messages() -> None:
+    old_narration = AIMessage(content="A" * 2000)
+    messages = [
+        HumanMessage(content="x" * 2000),
+        old_narration,
+        HumanMessage(content="what next"),
+    ]
+
+    kept, _ = _compact_history(messages, "sys", 32_768)
+
+    assert kept[0].content == "x" * 2000
+    assert kept[1].content == "A" * 2000
+
+
 async def test_think_wraps_tool_output_for_the_model_without_touching_state() -> None:
     """C1 (AUDIT.md): a ToolMessage is untrusted data (host-controlled scan
     output) — the model must see it marked as such, but depg_update's regex
