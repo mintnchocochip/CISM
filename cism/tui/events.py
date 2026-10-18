@@ -31,6 +31,7 @@ __all__ = [
     "Narration",
     "NarrationRedacted",
     "PhaseChanged",
+    "PhaseProposed",
     "RunFinished",
     "RunStarted",
     "SalienceTerms",
@@ -282,6 +283,16 @@ class PhaseChanged(_Event):
 
 
 @dataclass(frozen=True, slots=True)
+class PhaseProposed(_Event):
+    """phase_router detected readiness to move into `phase` but, unlike the
+    old auto-apply behavior, hasn't applied it — the operator confirms via
+    /phase <name> (which emits PhaseChanged) or it just sits pending."""
+
+    phase: str
+    framework: str = "PTES"
+
+
+@dataclass(frozen=True, slots=True)
 class ScopeChanged(_Event):
     """A /scope add or remove that actually changed the live scope; listing
     and no-op/error paths use a plain Narration instead."""
@@ -342,6 +353,7 @@ AgentEvent: TypeAlias = (
     | ToolFinished
     | ToolFailed
     | PhaseChanged
+    | PhaseProposed
     | ScopeChanged
     | DEPGUpdated
     | MemoryUpdated
@@ -362,6 +374,7 @@ EVENT_TYPES: dict[str, type] = {
         ToolFinished,
         ToolFailed,
         PhaseChanged,
+        PhaseProposed,
         ScopeChanged,
         DEPGUpdated,
         MemoryUpdated,

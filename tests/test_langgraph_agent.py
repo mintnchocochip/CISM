@@ -41,6 +41,7 @@ from cism.tui.events import (
     NarrationRedacted,
     NarrationRetracted,
     PhaseChanged,
+    PhaseProposed,
     RunFinished,
     RunStarted,
     ScopeChanged,
@@ -228,18 +229,27 @@ async def test_every_tool_started_has_a_matching_finish_by_call_id(tmp_path, mon
     await agent.aclose()
 
 
-async def test_dummy_run_produces_a_final_narration_and_two_phase_changes(
+async def test_dummy_run_produces_a_final_narration_and_a_phase_proposal(
     tmp_path, monkeypatch
 ) -> None:
+    """2026-10-18: phase_router only proposes now, never applies on its own
+    -- PhaseChanged only fires from an operator's /phase <name>, which
+    this scripted dummy-tool run never calls, so this now checks for a
+    PhaseProposed instead of two auto-applied PhaseChanged events. The
+    dummy_msfconsole call MAX_AI_TURNS (now 2) cuts off never streamed
+    anything, so the checkpoint note arrives as a fresh Narration, not a
+    NarrationRedacted (core.py's respond-handling, same day)."""
     monkeypatch.setenv("HOME", str(tmp_path))
     agent = LangGraphAgent(target="10.0.0.5")
     events = await _run_to_completion(agent, "scan 10.0.0.5")
 
     narrations = [e for e in events if isinstance(e, Narration)]
     assert narrations and narrations[-1].done is True
+    assert "enumeration" in narrations[-1].text
 
-    phase_changes = [e.phase for e in events if isinstance(e, PhaseChanged)]
-    assert phase_changes == ["enumeration", "vulnerability-discovery"]
+    proposals = [e.phase for e in events if isinstance(e, PhaseProposed)]
+    assert proposals == ["enumeration"]
+    assert not [e for e in events if isinstance(e, PhaseChanged)]
     await agent.aclose()
 
 
@@ -304,6 +314,17 @@ async def test_a_new_submit_emits_interrupted_for_the_run_it_superseded() -> Non
 
     superseded = [e for e in events if isinstance(e, Interrupted) and e.reason == "superseded by new submission"]
     assert len(superseded) == 1
+    # The superseding run must not just fire "Interrupted" for the one it
+    # cancelled — it has to complete cleanly itself. A race between the
+    # cancelled run's in-flight graph.astream() and the new one starting
+    # immediately after (core.py's submit() used to not wait for the
+    # cancellation to actually land) could hand the new run's think() a
+    # checkpoint-backed state dict still missing depg_nodes/depg_edges/
+    # memory_items, crashing it with KeyError('depg_nodes') — silently,
+    # since _run()'s own except Exception swallows it into a RunFinished
+    # with ok=False rather than raising.
+    finishes = [e for e in events if isinstance(e, RunFinished)]
+    assert finishes and all(e.ok for e in finishes), finishes
     await agent.aclose()
 
 

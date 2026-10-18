@@ -101,6 +101,11 @@ class StatusBar(Static):
 
     model: reactive[str] = reactive("")
     phase: reactive[str] = reactive("recon")
+    #: Wire-format name of a phase move phase_router proposed but hasn't
+    #: applied — "" when nothing's pending. Set from PhaseProposed, cleared
+    #: on PhaseChanged (an operator-confirmed /phase <name> resolves it,
+    #: whether or not it's the same phase that was proposed).
+    phase_proposal: reactive[str] = reactive("")
     ctx_used: reactive[int] = reactive(0)
     ctx_max: reactive[int] = reactive(32_768)
     tokens_per_second: reactive[float] = reactive(0.0)
@@ -124,9 +129,21 @@ class StatusBar(Static):
         if self.model:
             out.append(Segment("model", self.model, self.model, 1, "status--model"))
 
-        out.append(
-            Segment("phase", f"phase: {self.phase}", self.phase, 1, label="phase: ")
-        )
+        if self.phase_proposal:
+            out.append(
+                Segment(
+                    "phase",
+                    f"phase: {self.phase} -> {self.phase_proposal}? (/phase {self.phase_proposal})",
+                    f"{self.phase}->{self.phase_proposal}?",
+                    1,
+                    "status--warn",
+                    label="phase: ",
+                )
+            )
+        else:
+            out.append(
+                Segment("phase", f"phase: {self.phase}", self.phase, 1, label="phase: ")
+            )
 
         used = fmt_tokens(self.ctx_used)
         cap = fmt_capacity(self.ctx_max)

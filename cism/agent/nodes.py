@@ -14,6 +14,7 @@ from typing import Awaitable, Callable
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.messages.tool import ToolCall
+from langchain_core.utils.function_calling import convert_to_openai_tool
 
 from cism.agent.guardrails import GuardrailChain, PrivacyGateway
 from cism.agent.profiles import PhaseProfiles
@@ -47,7 +48,15 @@ __all__ = [
 #: converges and stops on its own well before even 4 rounds when left
 #: alone -- it isn't runaway-looping, a capped-at-4 turn just occasionally
 #: trades a bit of depth for the latency win.
-MAX_AI_TURNS = 4
+#: 2026-10-18, later same day: lowered again, 4 -> 2. The analysis above
+#: was about *tool-execution* latency; a reasoning model (Ornith-1.5-9B,
+#: forced <think> lead-in) dominates differently -- several chained turns
+#: each running generation out to the full max_tokens cap (~2.2-2.5 min
+#: each at this hardware's ~30 tok/s), so a chain of 4 could run ~9-10
+#: minutes blind before the step-limit checkpoint ever hands control
+#: back. 2 halves that worst case and checkpoints (with DEPG findings
+#: carried through regardless) twice as often.
+MAX_AI_TURNS = 2
 
 #: No local-model tokenizer is available generically, so this is a rough
 #: chars-per-token estimate (B2, AUDIT.md) — good enough for a budget, not
@@ -193,26 +202,63 @@ def _stub_old_tool_output(messages: list) -> list:
     ]
 
 
-def _compact_history(messages: list, system_prompt: str, context_window: int) -> tuple[list, int]:
+#: 2026-10-18, live: a request measured as within budget by both the
+#: chars/N estimate AND the real /tokenize-verified correction still
+#: overflowed llama.cpp's n_ctx (16697 > 16384, a clean 400 — llama.cpp
+#: itself handled an oversized request correctly by refusing it; the gap
+#: was entirely upstream). Root cause: both budget checks only ever
+#: measured system_prompt + message content — neither accounted for the
+#: bound tools' own OpenAI tool-call schema JSON, which the server folds
+#: into the real prompt and counts against n_ctx the moment any tools are
+#: bound. _tool_schema_text below makes that overhead visible to both
+#: tiers of the budget check, the same way system_prompt already was.
+def _tool_schema_text(tools: list) -> str:
+    if not tools:
+        return ""
+    return json.dumps([convert_to_openai_tool(t) for t in tools])
+
+
+#: Compact proactively once usage crosses this fraction of budget, not
+#: only once something would actually fail to fit — the chars/N estimate
+#: (and even the real /tokenize correction) has already been seen to
+#: swing several thousand tokens turn to turn on tool-heavy output, so
+#: waiting for an exact overflow before reacting is reacting one turn
+#: late. Matches the status bar's own WARN_RATIO convention (0.8) in
+#: spirit, a bit more conservative given compaction has real headroom to
+#: spend and a crashed turn doesn't.
+_PROACTIVE_COMPACTION_THRESHOLD = 0.75
+
+
+def _compact_history(
+    messages: list, system_prompt: str, context_window: int, tool_schema_text: str = ""
+) -> tuple[list, int]:
     """Keeps the most recent messages that fit the budget; drops older ones
     and, if any were dropped, prepends one summary line in their place.
     Full history stays in state — this only shapes what's sent to the model.
 
-    Three tiers, cheapest-sufficient wins, each only engaging once the one
-    before it still couldn't fit the budget (real pressure, not
-    hypothetical — 2026-10-18, live: an unconditional Tier 1 shrank a
-    777-char hydra result the instant a new chat turn started, for no
-    budget reason at all, and the mid-word cut it then made inverted the
-    finding — see _snap_head/_snap_tail). Tier 0 is the untouched
-    messages. Tier 1 shrinks old ToolMessage content to a 350/100-char
-    head/tail (_shrink_old_tool_output) — cheap, but still carries some of
-    the original tool output's own shape. Tier 2 stubs old ToolMessage
-    content out entirely (_stub_old_tool_output), trading that remaining
-    detail for letting more old turns survive as bare conversational shape
-    instead of being dropped outright."""
-    budget = context_window - _RESPONSE_RESERVE_TOKENS - _estimate_tokens(system_prompt)
+    Three tiers, cheapest-sufficient wins, each engaging once the one
+    before it either couldn't fit the budget or left usage above
+    _PROACTIVE_COMPACTION_THRESHOLD (real or imminent pressure, not
+    engaged unconditionally — 2026-10-18, live: an unconditional Tier 1
+    shrank a 777-char hydra result the instant a new chat turn started,
+    for no budget reason at all, and the mid-word cut it then made
+    inverted the finding — see _snap_head/_snap_tail). Tier 0 is the
+    untouched messages. Tier 1 shrinks old ToolMessage content to a
+    350/100-char head/tail (_shrink_old_tool_output) — cheap, but still
+    carries some of the original tool output's own shape. Tier 2 stubs
+    old ToolMessage content out entirely (_stub_old_tool_output), trading
+    that remaining detail for letting more old turns survive as bare
+    conversational shape instead of being dropped outright. DEPG/memory
+    context (_depg_context/_memory_context) is unaffected either way —
+    rebuilt fresh from state every think() call, not from this history."""
+    budget = (
+        context_window
+        - _RESPONSE_RESERVE_TOKENS
+        - _estimate_tokens(system_prompt)
+        - _estimate_tokens(tool_schema_text)
+    )
 
-    def _fit(candidates: list) -> tuple[list, int]:
+    def _fit(candidates: list) -> tuple[list, int, int]:
         kept: list = []
         used = 0
         for message in reversed(candidates):
@@ -222,17 +268,20 @@ def _compact_history(messages: list, system_prompt: str, context_window: int) ->
             kept.append(message)
             used += cost
         kept.reverse()
-        return kept, len(candidates) - len(kept)
+        return kept, len(candidates) - len(kept), used
 
-    kept, dropped = _fit(messages)
-    if dropped:
-        shrunk_kept, shrunk_dropped = _fit(_shrink_old_tool_output(messages))
-        if shrunk_dropped < dropped:
-            kept, dropped = shrunk_kept, shrunk_dropped
-    if dropped:
-        stubbed_kept, stubbed_dropped = _fit(_stub_old_tool_output(messages))
-        if stubbed_dropped < dropped:
-            kept, dropped = stubbed_kept, stubbed_dropped
+    def _pressure(dropped: int, used: int) -> bool:
+        return dropped > 0 or (budget > 0 and used > budget * _PROACTIVE_COMPACTION_THRESHOLD)
+
+    kept, dropped, used = _fit(messages)
+    if _pressure(dropped, used):
+        shrunk_kept, shrunk_dropped, shrunk_used = _fit(_shrink_old_tool_output(messages))
+        if shrunk_dropped < dropped or shrunk_used < used:
+            kept, dropped, used = shrunk_kept, shrunk_dropped, shrunk_used
+    if _pressure(dropped, used):
+        stubbed_kept, stubbed_dropped, stubbed_used = _fit(_stub_old_tool_output(messages))
+        if stubbed_dropped < dropped or stubbed_used < used:
+            kept, dropped, used = stubbed_kept, stubbed_dropped, stubbed_used
     if dropped:
         note = SystemMessage(content=f"[{dropped} earlier turn(s) omitted to fit the context window]")
         kept = [note, *kept]
@@ -254,11 +303,12 @@ async def _verify_real_token_budget(
     system_prompt: str,
     context_window: int,
     token_counter: Callable[[str], Awaitable[int | None]] | None,
+    tool_schema_text: str = "",
 ) -> tuple[list, int]:
     if token_counter is None:
         return kept, dropped
     budget = context_window - _RESPONSE_RESERVE_TOKENS
-    full_text = system_prompt + "".join(str(m.content) for m in kept)
+    full_text = system_prompt + tool_schema_text + "".join(str(m.content) for m in kept)
     real_tokens = await token_counter(full_text)
     if real_tokens is None or real_tokens <= budget:
         return kept, dropped
@@ -269,7 +319,7 @@ async def _verify_real_token_budget(
     # call would almost always just confirm the first.
     overshoot_ratio = real_tokens / max(budget, 1)
     corrected_window = max(int(context_window / overshoot_ratio) - 1, 0)
-    return _compact_history(messages, system_prompt, corrected_window)
+    return _compact_history(messages, system_prompt, corrected_window, tool_schema_text)
 
 
 _DEPG_CONTEXT_CAP_PER_TARGET = 8
@@ -721,9 +771,13 @@ def make_think_node(
             f"{rules}{hint}{ack_note}"
         )
         context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
-        history, dropped = _compact_history(state["messages"], system_prompt, context_window)
+        tool_schema_text = _tool_schema_text(phase_tools)
+        history, dropped = _compact_history(
+            state["messages"], system_prompt, context_window, tool_schema_text
+        )
         history, dropped = await _verify_real_token_budget(
-            history, dropped, state["messages"], system_prompt, context_window, token_counter
+            history, dropped, state["messages"], system_prompt, context_window,
+            token_counter, tool_schema_text,
         )
         history = [
             m.model_copy(update={"content": _for_model(str(m.content))})
@@ -804,7 +858,7 @@ def route_after_think(state: AgentState) -> str:
             break
         if isinstance(message, AIMessage):
             ai_turns += 1
-    checkpoint = state.get("phase_changed") and state.get("live_tools")
+    checkpoint = state.get("phase_proposal_is_new") and state.get("live_tools")
     if tool_calls and ai_turns < MAX_AI_TURNS and not checkpoint:
         return "act"
     return "respond"
@@ -971,17 +1025,34 @@ def make_depg_update_node(
 
 def make_phase_router() -> Callable[[AgentState], dict]:
     def phase_router(state: AgentState) -> dict:
-        machine = PhaseStateMachine(current=state["phase"])
-        before = machine.current
+        """Detects phase readiness but no longer applies the move itself
+        (2026-10-18: operator wants to approve a transition before it
+        takes effect, not find out after). Proposes once via
+        phase_proposal, then holds — /phase <name> (core.py's _set_phase)
+        is the only thing that actually commits it, through the same
+        PhaseStateMachine legality check a manual move always used."""
+        current = state["phase"]
+        if state.get("phase_proposal"):
+            # Already proposed and not yet approved — nothing to do until
+            # the operator acts; re-detecting readiness here would just
+            # notice the same thing again every turn.
+            return {"phase": current, "phase_proposal_is_new": False}
 
-        if _phase_ready(machine.current, state["depg_nodes"]):
-            target = _FORWARD_PHASE[machine.current]
+        target = _FORWARD_PHASE[current]
+        if target != current and _phase_ready(current, state["depg_nodes"]):
+            machine = PhaseStateMachine(current=current)
             try:
                 machine.transition(target)
             except IllegalPhaseTransition:
-                pass  # stay put; an illegal proposed move is not a run failure
+                pass  # not actually legal despite _FORWARD_PHASE; stay put
+            else:
+                return {
+                    "phase": current,
+                    "phase_proposal": target.to_wire(),
+                    "phase_proposal_is_new": True,
+                }
 
-        return {"phase": machine.current, "phase_changed": machine.current != before}
+        return {"phase": current, "phase_proposal_is_new": False}
 
     return phase_router
 
@@ -1021,11 +1092,12 @@ def make_memory_update_node() -> Callable[[AgentState], dict]:
                 "T3", phase_tag, snippet, source_type="narration",
             )
 
-        if state.get("phase_changed"):
-            snippet = f"phase -> {phase_tag}"
+        if state.get("phase_proposal_is_new"):
+            proposal = state.get("phase_proposal") or "?"
+            snippet = f"phase proposal -> {proposal} (pending /phase approval)"
             store.upsert(
-                memory_key("phase-change", phase_tag, snippet),
-                "T2", phase_tag, snippet, source_type="phase-change",
+                memory_key("phase-proposal", phase_tag, snippet),
+                "T2", phase_tag, snippet, source_type="phase-proposal",
             )
 
         return {"memory_items": store.items}
@@ -1086,11 +1158,15 @@ _STEP_LIMIT_NOTE = (
 #: exploitation in one turn, then an unbounded reasoning burst). Distinct
 #: wording from _STEP_LIMIT_NOTE since the reason is different (forward
 #: progress, not a stall).
+#: 2026-10-18, later same day: reworded from "just moved" to "ready to
+#: move" -- phase_router no longer applies the transition on its own, it
+#: only proposes one (phase_proposal); the operator has to run /phase
+#: <name> themselves for it to actually take effect.
 _PHASE_CHECKPOINT_NOTE = (
-    "(Checkpoint: the engagement just moved into the {phase} phase, so I'm "
-    "pausing here before continuing -- the next planned step ({tools}) "
-    "hasn't run yet. Here's what's confirmed so far; tell me how you'd "
-    "like to proceed.)"
+    "(Checkpoint: the engagement looks ready to move into the {phase} "
+    "phase, so I'm pausing here before continuing -- the next planned "
+    "step ({tools}) hasn't run yet. Run /phase {phase} to confirm the "
+    "move, or just tell me how you'd like to proceed to stay put.)"
 )
 
 #: Cap on how many findings make it into the checkpoint summary below --
@@ -1125,10 +1201,9 @@ def make_respond_node(output_chain: GuardrailChain) -> Callable[[AgentState], di
             tools_pending = ", ".join(
                 sorted({str(call.get("name", "?")) for call in last.tool_calls})
             )
-            if state.get("phase_changed"):
-                phase = state.get("phase")
+            if state.get("phase_proposal_is_new"):
                 note = _PHASE_CHECKPOINT_NOTE.format(
-                    phase=phase.to_wire() if phase is not None else "next",
+                    phase=state.get("phase_proposal") or "next",
                     tools=tools_pending,
                 )
             else:
