@@ -384,3 +384,19 @@ MemoryTable > .mem--t3 { color: $fg-dim; }
     height: 1;
     color: $rule;
 }
+
+/* ── startup banner ───────────────────────────────────────────────────
+   Removed from the DOM once the transcript has any content, so these
+   rules only ever apply to the pre-prompt screen. */
+
+Banner {
+    width: 100%;
+    height: auto;
+    padding: 2 2 0 2;
+    background: $bg;
+}
+
+Banner > .banner--art     { color: $accent; }
+Banner > .banner--name    { color: $fg-bright; }
+Banner > .banner--tagline { color: $fg; }
+Banner > .banner--hint    { color: $fg-dim; }

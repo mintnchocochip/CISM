@@ -232,3 +232,17 @@ async def test_a_context_window_probe_failure_is_logged(monkeypatch, tmp_path) -
     records = [json.loads(line) for line in (tmp_path / "agent.log").read_text(encoding="utf-8").splitlines()]
     logged = next(r for r in records if r["message"] == "context-window probe failed")
     assert "api/show" in logged["data"]["url"]
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_base_url_returns_none_instead_of_raising() -> None:
+    """The docstring promises this probe never raises, and the TUI's event
+    pump depends on it: httpx.InvalidURL is not an HTTPError, so a bad port
+    used to escape and kill the pump at startup."""
+    for bad in ("http://[::1/v1", "http://host:notaport/v1"):
+        assert await discover_context_window(bad, "m") is None
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_base_url_returns_none_from_the_llamacpp_probe() -> None:
+    assert await discover_context_window_llamacpp("http://host:notaport/v1") is None
