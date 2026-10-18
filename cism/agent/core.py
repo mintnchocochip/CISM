@@ -853,17 +853,16 @@ class LangGraphAgent:
                     )
 
         elif node == "phase_router":
-            # 2026-10-18: phase_router no longer applies a move on its own
-            # (update["phase"] is always the unchanged current phase now) —
-            # this branch is dead for the automatic path and only still
-            # fires if something upstream ever changes that again. The real
-            # signal today is phase_proposal: operator approval (/phase
-            # <name>, _set_phase above) is what actually calls .transition
-            # and emits PhaseChanged.
-            new_phase = update.get("phase")
-            if new_phase is not None and new_phase != self._phase.current:
-                self._phase.current = new_phase
-                await self._emit(PhaseChanged(phase=new_phase.to_wire()))
+            # 2026-10-18: phase_router never applies a move itself anymore —
+            # update["phase"] is just state["phase"] echoed back, frozen at
+            # this run's _run()-start (initial_state), so it goes stale the
+            # moment a manual /phase command (_set_phase above) changes
+            # self._phase.current mid-run. An earlier version of this branch
+            # compared that stale value against self._phase.current and
+            # "corrected" it back — which silently reverted the operator's
+            # own /phase command whenever a later node update from the same
+            # in-flight run arrived afterward. Only _set_phase may touch
+            # self._phase.current now; this branch just surfaces proposals.
             proposal = update.get("phase_proposal")
             if update.get("phase_proposal_is_new") and proposal:
                 self._phase_proposal = proposal

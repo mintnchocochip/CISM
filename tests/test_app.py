@@ -15,6 +15,8 @@ from cism.tui.events import (
     MemoryRow,
     MemoryUpdated,
     Narration,
+    PhaseChanged,
+    PhaseProposed,
     ScopeChanged,
     ToolFailed,
     ToolFinished,
@@ -26,6 +28,7 @@ from cism.tui.replay import FakeAgent
 from cism.tui.widgets.banner import Banner
 from cism.tui.widgets.depg_modal import DEPGModal, DEPGTree
 from cism.tui.widgets.memory_modal import MemoryModal, MemoryTable
+from cism.tui.widgets.phase_modal import PhaseApprovalModal
 from cism.tui.widgets.slash import COMMANDS, SlashOverlay
 from cism.tui.widgets.transcript import NarrationEntry, ToolEntry, UserTurn
 
@@ -220,6 +223,74 @@ async def test_ctrl_m_opens_and_escape_closes_the_memory_view(app_and_agent) -> 
         await pilot.press("escape")
         await settle(pilot, 8)
         assert not isinstance(app.screen, MemoryModal)
+
+
+async def test_phase_proposed_pushes_an_approval_modal(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(120, 34)) as pilot:
+        agent.events.put_nowait(PhaseProposed("enumeration"))
+        await drain(pilot, agent)
+        assert isinstance(app.screen, PhaseApprovalModal)
+        assert app.screen.current == "recon"
+        assert app.screen.proposed == "enumeration"
+        assert app.status.phase_proposal == "enumeration"
+
+
+async def test_approving_the_phase_modal_sends_the_phase_command(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(120, 34)) as pilot:
+        agent.events.put_nowait(PhaseProposed("enumeration"))
+        await drain(pilot, agent)
+        await asyncio.wait_for(pilot.click("#phase-approval-approve"), timeout=5)
+        await asyncio.wait_for(settle(pilot), timeout=5)
+        assert not isinstance(app.screen, PhaseApprovalModal)
+        assert "/phase enumeration" in agent.submissions
+
+
+async def test_dismissing_the_phase_modal_leaves_the_proposal_pending(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(120, 34)) as pilot:
+        agent.events.put_nowait(PhaseProposed("enumeration"))
+        await drain(pilot, agent)
+        await pilot.press("escape")
+        await settle(pilot, 8)
+        assert not isinstance(app.screen, PhaseApprovalModal)
+        assert not any("/phase" in s for s in agent.submissions)
+        # The proposal itself is untouched — still pending, same as the
+        # status bar always showed before the modal existed.
+        assert app.status.phase_proposal == "enumeration"
+
+
+async def test_a_phase_proposal_does_not_stack_a_modal_on_top_of_depg(quiet_app) -> None:
+    app, agent = quiet_app
+    async with app.run_test(size=(120, 34)) as pilot:
+        await pilot.press("ctrl+d")
+        await settle(pilot, 12)
+        assert isinstance(app.screen, DEPGModal)
+
+        agent.events.put_nowait(PhaseProposed("enumeration"))
+        await drain(pilot, agent)
+        assert isinstance(app.screen, DEPGModal)
+        assert len(app.screen_stack) == 2
+        # The status bar still reflects the proposal even though the
+        # operator never saw the modal for it.
+        assert app.status.phase_proposal == "enumeration"
+
+
+async def test_a_manual_phase_change_closes_an_open_approval_modal(quiet_app) -> None:
+    """A /phase typed directly while the modal for a different proposal is
+    still open resolves it some other way — the modal must not linger
+    asking about a decision that's already made."""
+    app, agent = quiet_app
+    async with app.run_test(size=(120, 34)) as pilot:
+        agent.events.put_nowait(PhaseProposed("enumeration"))
+        await drain(pilot, agent)
+        assert isinstance(app.screen, PhaseApprovalModal)
+
+        agent.events.put_nowait(PhaseChanged("enumeration"))
+        await drain(pilot, agent)
+        assert not isinstance(app.screen, PhaseApprovalModal)
+        assert app.status.phase_proposal == ""
 
 
 def _depg_node(node_id: str, state: str = "resolved") -> DEPGNode:
