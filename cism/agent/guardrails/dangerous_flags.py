@@ -71,11 +71,23 @@ _MIN_SINGLE_DASH_LONG_HEAD = 3
 #: — that shape is rare enough from a model that failing closed there costs
 #: nothing real, and it lets the rest of _hits()'s bundling logic stay
 #: exactly as-is.
+#: 2026-10-18, live (manual DVWA crack, replicating what the agent would
+#: need): -b/--cookie was flat-blocked like every other entry in this
+#: file, but a literal `-b "PHPSESSID=...; security=low"` is the ONLY way
+#: to carry a session forward across two curl calls (GET login.php for a
+#: fresh PHPSESSID + CSRF token, then POST the login with that same
+#: cookie attached) -- essential, benign, and curl already reveals the
+#: Set-Cookie value for free via -i/--include, which isn't blocked. The
+#: real risk is curl's *other* reading of this flag: with no "=" in the
+#: value at all, curl treats it as a filename to read cookies from (no
+#: "@" marker needed, unlike -d/-F) -- `-b /etc/passwd` is a bare local-
+#: file-read. _dangerous_data_value below gates on that, not on "@".
 _CURL_VALUE_AWARE_FLAGS: frozenset[str] = frozenset({
     "-d", "--data", "--data-binary", "--data-urlencode", "--data-raw",
-    "-F", "--form",
+    "-F", "--form", "-b", "--cookie",
 })
 _CURL_FORM_FLAGS: frozenset[str] = frozenset({"-F", "--form"})
+_CURL_COOKIE_FLAGS: frozenset[str] = frozenset({"-b", "--cookie"})
 #: --data-urlencode has its own file-read shape distinct from -d/--data's
 #: "whole value starts with @" rule: a BARE `name@file` (no `=` at all) also
 #: reads a local file and URL-encodes it — the `@` need not be the value's
@@ -129,6 +141,12 @@ def _dangerous_data_value(flag: str, value: str) -> bool:
     `[name]@filename` file-read form, whether or not `@` is the value's
     very first character. `value.startswith("@")` alone — correct for the
     other data flags — misses the bare `name@file` case entirely."""
+    if flag in _CURL_COOKIE_FLAGS:
+        # curl's own rule for -b/--cookie, distinct from every other flag
+        # here: ANY value with no "=" at all is read as a filename to load
+        # cookies from -- no "@" marker needed, unlike -d/-F. A real
+        # cookie string always has at least one "name=value" pair.
+        return "=" not in value
     if flag in _CURL_FORM_FLAGS:
         _, _, rhs = value.partition("=")
         return rhs.startswith("@") or rhs.startswith("<")

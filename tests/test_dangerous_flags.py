@@ -207,6 +207,52 @@ def test_curl_dump_header_and_cookie_jar_flags_are_blocked() -> None:
     assert result.allowed is False
 
 
+def test_curl_cookie_flag_with_a_literal_cookie_string_is_allowed() -> None:
+    """-b/--cookie's own value-aware carve-out: a literal 'name=value' pair
+    (what carrying a session forward across two curl calls looks like) has
+    at least one '=' and is not curl's file-read form."""
+    for flag in ("-b", "--cookie"):
+        result = _stage().check(
+            _call(name="curl", target="https://x", extra=f'{flag} "PHPSESSID=abc; security=low"')
+        )
+        assert result.allowed is True, flag
+
+
+def test_curl_cookie_flag_equals_literal_value_is_allowed() -> None:
+    result = _stage().check(_call(name="curl", target="https://x", extra="--cookie=PHPSESSID=abc"))
+    assert result.allowed is True
+
+
+def test_curl_cookie_flag_with_no_equals_at_all_is_blocked() -> None:
+    """curl's own rule for -b/--cookie is distinct from -d/-F: ANY value
+    with no '=' anywhere is read as a filename to load cookies from, no
+    '@' marker needed -- `-b /etc/passwd` is a bare local-file-read."""
+    for value in ("/etc/passwd", "cookiejar.txt"):
+        result = _stage().check(_call(name="curl", target="https://x", extra=f"-b {value}"))
+        assert result.allowed is False, value
+
+
+def test_curl_cookie_flag_with_no_value_at_all_is_blocked() -> None:
+    result = _stage().check(_call(name="curl", target="https://x", extra="-b"))
+    assert result.allowed is False
+
+
+def test_curl_cookie_flag_abbreviation_is_also_value_aware() -> None:
+    result = _stage().check(_call(name="curl", target="https://x", extra="--cook PHPSESSID=abc"))
+    assert result.allowed is True
+
+    result = _stage().check(_call(name="curl", target="https://x", extra="--cook /etc/passwd"))
+    assert result.allowed is False
+
+
+def test_curl_still_blocks_cookie_jar_write_flag_distinct_from_cookie_read() -> None:
+    """Regression check: -c/--cookie-jar (write cookies to an arbitrary
+    file) is a different flag from -b/--cookie and must stay flat-blocked
+    -- the new carve-out must not accidentally widen to cover it."""
+    result = _stage().check(_call(name="curl", target="https://x", extra="-c /tmp/jar PHPSESSID=abc"))
+    assert result.allowed is False
+
+
 def test_nmap_timing_template_written_with_a_space_is_not_a_false_positive() -> None:
     """-T is curl-specific (--upload-file); nmap's own -T<0-5> timing
     template is a different flag that happens to share the letter. Before
