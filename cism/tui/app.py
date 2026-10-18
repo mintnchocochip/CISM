@@ -49,6 +49,7 @@ from .events import (
     ToolStarted,
 )
 from .redact import looks_like_secret, redact_command
+from .widgets.banner import Banner
 from .widgets.composer import Composer, ComposerInput
 from .widgets.depg_modal import DEPGModal
 from .widgets.memory_modal import MemoryModal
@@ -152,6 +153,10 @@ class CISMApp(App[None]):
         self._memory_modal: MemoryModal | None = None
         self.token_total = 0
         self.unknown_events = 0
+        #: Set when agent.start() raised; the pump drains on regardless.
+        self.start_failed = False
+        #: False once the startup splash has been retired.
+        self._banner_live = True
         self.model = ""
         self.models_available: tuple[ModelInfo, ...] = ()
         self.endpoint = "local"
@@ -166,6 +171,7 @@ class CISMApp(App[None]):
     # -- composition -------------------------------------------------------
 
     def compose(self) -> ComposeResult:
+        yield Banner()
         yield Transcript()
         yield SlashOverlay()
         yield WorkingIndicator()
@@ -220,7 +226,19 @@ class CISMApp(App[None]):
         a superseded event's task_done() fires immediately instead, since
         it will never be applied and there's nothing left to wait for.
         """
-        await self.agent.start()
+        # start() is outside the loop but must not escape it: this worker is
+        # the only writer of transcript state, so an exception here (a bad
+        # endpoint reaching the context probe, say) would leave a UI that
+        # paints fine and never shows another event — indistinguishable from
+        # a hung agent. Report it and drain anyway.
+        try:
+            await self.agent.start()
+        except Exception:
+            self.log.error("agent.start failed", traceback.format_exc())
+            self.start_failed = True
+            self.transcript.add_note(
+                "agent did not start cleanly — session details may be incomplete"
+            )
         held: AgentEvent | None = None
         processed = 0
         while True:
@@ -228,10 +246,15 @@ class CISMApp(App[None]):
                 event, held = held, None
             else:
                 event = await self.agent.events.get()
-            if isinstance(event, _COALESCIBLE_EVENT_TYPES):
-                event, held = self._coalesce(event)
             try:
+                if isinstance(event, _COALESCIBLE_EVENT_TYPES):
+                    event, held = self._coalesce(event)
                 self._apply(event)
+                # Checked after applying, so the splash never lingers above
+                # the first entry. Driven by "is there content" rather than a
+                # list of event types, which would go stale as events are added.
+                if self._banner_live and self.transcript.children:
+                    self.dismiss_banner()
             except Exception:
                 self.log.error(f"_apply failed for {type(event).__name__}", traceback.format_exc())
                 self.unknown_events += 1
@@ -409,8 +432,18 @@ class CISMApp(App[None]):
 
     # -- user input --------------------------------------------------------
 
+    def dismiss_banner(self) -> None:
+        """Retire the splash. Idempotent and cheap once it is gone, because
+        the pump calls this on every event that reaches the transcript."""
+        if not self._banner_live:
+            return
+        self._banner_live = False
+        for banner in self.query(Banner):
+            banner.remove()
+
     def on_composer_submitted(self, message: Composer.Submitted) -> None:
         message.stop()
+        self.dismiss_banner()
         text = message.text
         # Redact before echoing — an exported/recalled transcript shouldn't outlive the keystroke.
         self.transcript.add_user_turn(redact_command(text))

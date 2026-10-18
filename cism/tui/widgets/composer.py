@@ -1,6 +1,10 @@
 """The fixed bottom composer: one rounded box, a ``>`` glyph, and the input.
-Enter submits, shift+enter (or ctrl+j) inserts a newline, and up/down
-recall history while the buffer is a single line."""
+Enter submits, shift+enter (or ctrl+j) inserts a newline, up/down recall
+history (terminal-style: walks back through sent commands, forward again
+restores whatever draft was in progress) while the buffer is a single
+line, and ctrl+z/ctrl+y undo/redo come for free from TextArea's own
+bindings -- load_text (used by history recall and /clear) resets that
+stack so undo never reaches into an unrelated recalled command."""
 
 from __future__ import annotations
 
