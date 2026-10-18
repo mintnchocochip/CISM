@@ -156,7 +156,10 @@ async def discover_context_window(base_url: str, model: str) -> int | None:
             response = await client.post(show_url, json={"model": model})
             response.raise_for_status()
             payload = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
+    # Deliberately broad: this is a best-effort probe whose caller has a
+    # fallback, and httpx.InvalidURL (raised by a malformed base_url) is not
+    # an HTTPError. Letting it out kills the TUI's event pump at startup.
+    except Exception as exc:
         _log.warning("context-window probe failed", extra={"data": {"url": show_url, "error": str(exc)}})
         return None
 
@@ -182,7 +185,7 @@ async def discover_context_window_llamacpp(base_url: str) -> int | None:
             response = await client.get(props_url)
             response.raise_for_status()
             payload = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
+    except Exception as exc:  # best-effort, same reasoning as above
         _log.warning("context-window probe failed", extra={"data": {"url": props_url, "error": str(exc)}})
         return None
 

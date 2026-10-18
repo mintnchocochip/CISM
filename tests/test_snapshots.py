@@ -24,8 +24,10 @@ def make_app(*, autostart: bool = True) -> CISMApp:
     return CISMApp(FakeAgent(load_log(DEMO_LOG), speed=0, autostart=autostart))
 
 
-def test_startup_is_an_empty_transcript(snap_compare) -> None:
-    """Nothing but the composer and the status line — the terminal is the frame."""
+def test_startup_shows_the_banner(snap_compare) -> None:
+    """Before the first prompt: the wordmark, the identity lines and the
+    hint, over an empty transcript. Everything below is still just the
+    composer and the status line — the terminal is the frame."""
 
     async def run_before(pilot) -> None:
         await settle(pilot, 10)

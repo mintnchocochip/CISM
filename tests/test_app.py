@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
+import pytest
 from conftest import drain, replay_all, settle
 
 from cism.tui.events import (
@@ -19,7 +20,10 @@ from cism.tui.events import (
     ToolFinished,
     ToolStarted,
 )
+from cism.tui.app import CISMApp
 from cism.tui.redact import MASK
+from cism.tui.replay import FakeAgent
+from cism.tui.widgets.banner import Banner
 from cism.tui.widgets.depg_modal import DEPGModal, DEPGTree
 from cism.tui.widgets.memory_modal import MemoryModal, MemoryTable
 from cism.tui.widgets.slash import COMMANDS, SlashOverlay
@@ -797,3 +801,114 @@ async def test_modals_do_not_persist_between_openings(app_and_agent) -> None:
         await settle(pilot, 10)
         assert isinstance(app.screen, MemoryModal)
         assert len(app.screen_stack) == 2
+
+
+# -- startup banner ---------------------------------------------------------
+
+
+async def test_banner_is_shown_before_the_first_prompt(quiet_app) -> None:
+    app, _ = quiet_app
+    async with app.run_test(size=(110, 32)) as pilot:
+        await settle(pilot)
+        assert len(app.query(Banner)) == 1
+
+
+async def test_banner_is_retired_by_the_first_submission(app_and_agent) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(110, 32)) as pilot:
+        await settle(pilot)
+        await pilot.press(*"scan it")
+        await pilot.press("enter")
+        await settle(pilot)
+        assert len(app.query(Banner)) == 0
+        assert agent.submissions == ["scan it"]
+
+
+async def test_a_slash_command_also_retires_the_banner(app_and_agent) -> None:
+    """A command is still a first prompt — the splash has had its turn."""
+    app, _ = app_and_agent
+    async with app.run_test(size=(110, 32)) as pilot:
+        await settle(pilot)
+        await submit_command(pilot, "/models")
+        assert len(app.query(Banner)) == 0
+
+
+async def test_dismissing_an_already_dismissed_banner_is_a_no_op(app_and_agent) -> None:
+    app, _ = app_and_agent
+    async with app.run_test(size=(110, 32)) as pilot:
+        await settle(pilot)
+        for _ in range(3):
+            await pilot.press(*"hi")
+            await pilot.press("enter")
+            await settle(pilot)
+        assert len(app.query(Banner)) == 0
+
+
+async def test_banner_is_not_part_of_the_exported_transcript(export_app, tmp_path) -> None:
+    """It is a sibling of the transcript, not an entry in it, so /export
+    never picks it up."""
+    app, agent = export_app
+    async with app.run_test(size=(110, 32)) as pilot:
+        await replay_all(pilot, agent)
+        await submit_command(pilot, "/export")
+        body = (tmp_path / "cism-transcript.txt").read_text(encoding="utf-8")
+        assert "Cyber Investigation State Memory" not in body
+        assert "█" not in body
+
+
+async def test_banner_drops_the_wordmark_on_a_narrow_terminal(quiet_app) -> None:
+    app, _ = quiet_app
+    async with app.run_test(size=(28, 20)) as pilot:
+        await settle(pilot)
+        rendered = app.query_one(Banner).render().plain
+        assert "█" not in rendered
+        assert "CISM" in rendered
+
+
+@pytest.mark.parametrize("width", (110, 60, 40, 30, 24, 16))
+async def test_banner_never_renders_a_line_wider_than_the_widget(
+    demo_steps, width
+) -> None:
+    """Every line is either a form that fits or omitted — a ragged wrap in
+    the splash is the thing this guards against."""
+    app = CISMApp(FakeAgent(demo_steps, speed=0, autostart=False))
+    async with app.run_test(size=(width, 20)) as pilot:
+        await settle(pilot)
+        banner = app.query_one(Banner)
+        for line in banner.render().plain.split("\n"):
+            assert len(line) <= banner.size.width, (width, line)
+
+
+# -- pump resilience --------------------------------------------------------
+
+
+async def test_a_failing_agent_start_does_not_kill_the_event_pump(quiet_app) -> None:
+    """agent.start() sits outside the per-event try, but the pump is the only
+    writer of transcript state — if it dies the UI paints fine and never
+    shows another event, which looks exactly like a hung agent."""
+    app, agent = quiet_app
+
+    async def boom() -> None:
+        raise RuntimeError("context probe exploded")
+
+    agent.start = boom
+    async with app.run_test(size=(100, 30)) as pilot:
+        await settle(pilot)
+        assert app.start_failed is True
+
+        agent.events.put_nowait(Narration("e1", "pump still alive"))
+        await settle(pilot)
+        texts = [e.text for e in app.transcript.query(NarrationEntry)]
+        assert "pump still alive" in texts
+        assert any("did not start cleanly" in t for t in texts)
+
+
+async def test_banner_is_retired_when_a_run_starts_without_a_submission(
+    app_and_agent,
+) -> None:
+    """Replay and demo sessions produce transcript content with nobody
+    typing; the splash must not sit above a finished run."""
+    app, agent = app_and_agent
+    async with app.run_test(size=(110, 32)) as pilot:
+        await replay_all(pilot, agent)
+        assert len(app.query(Banner)) == 0
