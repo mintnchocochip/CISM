@@ -43,6 +43,13 @@ nmap:
     anything else (e.g. "-p 1-1000", "-sV").
   forced_flags: ["-sT", "-Pn"]
   allow_raw: true
+  # The 60s ToolSpec default (below) is only enough for a plain connect
+  # scan. -sV against a host with many open services probes each one in
+  # turn for a banner/response — confirmed live 2026-10-18: a bare
+  # "nmap -sT -Pn -sV" against a 14-open-port host (Metasploitable2) took
+  # 152.82s and was killed at 60s on every attempt, so the agent could
+  # never version-scan a busy host at all. 240s covers that with margin.
+  timeout: 240.0
   # Explicit override, not the reads-only default above: nmap was already
   # offered in every non-reporting phase before this migration (the old
   # hand-written PhaseProfile._TOOLS table in cism/agent/profiles.py) —
