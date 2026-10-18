@@ -1,0 +1,1485 @@
+{
+  "run_id": "afea37ce560c4504b3c4dd232566f7ea",
+  "generated_at": "2026-10-18T20:25:32+00:00",
+  "target": "172.28.0.3",
+  "phase_history": [
+    {
+      "timestamp": "2026-10-18T19:37:15+00:00",
+      "phase": "recon"
+    },
+    {
+      "timestamp": "2026-10-18T19:37:45+00:00",
+      "phase": "enumeration"
+    },
+    {
+      "timestamp": "2026-10-18T19:39:09+00:00",
+      "phase": "vulnerability-discovery"
+    },
+    {
+      "timestamp": "2026-10-18T20:09:33+00:00",
+      "phase": "exploitation"
+    }
+  ],
+  "findings": [
+    {
+      "id": "open-port:172.28.0.3:80/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 22,
+      "evidence": [
+        {
+          "timestamp": "19:37:38",
+          "tool": "nmap",
+          "exit_signal": "80/tcp http",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "80/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:21/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "19:38:30",
+          "tool": "nmap",
+          "exit_signal": "21/tcp ftp",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "20:08:27",
+          "tool": "nmap",
+          "exit_signal": "21/tcp ftp",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "21/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:22/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "19:38:30",
+          "tool": "nmap",
+          "exit_signal": "22/tcp ssh",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "20:08:27",
+          "tool": "nmap",
+          "exit_signal": "22/tcp ssh",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "22/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:23/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "19:38:30",
+          "tool": "nmap",
+          "exit_signal": "23/tcp telnet",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "20:08:27",
+          "tool": "nmap",
+          "exit_signal": "23/tcp telnet",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "23/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:25/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "19:38:30",
+          "tool": "nmap",
+          "exit_signal": "25/tcp smtp",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "20:08:27",
+          "tool": "nmap",
+          "exit_signal": "25/tcp smtp",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "25/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:111/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "19:38:30",
+          "tool": "nmap",
+          "exit_signal": "111/tcp rpcbind",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "20:08:27",
+          "tool": "nmap",
+          "exit_signal": "111/tcp rpcbind",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "111/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:139/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "19:38:30",
+          "tool": "nmap",
+          "exit_signal": "139/tcp netbios-ssn",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "20:08:27",
+          "tool": "nmap",
+          "exit_signal": "139/tcp netbios-ssn",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "139/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:445/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "19:38:30",
+          "tool": "nmap",
+          "exit_signal": "445/tcp microsoft-ds",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "20:08:27",
+          "tool": "nmap",
+          "exit_signal": "445/tcp netbios-ssn",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "445/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:512/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "19:38:30",
+          "tool": "nmap",
+          "exit_signal": "512/tcp exec",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "20:08:27",
+          "tool": "nmap",
+          "exit_signal": "512/tcp exec?",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "512/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:513/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "19:38:30",
+          "tool": "nmap",
+          "exit_signal": "513/tcp login",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "20:08:27",
+          "tool": "nmap",
+          "exit_signal": "513/tcp login",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "513/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:514/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.6666666666666666,
+      "state": "resolved",
+      "downstream": 9,
+      "evidence": [
+        {
+          "timestamp": "19:38:30",
+          "tool": "nmap",
+          "exit_signal": "514/tcp shell",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "20:08:27",
+          "tool": "nmap",
+          "exit_signal": "514/tcp tcpwrapped",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "514/tcp"
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "cause_class": "web-fingerprint",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:08:27",
+          "tool": "whatweb",
+          "exit_signal": "http://172.28.0.3: 302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]"
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "cause_class": "web-fingerprint",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:08:27",
+          "tool": "whatweb",
+          "exit_signal": "http://172.28.0.3/login.php: 200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]"
+    },
+    {
+      "id": "server-banner:172.28.0.3:Apache/2.4.25 (Debian)",
+      "cause_class": "server-banner",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "Server: Apache/2.4.25 (Debian)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.4.25 (Debian)"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68)."
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[750500] /config/: Directory indexing found. See: CWE-548",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[750500] /config/: Directory indexing found. See: CWE-548",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[750500] /config/: Directory indexing found. See: CWE-548"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[000998] /config/: Configuration information may be available remotely.",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[000998] /config/: Configuration information may be available remotely.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[000998] /config/: Configuration information may be available remotely."
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[750500] /docs/: Directory indexing found. See: CWE-548",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[750500] /docs/: Directory indexing found. See: CWE-548",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[750500] /docs/: Directory indexing found. See: CWE-548"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[006333] /login.php: Admin login page/section found.",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[006333] /login.php: Admin login page/section found.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[006333] /login.php: Admin login page/section found."
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure.",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure."
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 5,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:10:17",
+          "tool": "nikto",
+          "exit_signal": "[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/docs (301)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:15:55",
+          "tool": "gobuster",
+          "exit_signal": "/docs (301)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/docs (301)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/robots.txt (200)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:15:55",
+          "tool": "gobuster",
+          "exit_signal": "/robots.txt (200)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/robots.txt (200)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/config (301)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:15:55",
+          "tool": "gobuster",
+          "exit_signal": "/config (301)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/config (301)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/phpinfo.php (302)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:15:55",
+          "tool": "gobuster",
+          "exit_signal": "/phpinfo.php (302)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/phpinfo.php (302)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/setup.php (200)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:15:55",
+          "tool": "gobuster",
+          "exit_signal": "/setup.php (200)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/setup.php (200)"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:7dd4dc70656f",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 5,
+      "evidence": [
+        {
+          "timestamp": "20:16:19",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "7dd4dc70656f"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:2f4ccbca46ab",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 2,
+      "evidence": [
+        {
+          "timestamp": "20:20:41",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "2f4ccbca46ab"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:218f6c2902fd",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "20:21:46",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "218f6c2902fd"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:7cc1d78ebb6e",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.3333333333333333,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:23:43",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "7cc1d78ebb6e"
+    }
+  ],
+  "open_items": [
+    {
+      "id": "pruned:172.28.0.3/login.php:pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1+sql-injection-attempt:172.28.0.3/login.php:no-injection-found",
+      "cause_class": "dead-region",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.3333333333333333,
+      "state": "blocked",
+      "downstream": 4,
+      "evidence": [
+        {
+          "timestamp": "20:19:04",
+          "tool": "prune",
+          "exit_signal": "collapsed 2 dead nodes: pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1, sql-injection-attempt:172.28.0.3/login.php:no-injection-found",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1+sql-injection-attempt:172.28.0.3/login.php:no-injection-found"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:2d5433890360",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.3333333333333333,
+      "state": "contested",
+      "downstream": 3,
+      "evidence": [
+        {
+          "timestamp": "20:20:08",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "2d5433890360"
+    }
+  ],
+  "edges": [
+    {
+      "parent": "open-port:172.28.0.2:514/tcp",
+      "child": "open-port:172.28.0.2:21/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:514/tcp",
+      "child": "open-port:172.28.0.2:22/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:514/tcp",
+      "child": "open-port:172.28.0.2:23/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:514/tcp",
+      "child": "open-port:172.28.0.2:25/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:514/tcp",
+      "child": "open-port:172.28.0.2:111/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:514/tcp",
+      "child": "open-port:172.28.0.2:139/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:514/tcp",
+      "child": "open-port:172.28.0.2:445/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:514/tcp",
+      "child": "open-port:172.28.0.2:512/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:514/tcp",
+      "child": "open-port:172.28.0.2:513/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "web-fingerprint:172.28.0.3:302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "web-fingerprint:172.28.0.3:200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "server-banner:172.28.0.3:Apache/2.4.25 (Debian)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[750500] /config/: Directory indexing found. See: CWE-548",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[000998] /config/: Configuration information may be available remotely.",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[750500] /docs/: Directory indexing found. See: CWE-548",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[006333] /login.php: Admin login page/section found.",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure.",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "nikto-finding:172.28.0.3:[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t",
+      "weight": 1.0
+    },
+    {
+      "parent": "nikto-finding:172.28.0.3:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "child": "exposed-path:172.28.0.3:/docs (301)",
+      "weight": 1.0
+    },
+    {
+      "parent": "nikto-finding:172.28.0.3:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "child": "exposed-path:172.28.0.3:/robots.txt (200)",
+      "weight": 1.0
+    },
+    {
+      "parent": "nikto-finding:172.28.0.3:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "child": "exposed-path:172.28.0.3:/config (301)",
+      "weight": 1.0
+    },
+    {
+      "parent": "nikto-finding:172.28.0.3:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "child": "exposed-path:172.28.0.3:/phpinfo.php (302)",
+      "weight": 1.0
+    },
+    {
+      "parent": "nikto-finding:172.28.0.3:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "child": "exposed-path:172.28.0.3:/setup.php (200)",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:7dd4dc70656f",
+      "child": "pruned:172.28.0.3/login.php:pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1+sql-injection-attempt:172.28.0.3/login.php:no-injection-found",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.3/login.php:pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1+sql-injection-attempt:172.28.0.3/login.php:no-injection-found",
+      "child": "curl:172.28.0.3/login.php:2d5433890360",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:2d5433890360",
+      "child": "curl:172.28.0.3/login.php:2f4ccbca46ab",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:2f4ccbca46ab",
+      "child": "curl:172.28.0.3/login.php:218f6c2902fd",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:218f6c2902fd",
+      "child": "curl:172.28.0.3/login.php:7cc1d78ebb6e",
+      "weight": 1.0
+    }
+  ],
+  "memory_context": [
+    {
+      "id": "open-port:172.28.0.3:80/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 2764.902804851532,
+      "snippet": "80/tcp http",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:i'll begin the ptes engagement with reconnaissance. let me start by scanning both in-scope targets to identify open serv",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 2764.9027814865112,
+      "snippet": "I'll begin the PTES engagement with reconnaissance. Let me start by scanning both in-scope targets to identify open serv",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:recon:phase proposal -> enumeration (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.0,
+      "age_s": 2764.9027769565582,
+      "snippet": "phase proposal -> enumeration (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:21/tcp",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 2712.835256099701,
+      "snippet": "21/tcp ftp",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.2:22/tcp",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 2712.835250377655,
+      "snippet": "22/tcp ssh",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.2:23/tcp",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 2712.835248708725,
+      "snippet": "23/tcp telnet",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.2:25/tcp",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 2712.8352484703064,
+      "snippet": "25/tcp smtp",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.2:111/tcp",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 2712.8352484703064,
+      "snippet": "111/tcp rpcbind",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.2:139/tcp",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 2712.8352494239807,
+      "snippet": "139/tcp netbios-ssn",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.2:445/tcp",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 2712.8352496623993,
+      "snippet": "445/tcp microsoft-ds",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.2:512/tcp",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 2712.8352501392365,
+      "snippet": "512/tcp exec",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.2:513/tcp",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 2712.8352506160736,
+      "snippet": "513/tcp login",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.2:514/tcp",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 2712.8352518081665,
+      "snippet": "514/tcp shell",
+      "hits": 2
+    },
+    {
+      "id": "narration:enumeration:i'll continue the enumeration. let me start with a full port scan on metasploitable2 (172.28.0.2) to identify all its op",
+      "tier": "T3",
+      "phase_tag": "enumeration",
+      "salience": 0.8,
+      "age_s": 2712.835222005844,
+      "snippet": "I'll continue the enumeration. Let me start with a full port scan on Metasploitable2 (172.28.0.2) to identify all its op",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:enumeration:phase proposal -> vulnerability-discovery (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.0,
+      "age_s": 2712.835216522217,
+      "snippet": "phase proposal -> vulnerability-discovery (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 915.7338533401489,
+      "snippet": "http://172.28.0.3: 302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "hits": 1
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 915.7338480949402,
+      "snippet": "http://172.28.0.3/login.php: 200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "hits": 1
+    },
+    {
+      "id": "narration:vulnerability-discovery:i'll run version detection on metasploitable2's open services and fingerprint the dvwa web app in parallel.",
+      "tier": "T3",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 0.8,
+      "age_s": 915.7338283061981,
+      "snippet": "I'll run version detection on Metasploitable2's open services and fingerprint the DVWA web app in parallel.",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:vulnerability-discovery:phase proposal -> exploitation (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.0,
+      "age_s": 915.7338247299194,
+      "snippet": "phase proposal -> exploitation (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "server-banner:172.28.0.3:Apache/2.4.25 (Debian)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5252013206482,
+      "snippet": "Server: Apache/2.4.25 (Debian)",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251698493958,
+      "snippet": "[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251681804657,
+      "snippet": "[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251660346985,
+      "snippet": "[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251672267914,
+      "snippet": "[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251686573029,
+      "snippet": "[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251698493958,
+      "snippet": "[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[750500] /config/: Directory indexing found. See: CWE-548",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251717567444,
+      "snippet": "[750500] /config/: Directory indexing found. See: CWE-548",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[000998] /config/: Configuration information may be available remotely.",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251731872559,
+      "snippet": "[000998] /config/: Configuration information may be available remotely.",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[750500] /docs/: Directory indexing found. See: CWE-548",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251748561859,
+      "snippet": "[750500] /docs/: Directory indexing found. See: CWE-548",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251762866974,
+      "snippet": "[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[006333] /login.php: Admin login page/section found.",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251772403717,
+      "snippet": "[006333] /login.php: Admin login page/section found.",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure.",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251789093018,
+      "snippet": "[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure.",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251803398132,
+      "snippet": "[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3:[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 805.5251820087433,
+      "snippet": "[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t",
+      "hits": 1
+    },
+    {
+      "id": "tool-failure:exploitation:toolexecutionerror: gobuster exited 1 error: unknown shorthand flag: 'i' in -ir",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.0,
+      "age_s": 805.525143623352,
+      "snippet": "ToolExecutionError: gobuster exited 1\nError: unknown shorthand flag: 'i' in -ir\n",
+      "hits": 2
+    },
+    {
+      "id": "tool-failure:exploitation:blocked by action guardrail",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.0,
+      "age_s": 805.525140285492,
+      "snippet": "blocked by action guardrail",
+      "hits": 2
+    },
+    {
+      "id": "narration:exploitation:i'll run nikto and gobuster against dvwa, and dig into metasploitable2's services in parallel.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 805.5251271724701,
+      "snippet": "I'll run nikto and gobuster against DVWA, and dig into Metasploitable2's services in parallel.",
+      "hits": 1
+    },
+    {
+      "id": "tool-failure:exploitation:toolexecutionerror: gobuster exited 1 error: error on parsing arguments: wordlist file \"/usr/share/wordlists/seclists/di",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.0,
+      "age_s": 516.8807556629181,
+      "snippet": "ToolExecutionError: gobuster exited 1\nError: error on parsing arguments: wordlist file \"/usr/share/wordlists/seclists/Di",
+      "hits": 2
+    },
+    {
+      "id": "narration:exploitation:the wordlist path doesn't exist. let me try the common alternative location for seclists.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 490.0451879501343,
+      "snippet": "The wordlist path doesn't exist. Let me try the common alternative location for seclists.",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/docs (301)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 468.0962393283844,
+      "snippet": "/docs (301)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/robots.txt (200)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 468.0962336063385,
+      "snippet": "/robots.txt (200)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/config (301)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 468.0962324142456,
+      "snippet": "/config (301)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/phpinfo.php (302)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 468.0962324142456,
+      "snippet": "/phpinfo.php (302)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/setup.php (200)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 468.09623098373413,
+      "snippet": "/setup.php (200)",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:you're right, let me call gobuster with no extra argument.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 468.09621119499207,
+      "snippet": "You're right, let me call gobuster with no extra argument.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:7dd4dc70656f",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 443.97802329063416,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll test dvwa with the default credentials (admin/admin).",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 443.97800183296204,
+      "snippet": "I'll test DVWA with the default credentials (admin/admin).",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:the login failed (form re-displayed). let me try the classic dvwa sql injection bypass with the user_token parameter.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 278.6065785884857,
+      "snippet": "The login failed (form re-displayed). Let me try the classic DVWA SQL injection bypass with the user_token parameter.",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:let me try sqlmap on the dvwa login form for injection testing.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 238.15262579917908,
+      "snippet": "Let me try sqlmap on the DVWA login form for injection testing.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:2d5433890360",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 214.74048018455505,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:let me try a cleaner sql injection payload.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 214.7404546737671,
+      "snippet": "Let me try a cleaner SQL injection payload.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:2f4ccbca46ab",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 181.59244966506958,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:the form re-displayed, meaning the injection didn't authenticate. let me try with the user_token included and a proper s",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 181.59243178367615,
+      "snippet": "The form re-displayed, meaning the injection didn't authenticate. Let me try with the user_token included and a proper S",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:218f6c2902fd",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 116.76700377464294,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:the form keeps re-displaying. let me try the classic dvwa sqli payload with a single quote truncation.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 116.76693296432495,
+      "snippet": "The form keeps re-displaying. Let me try the classic DVWA SQLi payload with a single quote truncation.",
+      "hits": 2
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:7cc1d78ebb6e",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 0.0032143592834472656,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    }
+  ],
+  "metrics": {
+    "ok": false,
+    "tool_calls": 0,
+    "tool_failures": 0,
+    "guardrail_blocks": 0,
+    "extraction_fallbacks": 6,
+    "tokens_total": 11142
+  }
+}
