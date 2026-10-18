@@ -134,22 +134,67 @@ def _shrink_old_tool_output(messages: list) -> list:
     ]
 
 
+#: Tier 2 stub, used only once Tier 1 (the 350/100-char shrink above) still
+#: can't fit everything in budget — real pressure, not hypothetical. Far
+#: cheaper than the shrink, so it can only let *more* old turns survive as
+#: bare conversational shape (an AIMessage/ToolMessage pair with none of
+#: its original detail) than Tier 1 could, never fewer. Safe to lose that
+#: detail entirely once there's real pressure: _depg_context()/
+#: _memory_context() already carry the same signal, rebuilt fresh from
+#: depg_nodes/memory_items every think() call, not from this chat history.
+_OLD_TOOL_OUTPUT_STUB = "[tool output omitted under context pressure — see DEPG findings above]"
+
+
+def _stub_old_tool_output(messages: list) -> list:
+    """Same turn boundary as _shrink_old_tool_output; replaces old
+    ToolMessage content with a fixed, near-free stub instead of a
+    350/100-char shrink."""
+    for index in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[index], HumanMessage):
+            boundary = index
+            break
+    else:
+        return messages
+    return [
+        message.model_copy(update={"content": _OLD_TOOL_OUTPUT_STUB})
+        if index < boundary and isinstance(message, ToolMessage)
+        else message
+        for index, message in enumerate(messages)
+    ]
+
+
 def _compact_history(messages: list, system_prompt: str, context_window: int) -> tuple[list, int]:
     """Keeps the most recent messages that fit the budget; drops older ones
     and, if any were dropped, prepends one summary line in their place.
-    Full history stays in state — this only shapes what's sent to the model."""
-    messages = _shrink_old_tool_output(messages)
+    Full history stays in state — this only shapes what's sent to the model.
+
+    Two tiers, cheapest-sufficient wins: Tier 1 shrinks old ToolMessage
+    content to a 350/100-char head/tail (_shrink_old_tool_output) — cheap,
+    but still carries some of the original tool output's own shape. Only
+    when that still isn't enough to fit the budget (dropped > 0 — real
+    pressure, not hypothetical) does Tier 2 engage: stub old ToolMessage
+    content out entirely (_stub_old_tool_output), trading that remaining
+    detail for letting more old turns survive as bare conversational shape
+    instead of being dropped outright."""
     budget = context_window - _RESPONSE_RESERVE_TOKENS - _estimate_tokens(system_prompt)
-    kept: list = []
-    used = 0
-    for message in reversed(messages):
-        cost = _message_cost(message)
-        if kept and used + cost > budget:
-            break
-        kept.append(message)
-        used += cost
-    kept.reverse()
-    dropped = len(messages) - len(kept)
+
+    def _fit(candidates: list) -> tuple[list, int]:
+        kept: list = []
+        used = 0
+        for message in reversed(candidates):
+            cost = _message_cost(message)
+            if kept and used + cost > budget:
+                break
+            kept.append(message)
+            used += cost
+        kept.reverse()
+        return kept, len(candidates) - len(kept)
+
+    kept, dropped = _fit(_shrink_old_tool_output(messages))
+    if dropped:
+        stubbed_kept, stubbed_dropped = _fit(_stub_old_tool_output(messages))
+        if stubbed_dropped < dropped:
+            kept, dropped = stubbed_kept, stubbed_dropped
     if dropped:
         note = SystemMessage(content=f"[{dropped} earlier turn(s) omitted to fit the context window]")
         kept = [note, *kept]
@@ -672,7 +717,8 @@ def route_after_think(state: AgentState) -> str:
             break
         if isinstance(message, AIMessage):
             ai_turns += 1
-    if tool_calls and ai_turns < MAX_AI_TURNS:
+    checkpoint = state.get("phase_changed") and state.get("live_tools")
+    if tool_calls and ai_turns < MAX_AI_TURNS and not checkpoint:
         return "act"
     return "respond"
 
@@ -946,6 +992,41 @@ _STEP_LIMIT_NOTE = (
     "pick up from here.)"
 )
 
+#: 2026-10-18, live: route_after_think now also stops on a phase change
+#: (not just the MAX_AI_TURNS cap) so a fast-moving engagement checkpoints
+#: with the operator instead of racing through several phases unsupervised
+#: in one submit() -- confirmed live doing exactly that (recon through
+#: exploitation in one turn, then an unbounded reasoning burst). Distinct
+#: wording from _STEP_LIMIT_NOTE since the reason is different (forward
+#: progress, not a stall).
+_PHASE_CHECKPOINT_NOTE = (
+    "(Checkpoint: the engagement just moved into the {phase} phase, so I'm "
+    "pausing here before continuing -- the next planned step ({tools}) "
+    "hasn't run yet. Here's what's confirmed so far; tell me how you'd "
+    "like to proceed.)"
+)
+
+#: Cap on how many findings make it into the checkpoint summary below --
+#: a long engagement's full depg_nodes could otherwise make every
+#: checkpoint message balloon with repeated nikto-finding entries.
+_MAX_SUMMARY_FINDINGS = 12
+
+
+def _format_findings_summary(depg_nodes: dict[str, Node]) -> str:
+    """A short, human-readable digest of what's been confirmed so far, for
+    the checkpoint messages below. Only "resolved" nodes -- untested/
+    disproven ones aren't findings yet."""
+    resolved = [n for n in depg_nodes.values() if n.state == "resolved"]
+    if not resolved:
+        return ""
+    resolved.sort(key=lambda n: -n.generality)
+    lines = ["Findings so far:"]
+    lines.extend(f"- [{n.cause_class}] {n.signal}" for n in resolved[:_MAX_SUMMARY_FINDINGS])
+    omitted = len(resolved) - _MAX_SUMMARY_FINDINGS
+    if omitted > 0:
+        lines.append(f"...({omitted} more finding(s) not shown)")
+    return "\n".join(lines)
+
 
 def make_respond_node(output_chain: GuardrailChain) -> Callable[[AgentState], dict]:
     def respond(state: AgentState) -> dict:
@@ -957,9 +1038,22 @@ def make_respond_node(output_chain: GuardrailChain) -> Callable[[AgentState], di
             tools_pending = ", ".join(
                 sorted({str(call.get("name", "?")) for call in last.tool_calls})
             )
-            note = _STEP_LIMIT_NOTE.format(tools=tools_pending)
+            if state.get("phase_changed"):
+                phase = state.get("phase")
+                note = _PHASE_CHECKPOINT_NOTE.format(
+                    phase=phase.to_wire() if phase is not None else "next",
+                    tools=tools_pending,
+                )
+            else:
+                note = _STEP_LIMIT_NOTE.format(tools=tools_pending)
+            summary = _format_findings_summary(state.get("depg_nodes") or {})
             lead_in = _LEAKED_TOOL_CALL_RE.sub("", str(last.content)).strip()
-            content = f"{note}\n\n{lead_in}" if lead_in else note
+            parts = [note]
+            if summary:
+                parts.append(summary)
+            if lead_in:
+                parts.append(lead_in)
+            content = "\n\n".join(parts)
         else:
             content = _strip_leaked_tool_call_syntax(str(last.content))
         result = output_chain.run(content)
