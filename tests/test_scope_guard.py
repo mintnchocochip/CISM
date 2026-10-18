@@ -797,6 +797,28 @@ def test_a_malformed_bracketed_url_is_blocked_not_raised() -> None:
     assert result.allowed is False
 
 
+def test_a_comma_inside_a_url_query_string_is_not_mistaken_for_a_second_target() -> None:
+    """2026-10-18, live: a real UNION-based SQLi payload
+    ("...SELECT user,password FROM..." in the query string) got blocked
+    outright as "<unparseable-multi-target>" -- the comma-splitting meant
+    for --target/--scope's own "10.0.0.1,10.0.0.2" syntax ran on the whole
+    URL first, splitting "user,password" into two non-host-shaped
+    fragments. A "://" scheme means this is one single URL target, never
+    a comma-separated host list, and must be checked first."""
+    result = _stage().check(
+        _call("curl", target="http://10.0.0.5/vuln.php?id=1' UNION SELECT user,password FROM users-- -")
+    )
+    assert result.allowed is True
+
+
+def test_a_genuine_comma_separated_multi_target_is_still_caught() -> None:
+    """Regression guard for the fix above: a real --target-style value with
+    no scheme, where only one of the comma-separated parts is host-shaped,
+    must still fail closed."""
+    result = _stage().check(_call("nmap", target="10.0.0.5,not a host"))
+    assert result.allowed is False
+
+
 def test_add_unions_cidrs_and_domains_without_duplicates() -> None:
     a = EngagementScope(
         cidrs=(ipaddress.ip_network("10.0.0.0/24"),), domains=("example.com",)
