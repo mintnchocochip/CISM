@@ -1042,3 +1042,19 @@ all root-caused directly against the running container's `agent.log`:
   `test_nodes.py` showing a budget that drops 11/15 messages under
   shrink-only compaction but only 3/15 once stubbing engages).
   `graphify update .` run after.
+
+**Follow-up same day:** an automated post-commit security review on §15's
+guardrail change caught a real bypass before this ever ran live:
+`--data-urlencode` has a file-read shape `-d`/`--data` don't — a bare
+`name@file` (no `=` anywhere) reads a local file and URL-encodes it, even
+though the value doesn't start with `@`. The original
+`value.startswith("@")` check (correct for every other data flag) missed
+it, so `--data-urlencode "x@/etc/passwd"` would have slipped through as if
+it were a harmless literal. Fixed in `_dangerous_data_value` with a
+dedicated `--data-urlencode` branch: a leading `=` or an `=` appearing
+before any `@` means `name=content` (always literal, curl's own
+disambiguation rule — covers the legitimate `=user@example.com` case
+too); otherwise an `@` with no earlier `=` is the file-read form.
+Verification: `pytest -n auto` 857/857 (one pre-existing flaky snapshot
+test, confirmed unrelated — it replays a static fixture log, not live
+code — and passes in isolation). `graphify update .` run after.
