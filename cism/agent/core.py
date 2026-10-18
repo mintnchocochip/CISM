@@ -78,25 +78,14 @@ __all__ = ["LangGraphAgent"]
 #: Pacing between /replay events — readable, not the original run's real gaps.
 _REPLAY_STEP_DELAY = 0.05
 
-#: dummy_nmap's canned output is real nmap open-port-line format (see
-#: cism.agent.tools.dummy), so it extracts the same way a live nmap result
-#: would — the offline/dummy path exercises genuine "open-port" evidence
-#: instead of a GenericExtractor stand-in, which phase_router's RECON gate
-#: (cism.agent.nodes._phase_ready) specifically requires.
+#: dummy_nmap's canned output is real nmap open-port-line format, so it
+#: extracts genuine "open-port" evidence — which phase_router's RECON gate
+#: requires — instead of a GenericExtractor stand-in.
 _DEFAULT_TOOL_EXTRACTORS: dict[str, CauseExtractor] = {**EXTRACTORS, "dummy_nmap": NmapExtractor()}
 
-#: AgentState's checkpointed fields hold these as plain dataclasses, none
-#: of which msgpack knows how to encode natively — langgraph's own
-#: serializer falls back to a permissive "unregistered type" path for
-#: them today, but warns at every single checkpoint read/write (confirmed
-#: live, 2026-10-12) that this will be a hard error in a future langgraph
-#: version. Every type reachable from an AgentState field, including
-#: nested ones (Node.evidence: list[Evidence], Node.decision:
-#: Decision | None) — missing one doesn't warn, it *blocks* deserializing
-#: that field outright once allowed_msgpack_modules is non-empty, which is
-#: strictly worse than the permissive default this is replacing. Naming
-#: them all here keeps every checkpoint round trip quiet and
-#: forward-compatible instead of degrading to an exception later.
+#: Every dataclass type reachable from a checkpointed AgentState field
+#: (nested ones included, e.g. Node.evidence) must be named here, or
+#: langgraph's msgpack serde blocks deserializing that field outright.
 _ALLOWED_MSGPACK_MODULES: list[tuple[str, str]] = [
     ("cism.agent.state", "Phase"),
     ("cism.depg.node", "Node"),
@@ -140,10 +129,8 @@ class LangGraphAgent:
         privacy: PrivacyGateway | None = None,
     ) -> None:
         # E5 (AUDIT.md): bounded so a TUI that falls behind applies real
-        # backpressure (both put() call sites below are awaited) instead of
-        # this queue growing without limit. 512 is generous for normal
-        # per-turn event volume — this is a leak guard, not a throttle meant
-        # to bind under ordinary load.
+        # backpressure instead of this queue growing without limit — a leak
+        # guard, not a throttle meant to bind under ordinary load.
         self.events: asyncio.Queue[AgentEvent] = asyncio.Queue(maxsize=512)
         if llm is None:
             self._llm, self._endpoint, self._model_name, self._key_env_var = _llm_from_env()

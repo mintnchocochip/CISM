@@ -364,6 +364,35 @@ async def test_history_recall_walks_backwards_and_forwards(app_and_agent) -> Non
         assert app.composer.text == ""
 
 
+async def test_history_recall_preserves_an_in_progress_draft(app_and_agent) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(100, 24)) as pilot:
+        await pilot.press(*"one")
+        await pilot.press("enter")
+        await settle(pilot)
+
+        await pilot.press(*"not yet sent")
+        await pilot.press("up")
+        await settle(pilot, 5)
+        assert app.composer.text == "one"
+        await pilot.press("down")
+        await settle(pilot, 5)
+        assert app.composer.text == "not yet sent"
+
+
+async def test_undo_redo_in_the_composer(app_and_agent) -> None:
+    app, agent = app_and_agent
+    async with app.run_test(size=(100, 24)) as pilot:
+        await pilot.press(*"hello")
+        await settle(pilot)
+        await pilot.press("ctrl+z")
+        await settle(pilot, 5)
+        assert app.composer.text == ""
+        await pilot.press("ctrl+y")
+        await settle(pilot, 5)
+        assert app.composer.text == "hello"
+
+
 async def test_empty_submission_is_ignored(app_and_agent) -> None:
     app, agent = app_and_agent
     async with app.run_test(size=(100, 24)) as pilot:

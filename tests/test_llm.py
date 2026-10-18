@@ -273,3 +273,17 @@ async def test_count_tokens_llamacpp_returns_none_on_request_failure(monkeypatch
     monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
 
     assert await count_tokens_llamacpp("http://localhost:8080", "x") is None
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_base_url_returns_none_instead_of_raising() -> None:
+    """The docstring promises this probe never raises, and the TUI's event
+    pump depends on it: httpx.InvalidURL is not an HTTPError, so a bad port
+    used to escape and kill the pump at startup."""
+    for bad in ("http://[::1/v1", "http://host:notaport/v1"):
+        assert await discover_context_window(bad, "m") is None
+
+
+@pytest.mark.asyncio
+async def test_a_malformed_base_url_returns_none_from_the_llamacpp_probe() -> None:
+    assert await discover_context_window_llamacpp("http://host:notaport/v1") is None
