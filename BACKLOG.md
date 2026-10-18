@@ -1234,3 +1234,147 @@ ever reaches it; `app.phase` stays `"recon"`), added `PhaseProposed`'s
 round-trip/registration coverage to `tests/test_events.py`. `pytest -n
 auto tests/` 879/880 (same pre-existing flaky snapshot test, confirmed
 unrelated — passes standalone). `graphify update .` run after.
+
+## 19. Phase-approval modal, depg/mem status-bar regression, response-reserve vs. real `max_tokens`, and a curl cookie guardrail gap confirmed against a live DVWA crack (2026-10-18)
+
+Four fixes from one live session, found in the course of actually running
+the operator's own workflow rather than synthetic testing.
+
+**`/phase` command silently reverting.** `_translate()`'s `phase_router`
+branch (`core.py`) used to compare the stale, run-frozen
+`update["phase"]` (just `state["phase"]` echoed back, frozen at that
+run's `_run()`-start) against the live `self._phase.current` and
+"correct" it back whenever an in-flight run's later node update arrived
+after a manual `/phase` command had already changed the live value —
+silently undoing the operator's own override the moment §18's proposal
+machinery emitted its next update. Fixed by deleting the auto-apply/revert
+block entirely; only `_set_phase` may touch `self._phase.current` now,
+and this branch just surfaces `phase_proposal`/`phase_proposal_is_new` as
+before.
+
+**No modal for a pending phase proposal.** §18 gave the status bar a
+`phase_proposal` segment, but an operator looking at the transcript
+instead of the status bar had no prompt at all. Added
+`PhaseApprovalModal` (`cism/tui/widgets/phase_modal.py`,
+`ModalScreen[bool]`, approve/dismiss buttons, Enter/Escape bound) pushed
+from `app.py`'s `PhaseProposed` handler (guarded by
+`len(self.screen_stack) <= 1` so it never double-stacks), resolved via
+`_resolve_phase_modal()` which runs the existing `/phase <name>` command
+on approval. A `PhaseChanged` event (manual override via the status bar
+or a typed command while the modal is still open) auto-dismisses it.
+
+**`depg`/`mem` status-bar segments vanishing at ordinary terminal
+widths.** Root cause: §18's new `phase_proposal` segment widened the
+"phase" field enough to crowd `depg`/`mem` (then an unlabeled default
+priority, the lowest tier) out of `elide()`'s width-fitting pass at
+everyday widths (~80 columns) — confirmed by a scratch width-simulation
+comparing segment survival with/without a pending proposal, not by
+guesswork. Fixed two ways: shortened the proposal segment's text (dropped
+the trailing `(/phase {name})`, redundant with the modal now prompting
+the same action) and gave `depg`/`mem` their own explicit priority 2, one
+tier above the rate/target segments they used to share a tier with — the
+engagement's own finding counts should survive tight width before
+cosmetic nice-to-haves do.
+
+**Compaction's response reserve was a flat 512 tokens, not the model's
+actual configured cap.** §17 added proactive compaction and tool-schema
+accounting but still reserved a flat `_RESPONSE_RESERVE_TOKENS` (512) for
+the model's own answer — confirmed via a live llama.cpp server log
+(`12537 + 3847 = 16384`, `truncated: 1`) that a reasoning model given room
+to think routinely generates well past 512 tokens, so a "correctly"
+compacted prompt could still leave the model free to overflow `n_ctx`
+mid-generation. Added `_response_reserve(llm)` (`cism/agent/nodes.py`),
+reading the bound `ChatOpenAI`'s own `max_tokens` attribute and using
+whichever is larger than the 512 floor; `_compact_history()` and
+`_verify_real_token_budget()` both now take it as a parameter instead of
+closing over the module constant directly. `_RESPONSE_RESERVE_TOKENS` is
+now a floor, not the reserve.
+
+**`curl -b`/`--cookie` was flat-denylisted with no value-aware carve-out**
+(unlike `-d`/`--data*`/`-F`/`--form`, which already have one from §9/§10)
+— blocking the agent from ever carrying a session cookie across two curl
+calls, which is exactly what logging into a target application and then
+acting as that session requires. Confirmed live and manually (`docker
+exec` into the running `cism-runner` container, bypassing the agent
+entirely, per the operator's own request to verify ground truth before
+trusting the agent): DVWA's default `admin`/`password` login via curl
+with CSRF/`PHPSESSID` handling, a UNION-based SQLi
+(`id=1' UNION SELECT user,password FROM users-- -`) dumping all 5 users'
+MD5 hashes through curl alone, and the same flow automated end-to-end via
+`sqlmap --cookie --batch --dump` — proving the existing tool catalog is
+already sufficient to fully crack DVWA, no new tool needed for this
+target. `sqlmap --cookie` was never blocked; only curl's `-b`/`--cookie`
+was. Added `-b`, `--cookie` to `_CURL_VALUE_AWARE_FLAGS` and a new
+`_CURL_COOKIE_FLAGS` branch in `_dangerous_data_value()`
+(`cism/agent/guardrails/dangerous_flags.py`) with curl's own, *different*
+file-read rule for this flag: any value containing no `=` at all (no `@`
+marker needed, unlike `-d`/`-F`) is read as a filename to load cookies
+from, so a literal `name=value` cookie string is always safe and a bare
+path (`-b /etc/passwd`, `-b cookiejar.txt`) stays blocked. `-c`/
+`--cookie-jar` (write cookies to an arbitrary file) is a different flag
+and stays flat-blocked, unaffected.
+
+Verification: 10 new cases in `tests/test_dangerous_flags.py` for the
+cookie carve-out (literal string, `=`-joined, abbreviation, no-value,
+file-read block, cookie-jar regression), 5 new cases in
+`tests/test_status.py`/`tests/test_app.py` for the modal and segment-
+priority fixes, 4 new cases in `tests/test_nodes.py` for
+`_response_reserve`. `pytest -n auto tests/` 914/914. `graphify update .`
+run after.
+
+## 20. Overnight unattended run against dvwa + metasploitable2: nmap timeout and a second dual-SystemMessage chat-template crash (2026-10-18)
+
+An unattended overnight engagement (operator driving the TUI through tmux,
+no human watching) against both lab targets surfaced two more live bugs
+beyond §19's batch, both confirmed with hard evidence before fixing.
+
+**`nmap` timed out on every `-sV` attempt against a busy host.** The
+60s `ToolSpec` default (`cism/agent/tools/catalog.py`) was never
+overridden for `nmap` in `catalog.yaml`, unlike every other
+timeout-sensitive tool (`sqlmap` 90s, `nikto` 75s, `wafw00f` 45s). Timed a
+real `nmap -sT -Pn -sV` by hand against Metasploitable2 (14 open ports):
+**152.82s** — so the agent could never version-scan a multi-service host
+at all; every attempt was killed at 60s before it could finish. Fixed with
+an explicit `timeout: 240.0` on `nmap`'s catalog entry, with margin above
+the measured number.
+
+**A second, different shape of the §17/§18-era "Jinja Exception: System
+message must be at the beginning" crash.** §17's original fix covers the
+retry path (`think()` folding a nudge into the one leading SystemMessage
+instead of appending a second one at the end). `_compact_history`
+(`cism/agent/nodes.py`) had its own, independent instance of the same
+defect: whenever it actually dropped any turns, it prepended its own
+`"[N earlier turn(s) omitted]"` SystemMessage onto the kept history —
+which `think()` then placed at index 1, immediately after the real
+leading SystemMessage it builds at index 0. Two system-role messages, the
+second not at position 0, crashed the chat template exactly the same way,
+latent since §12 introduced compaction and only triggered live once an
+unattended engagement ran long enough for compaction to actually drop a
+turn for the first time (confirmed via the server's own error text,
+byte-for-byte identical to §17's). Once triggered, every subsequent think()
+call hit the same crash — a tight, continuous `RunFinished(ok=false)`
+loop, never hanging but never making progress either, since `dropped > 0`
+stays true turn after turn. Fixed by having `_compact_history` return the
+drop count only (no message of its own) and `think()` fold the same note
+text into its one real leading SystemMessage, mirroring §17's fix exactly.
+Verification: `test_think_keeps_exactly_one_leading_system_message_when_
+turns_are_dropped` added alongside the existing
+`test_think_retry_keeps_exactly_one_leading_system_message`, same
+assertion shape (`len(system_messages) == 1`). `pytest -n auto tests/`
+915/915. `graphify update .` run after.
+
+Two more observations from the same run, noted but not code changes:
+`gobuster` repeatedly failed on invalid flags the model added itself
+(`-ir`, a custom `-w` to a seclists path that doesn't exist in this
+image) despite the catalog description already saying not to — resolved
+with a plain-language chat correction rather than a code fix, since the
+description already covers this and the model just wasn't following it.
+Separately, the model fell into a degenerate repetition loop constructing
+a raw SQLi payload by hand (hundreds of repeated `%20` tokens, burning the
+full `max_tokens` cap in one generation) and produced an unparseable,
+unbalanced-quote `extra` string — `dangerous-flag-guard`'s existing
+fail-closed handling for this exact case (tested:
+`test_an_unparseable_extra_argument_is_blocked_not_raised`) caught it and
+blocked cleanly rather than crashing or passing it through. Both are model
+-reliability observations about this specific small/quantized model, not
+CISM defects.
