@@ -12,7 +12,12 @@ import pytest
 from langchain_openai import ChatOpenAI
 
 import cism.agent.llm as llm_module
-from cism.agent.llm import build_chat_model, discover_context_window, discover_context_window_llamacpp
+from cism.agent.llm import (
+    build_chat_model,
+    count_tokens_llamacpp,
+    discover_context_window,
+    discover_context_window_llamacpp,
+)
 
 
 def test_missing_api_key_env_var_raises_rather_than_silently_using_none(monkeypatch) -> None:
@@ -232,3 +237,39 @@ async def test_a_context_window_probe_failure_is_logged(monkeypatch, tmp_path) -
     records = [json.loads(line) for line in (tmp_path / "agent.log").read_text(encoding="utf-8").splitlines()]
     logged = next(r for r in records if r["message"] == "context-window probe failed")
     assert "api/show" in logged["data"]["url"]
+
+
+async def test_count_tokens_llamacpp_parses_the_tokens_list(monkeypatch) -> None:
+    _FakeAsyncClient.response = _FakeResponse({"tokens": [1, 2, 3, 4, 5]})
+    monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    result = await count_tokens_llamacpp("http://localhost:8080", "some prompt text")
+
+    assert result == 5
+    assert _FakeAsyncClient.last_url == "http://localhost:8080/tokenize"
+    assert _FakeAsyncClient.last_json == {"content": "some prompt text"}
+
+
+async def test_count_tokens_llamacpp_strips_a_v1_suffix(monkeypatch) -> None:
+    _FakeAsyncClient.response = _FakeResponse({"tokens": [1]})
+    monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    await count_tokens_llamacpp("http://localhost:8080/v1", "x")
+
+    assert _FakeAsyncClient.last_url == "http://localhost:8080/tokenize"
+
+
+async def test_count_tokens_llamacpp_returns_none_when_the_field_is_missing(monkeypatch) -> None:
+    _FakeAsyncClient.response = _FakeResponse({})
+    monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    assert await count_tokens_llamacpp("http://localhost:8080", "x") is None
+
+
+async def test_count_tokens_llamacpp_returns_none_on_request_failure(monkeypatch) -> None:
+    import httpx
+
+    _FakeAsyncClient.response = httpx.ConnectError("refused")
+    monkeypatch.setattr(llm_module.httpx, "AsyncClient", _FakeAsyncClient)
+
+    assert await count_tokens_llamacpp("http://localhost:8080", "x") is None

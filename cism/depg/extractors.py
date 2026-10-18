@@ -489,15 +489,27 @@ class LlamaCppExtractionBackend:
     grammar constraint both work; see the ``timeout`` note below for the
     one real issue that run surfaced."""
 
-    def __init__(self, base_url: str, *, n_predict: int = 1024, timeout: float = 90.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        n_predict: int = 1024,
+        timeout: float = 90.0,
+        logger: logging.Logger | None = None,
+    ) -> None:
         # §2.2 live-test (2026-10-11, real llama-server + LFM2.5-8B-A1B-Q4_K_M):
         # a real nikto-sized prompt under this schema's GBNF grammar
         # constraint took noticeably longer than simple unconstrained
         # completions: 30s produced a silent-to-user (but logged, G1)
         # fallback to GenericExtractor on the very first live call.
+        # 2026-10-18, live: curl's own extraction failed 3/3 times this
+        # way with nothing beyond "unavailable" recorded anywhere -- no
+        # way to tell a timeout from a schema-validation failure from a
+        # connection error after the fact. `logger` makes that visible.
         self._base_url = base_url.rstrip("/")
         self._n_predict = n_predict
         self._timeout = timeout
+        self._log = logger
 
     def extract(self, prompt: str) -> ExtractedFindings | None:
         try:
@@ -513,7 +525,12 @@ class LlamaCppExtractionBackend:
             response.raise_for_status()
             content = response.json().get("content", "")
             return ExtractedFindings.model_validate_json(content)
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError) as exc:
+            if self._log is not None:
+                self._log.warning(
+                    "llamacpp extraction backend call failed",
+                    extra={"data": {"error_type": type(exc).__name__, "error": str(exc)}},
+                )
             return None
 
 

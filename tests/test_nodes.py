@@ -7,6 +7,7 @@ what earlier steps already found.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -29,6 +30,7 @@ from cism.agent.nodes import (
     _depg_context,
     _format_findings_summary,
     _memory_context,
+    _verify_real_token_budget,
     make_act_node,
     make_depg_update_node,
     make_respond_node,
@@ -1241,6 +1243,35 @@ async def test_think_drops_the_oldest_turns_when_history_overflows_the_budget() 
     assert update["compacted"] > 0
     sent = llm.seen[-1]
     assert sent[-1] is recent
+
+
+async def test_think_passes_token_counter_through_to_the_real_budget_check() -> None:
+    """End-to-end wiring check: make_think_node's token_counter reaches
+    _verify_real_token_budget and can trigger a corrective recompaction
+    even when the chars/N estimate alone would have left history whole."""
+    llm = _RecordingMessagesChatModel(seen=[])
+    calls: list[str] = []
+
+    async def counter(text: str) -> int:
+        calls.append(text)
+        return 37_500  # disagrees hard with the chars/3 estimate
+
+    think = make_think_node(llm, ToolRegistry([]), _NO_OP_PROFILES, token_counter=counter)
+    old_tool = ToolMessage(content="A" * 2000, tool_call_id="c1", name="nmap")
+    state = _state([
+        HumanMessage(content="scan it"),
+        AIMessage(content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {}}]),
+        old_tool,
+        HumanMessage(content="scan again"),
+    ])
+    state["context_window"] = 5000
+
+    await think(state)
+
+    assert calls  # the real counter was actually consulted
+    sent = llm.seen[-1]
+    shrunk = next(m for m in sent if isinstance(m, ToolMessage))
+    assert len(shrunk.content) < 2000
     assert any("omitted" in str(m.content) for m in sent if isinstance(m, SystemMessage))
 
 
@@ -1261,13 +1292,18 @@ def test_compact_history_counts_fat_tool_calls_not_just_empty_content() -> None:
     assert len(kept) < len(messages)
 
 
-def test_compact_history_truncates_old_tool_output_but_keeps_the_current_turns_full() -> None:
+def test_compact_history_truncates_old_tool_output_only_under_real_pressure() -> None:
     """Live, round 12 follow-up (2026-10-17): an old turn's full nmap/nikto
     dump sat in history at full size even though depg_update had already
     condensed its finding into the DEPG/memory block shown separately —
-    paying full token cost twice for the same signal. The current turn's
-    own tool results must stay untouched; the model may still need exact
-    detail from them to decide its next move."""
+    paying full token cost twice for the same signal. Tier 1 shrink exists
+    for that. But it used to run unconditionally, even with no pressure at
+    all (2026-10-18, live: shrank a 777-char hydra result the instant a new
+    chat turn started, and a mid-word cut on that shrink inverted the
+    finding — see test_truncate_old_tool_output_never_bisects_a_word) — so
+    this budget is picked tight enough that shrinking is actually needed
+    (1403 raw tokens > budget), not just "any old turn exists". The current
+    turn's own tool result must stay untouched either way."""
     old_tool = ToolMessage(content="A" * 2000, tool_call_id="c1", name="nmap")
     new_tool = ToolMessage(content="B" * 2000, tool_call_id="c2", name="nmap")
     messages = [
@@ -1279,13 +1315,72 @@ def test_compact_history_truncates_old_tool_output_but_keeps_the_current_turns_f
         new_tool,
     ]
 
-    kept, dropped = _compact_history(messages, "sys", 32_768)
+    kept, dropped = _compact_history(messages, "sys", 1900)
 
     assert dropped == 0
     old_kept = kept[2]
     assert len(old_kept.content) < 2000
     assert "truncated" in old_kept.content
     assert kept[-1].content == "B" * 2000
+
+
+def test_compact_history_leaves_old_tool_output_untouched_when_it_already_fits() -> None:
+    """The flip side of the test above: with no real pressure, Tier 1 must
+    not shrink anything at all — not even an old turn's full dump."""
+    old_tool = ToolMessage(content="A" * 2000, tool_call_id="c1", name="nmap")
+    messages = [
+        HumanMessage(content="scan it"),
+        AIMessage(content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {}}]),
+        old_tool,
+        HumanMessage(content="scan again"),
+    ]
+
+    kept, dropped = _compact_history(messages, "sys", 32_768)
+
+    assert dropped == 0
+    assert kept[2].content == "A" * 2000
+
+
+def test_truncate_old_tool_output_never_bisects_a_word() -> None:
+    """2026-10-18, live: a failed hydra run's "...0 valid password found..."
+    line, tail-truncated at a plain 100-char cut, landed inside "valid" and
+    left "d password found" — read by the model as a positive hit, flipping
+    a negative result. The snapped cut must never do that."""
+    from cism.agent.nodes import _truncate_old_tool_output
+
+    banner = (
+        "Hydra v9.5 (c) 2023 by van Hauser/THC & David Maciejak - Please do "
+        "not use in military or secret service organizations, or for "
+        "illegal purposes (this is non-binding, these idiots ignore laws "
+        "and ethics anyway). Hydra (https://github.com/vanhauser-thc/thc-hydra) "
+        "starting at 2026-10-18 12:55:52 [DATA] max 1 task per 1 server, "
+        "overall 1 task, 1 login try (l:1/p:1), ~1 try per task [DATA] "
+        "attacking mysql://172.28.0.3:3306/ [ERROR] Child with pid 3 "
+        "terminating, can not connect [ERROR] all children were disabled "
+        "due too many connection errors 0 of 1 target completed, 0 valid "
+        "password found Hydra finished at 2026-10-18 12:56:01"
+    )
+
+    truncated = _truncate_old_tool_output(banner)
+
+    # "d password found" (a bare, word-boundary "d") is the exact bug
+    # shape: a stray trailing fragment of "valid" with nothing before it.
+    # The real word "valid password found" must never be reduced to that.
+    assert re.search(r"(?<![a-zA-Z])d password found", truncated) is None
+
+
+def test_snap_head_never_cuts_mid_word() -> None:
+    from cism.agent.nodes import _snap_head
+
+    assert _snap_head("one two three", 5) == "one"
+
+
+def test_snap_tail_never_cuts_mid_word() -> None:
+    from cism.agent.nodes import _snap_tail
+
+    # last 7 chars of "one two three" is "o three" -- a stray fragment of
+    # "two" ahead of a clean "three"; the fragment must be dropped.
+    assert _snap_tail("one two three", 7) == "three"
 
 
 def test_compact_history_stubs_old_tool_output_harder_once_shrinking_alone_is_not_enough() -> None:
@@ -1350,6 +1445,75 @@ def test_compact_history_never_truncates_non_tool_messages() -> None:
 
     assert kept[0].content == "x" * 2000
     assert kept[1].content == "A" * 2000
+
+
+async def test_verify_real_token_budget_is_a_no_op_with_no_token_counter() -> None:
+    kept = [HumanMessage(content="hi")]
+
+    result_kept, result_dropped = await _verify_real_token_budget(
+        kept, 0, kept, "sys", 32_768, None
+    )
+
+    assert result_kept == kept
+    assert result_dropped == 0
+
+
+async def test_verify_real_token_budget_is_a_no_op_when_the_real_count_fits() -> None:
+    kept = [HumanMessage(content="hi")]
+
+    async def counter(text: str) -> int:
+        return 10  # well under any real budget
+
+    result_kept, result_dropped = await _verify_real_token_budget(
+        kept, 0, kept, "sys", 32_768, counter
+    )
+
+    assert result_kept == kept
+    assert result_dropped == 0
+
+
+async def test_verify_real_token_budget_is_a_no_op_when_the_counter_fails() -> None:
+    kept = [HumanMessage(content="hi")]
+
+    async def counter(text: str) -> None:
+        return None  # probe unavailable/failed
+
+    result_kept, result_dropped = await _verify_real_token_budget(
+        kept, 0, kept, "sys", 32_768, counter
+    )
+
+    assert result_kept == kept
+    assert result_dropped == 0
+
+
+async def test_verify_real_token_budget_recompacts_when_the_real_tokenizer_disagrees() -> None:
+    """2026-10-18, live: the chars/N estimate undercounted enough that real
+    usage swung close to the ceiling turn to turn, compaction only
+    reacting one turn late. A real_tokens count well over budget must
+    trigger a corrective recompaction now, in the same turn."""
+    old_tool = ToolMessage(content="A" * 2000, tool_call_id="c1", name="nmap")
+    new_tool = ToolMessage(content="B" * 2000, tool_call_id="c2", name="nmap")
+    messages = [
+        HumanMessage(content="scan it"),
+        AIMessage(content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {}}]),
+        old_tool,
+        HumanMessage(content="scan again"),
+        AIMessage(content="", tool_calls=[{"id": "c2", "name": "nmap", "args": {}}]),
+        new_tool,
+    ]
+    context_window = 5000  # chars/3 estimate says everything fits easily
+    first_kept, first_dropped = _compact_history(messages, "sys", context_window)
+    assert first_dropped == 0
+    assert first_kept[2].content == "A" * 2000  # nothing shrunk at this estimate
+
+    async def counter(text: str) -> int:
+        return 11_800  # the real tokenizer disagrees hard with chars/3
+
+    kept, dropped = await _verify_real_token_budget(
+        first_kept, first_dropped, messages, "sys", context_window, counter
+    )
+
+    assert len(kept[2].content) < 2000  # corrective pass actually shrank it
 
 
 async def test_think_wraps_tool_output_for_the_model_without_touching_state() -> None:
@@ -1595,6 +1759,69 @@ def test_depg_context_keeps_unresolved_findings_over_older_resolved_ones() -> No
     text = _depg_context(nodes)
 
     assert "credential-found:admin:admin" in text  # not buried behind "+1 more"
+
+
+def test_depg_context_shows_the_readable_excerpt_not_the_hash_for_an_unverified_node() -> None:
+    """2026-10-18, live: GenericExtractor's blind fallback (curl, no
+    dedicated extractor) sets Node.signal to a content hash for dedup --
+    correct for identity, unreadable to the model. Its own evidence
+    carries a short text excerpt for exactly this case; the context
+    summary must show that, not the hash, once nothing credential-shaped
+    was found to ground a real finding instead (see extract.py's
+    GenericExtractor)."""
+    from cism.depg.evidence import Evidence
+
+    node = Node(
+        id="curl:10.0.0.5:abc123",
+        cause_class="curl",
+        target="10.0.0.5",
+        signal="abc123def456",
+        state="resolved",
+        evidence=[
+            Evidence(
+                timestamp="12:00:00",
+                tool="curl",
+                exit_signal="HTTP/1.1 200 OK ... readable excerpt of the body",
+                tier="T3",
+                source="unverified",
+            )
+        ],
+    )
+
+    text = _depg_context({node.id: node})
+
+    assert "readable excerpt of the body" in text
+    assert "abc123def456" not in text
+
+
+def test_depg_context_still_shows_signal_for_a_grounded_node() -> None:
+    """The flip side: a real (deterministic/llm-sourced) node must keep
+    using its own signal, not fall back to exit_signal -- e.g. hydra's
+    "user:password" signal is strictly more useful than its raw-banner
+    exit_signal excerpt."""
+    from cism.depg.evidence import Evidence
+
+    node = Node(
+        id="credential-found:10.0.0.5:app:vulnerables",
+        cause_class="credential-found",
+        target="10.0.0.5",
+        signal="app:vulnerables",
+        state="resolved",
+        evidence=[
+            Evidence(
+                timestamp="12:00:00",
+                tool="hydra",
+                exit_signal="Hydra v9.5 banner text, not the credential",
+                tier="T1",
+                source="deterministic",
+            )
+        ],
+    )
+
+    text = _depg_context({node.id: node})
+
+    assert "app:vulnerables" in text
+    assert "Hydra v9.5 banner text" not in text
 
 
 def test_memory_context_skips_depg_derived_items() -> None:

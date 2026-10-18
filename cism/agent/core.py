@@ -9,7 +9,7 @@ import dataclasses
 import os
 import time
 import uuid
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
@@ -28,6 +28,7 @@ from cism.agent.guardrails import (
 from cism.agent.llm import (
     DummyChatModel,
     build_chat_model,
+    count_tokens_llamacpp,
     discover_context_window,
     discover_context_window_llamacpp,
 )
@@ -188,6 +189,7 @@ class LangGraphAgent:
             checkpointer=self._checkpointer,
             graded_propagation=self._graded_propagation,
             privacy=self._privacy,
+            token_counter=self._token_counter(),
         )
         self._phase = PhaseStateMachine(Phase.RECON)
         self._target = target
@@ -205,6 +207,19 @@ class LangGraphAgent:
         self._context_window = 32_768
         #: Tool/guardrail-stage names to skip for the next _run() only (see _ablate).
         self._ablated: set[str] = set()
+
+    def _token_counter(self) -> Callable[[str], Awaitable[int | None]] | None:
+        """A real-tokenizer callable for _compact_history's post-hoc budget
+        check (nodes.py) — only when there's an actual llama.cpp server to
+        ask; None elsewhere (OpenAI's wire format has no equivalent
+        endpoint), same graceful-degradation shape as
+        discover_context_window_llamacpp. Rebuilt at every build_graph()
+        call site so a model/endpoint swap (_configure) doesn't leave a
+        stale closure bound to the previous server."""
+        if self._backend_kind != "llamacpp" or self._endpoint == "local (dummy)" or not self._endpoint:
+            return None
+        endpoint = self._endpoint
+        return lambda text: count_tokens_llamacpp(endpoint, text)
 
     async def _refresh_context_window(self) -> None:
         """Best-effort; a stale value from a prior model is harmless."""
@@ -549,6 +564,7 @@ class LangGraphAgent:
                 checkpointer=self._checkpointer,
                 graded_propagation=self._graded_propagation,
                 privacy=self._privacy,
+                token_counter=self._token_counter(),
             )
             await self._refresh_context_window()
 
@@ -606,6 +622,7 @@ class LangGraphAgent:
                 checkpointer=self._checkpointer,
                 graded_propagation=self._graded_propagation,
                 privacy=self._privacy,
+                token_counter=self._token_counter(),
             )
 
         self._metrics = {"tool_calls": 0, "tool_failures": 0, "guardrail_blocks": 0}

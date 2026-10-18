@@ -23,6 +23,7 @@ from langchain_openai import ChatOpenAI
 __all__ = [
     "DummyChatModel",
     "build_chat_model",
+    "count_tokens_llamacpp",
     "discover_context_window",
     "discover_context_window_llamacpp",
 ]
@@ -191,3 +192,34 @@ async def discover_context_window_llamacpp(base_url: str) -> int | None:
         return None
     n_ctx = settings.get("n_ctx")
     return n_ctx if isinstance(n_ctx, int) else None
+
+
+_TOKENIZE_TIMEOUT = 5.0
+
+
+async def count_tokens_llamacpp(base_url: str, text: str) -> int | None:
+    """Exact token count for `text`, via llama.cpp's own {base}/tokenize --
+    no generation involved, so this is fast even under load. Used to
+    verify _compact_history's chars/N estimate against the real
+    tokenizer (2026-10-18, live: that estimate undercounted enough for a
+    real prompt to swing between ~6k and ~14k actual tokens turn to turn
+    on a 16384-token model, the compaction budget reacting only one turn
+    late each time). Returns None -- never raises -- for any non-llama.cpp
+    server or request failure; the caller already has the chars/N
+    estimate as a fallback."""
+    trimmed = base_url.rstrip("/")
+    if trimmed.endswith("/v1"):
+        trimmed = trimmed[: -len("/v1")]
+    tokenize_url = f"{trimmed}/tokenize"
+
+    try:
+        async with httpx.AsyncClient(timeout=_TOKENIZE_TIMEOUT) as client:
+            response = await client.post(tokenize_url, json={"content": text})
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        _log.warning("token-count probe failed", extra={"data": {"url": tokenize_url, "error": str(exc)}})
+        return None
+
+    tokens = payload.get("tokens")
+    return len(tokens) if isinstance(tokens, list) else None

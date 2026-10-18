@@ -103,13 +103,43 @@ _OLD_TOOL_OUTPUT_HEAD_CHARS = 350
 _OLD_TOOL_OUTPUT_TAIL_CHARS = 100
 
 
+#: 2026-10-18, live: a plain char-count cut landed inside the word "valid"
+#: in a failed hydra run's own "0 valid password found" line, leaving a
+#: tail of "d password found" — read by the model as a positive hit,
+#: inverting a negative result. Losing a partial word at either edge
+#: costs nothing real; keeping half of one can flip what a finding means.
+_WHITESPACE_RE = re.compile(r"\s")
+
+
+def _snap_head(content: str, limit: int) -> str:
+    """``content[:limit]``, pulled back to the nearest preceding
+    whitespace so a word is never bisected."""
+    if len(content) <= limit:
+        return content
+    head = content[:limit]
+    last_boundary = None
+    for last_boundary in _WHITESPACE_RE.finditer(head):
+        pass
+    return head[: last_boundary.start()] if last_boundary else head
+
+
+def _snap_tail(content: str, limit: int) -> str:
+    """The last ``limit`` chars of content, pushed forward past the
+    nearest following whitespace so a word is never bisected."""
+    if len(content) <= limit:
+        return content
+    tail = content[-limit:]
+    first_boundary = _WHITESPACE_RE.search(tail)
+    return tail[first_boundary.end() :] if first_boundary else tail
+
+
 def _truncate_old_tool_output(content: str) -> str:
     cap = _OLD_TOOL_OUTPUT_HEAD_CHARS + _OLD_TOOL_OUTPUT_TAIL_CHARS
     if len(content) <= cap:
         return content
-    omitted = len(content) - cap
-    head = content[:_OLD_TOOL_OUTPUT_HEAD_CHARS]
-    tail = content[-_OLD_TOOL_OUTPUT_TAIL_CHARS:]
+    head = _snap_head(content, _OLD_TOOL_OUTPUT_HEAD_CHARS)
+    tail = _snap_tail(content, _OLD_TOOL_OUTPUT_TAIL_CHARS)
+    omitted = len(content) - len(head) - len(tail)
     return f"{head}\n...[{omitted} chars truncated — already summarized in the findings above]...\n{tail}"
 
 
@@ -168,11 +198,15 @@ def _compact_history(messages: list, system_prompt: str, context_window: int) ->
     and, if any were dropped, prepends one summary line in their place.
     Full history stays in state — this only shapes what's sent to the model.
 
-    Two tiers, cheapest-sufficient wins: Tier 1 shrinks old ToolMessage
-    content to a 350/100-char head/tail (_shrink_old_tool_output) — cheap,
-    but still carries some of the original tool output's own shape. Only
-    when that still isn't enough to fit the budget (dropped > 0 — real
-    pressure, not hypothetical) does Tier 2 engage: stub old ToolMessage
+    Three tiers, cheapest-sufficient wins, each only engaging once the one
+    before it still couldn't fit the budget (real pressure, not
+    hypothetical — 2026-10-18, live: an unconditional Tier 1 shrank a
+    777-char hydra result the instant a new chat turn started, for no
+    budget reason at all, and the mid-word cut it then made inverted the
+    finding — see _snap_head/_snap_tail). Tier 0 is the untouched
+    messages. Tier 1 shrinks old ToolMessage content to a 350/100-char
+    head/tail (_shrink_old_tool_output) — cheap, but still carries some of
+    the original tool output's own shape. Tier 2 stubs old ToolMessage
     content out entirely (_stub_old_tool_output), trading that remaining
     detail for letting more old turns survive as bare conversational shape
     instead of being dropped outright."""
@@ -190,7 +224,11 @@ def _compact_history(messages: list, system_prompt: str, context_window: int) ->
         kept.reverse()
         return kept, len(candidates) - len(kept)
 
-    kept, dropped = _fit(_shrink_old_tool_output(messages))
+    kept, dropped = _fit(messages)
+    if dropped:
+        shrunk_kept, shrunk_dropped = _fit(_shrink_old_tool_output(messages))
+        if shrunk_dropped < dropped:
+            kept, dropped = shrunk_kept, shrunk_dropped
     if dropped:
         stubbed_kept, stubbed_dropped = _fit(_stub_old_tool_output(messages))
         if stubbed_dropped < dropped:
@@ -201,9 +239,54 @@ def _compact_history(messages: list, system_prompt: str, context_window: int) ->
     return kept, dropped
 
 
+#: 2026-10-18, live: the chars/N estimate above undercounted badly enough
+#: on real, markdown-heavy output that actual usage (TokenDelta's
+#: ctx_used, the real API-reported count) swung between ~6k and ~14k
+#: tokens turn to turn on a 16384-token model -- compaction reacting a
+#: full turn late each time, since a turn's own output isn't counted
+#: until the NEXT turn's budget check. One real token_counter call (when
+#: available) catches an overshoot before this turn's prompt is sent,
+#: not after.
+async def _verify_real_token_budget(
+    kept: list,
+    dropped: int,
+    messages: list,
+    system_prompt: str,
+    context_window: int,
+    token_counter: Callable[[str], Awaitable[int | None]] | None,
+) -> tuple[list, int]:
+    if token_counter is None:
+        return kept, dropped
+    budget = context_window - _RESPONSE_RESERVE_TOKENS
+    full_text = system_prompt + "".join(str(m.content) for m in kept)
+    real_tokens = await token_counter(full_text)
+    if real_tokens is None or real_tokens <= budget:
+        return kept, dropped
+    # The chars/N estimate was too optimistic for this prompt specifically
+    # -- scale the window down by exactly how wrong it was and recompact
+    # with the same tiers, rather than guessing at a fixed penalty. One
+    # corrective pass, not a retry loop: bounded cost, and a second real
+    # call would almost always just confirm the first.
+    overshoot_ratio = real_tokens / max(budget, 1)
+    corrected_window = max(int(context_window / overshoot_ratio) - 1, 0)
+    return _compact_history(messages, system_prompt, corrected_window)
+
+
 _DEPG_CONTEXT_CAP_PER_TARGET = 8
 _DEPG_CONTEXT_MAX_TARGETS = 12
 _MEMORY_CONTEXT_CAP = 10
+
+
+def _display_signal(n: Node) -> str:
+    """``n.signal`` for most nodes, but GenericExtractor's blind fallback
+    (Evidence.source == "unverified") sets signal to a content hash --
+    unique for dedup, but unreadable. Its own evidence.exit_signal is
+    already a short text excerpt of the same content (_summarize,
+    extract.py) for exactly this case; prefer that one instead, without
+    touching the hash that node identity/dedup still relies on."""
+    if n.evidence and n.evidence[-1].source == "unverified":
+        return n.evidence[-1].exit_signal or n.signal or n.id
+    return n.signal or n.id
 
 
 def _depg_context(depg_nodes: dict) -> str:
@@ -232,7 +315,7 @@ def _depg_context(depg_nodes: dict) -> str:
     for target in targets[:_DEPG_CONTEXT_MAX_TARGETS]:
         nodes = by_target[target]
         shown = nodes[:_DEPG_CONTEXT_CAP_PER_TARGET]
-        parts = [f"{n.cause_class}:{n.signal or n.id} ({n.state})" for n in shown]
+        parts = [f"{n.cause_class}:{_display_signal(n)} ({n.state})" for n in shown]
         if len(nodes) > len(shown):
             parts.append(f"+{len(nodes) - len(shown)} more")
         lines.append(f"  {target}: {', '.join(parts)}")
@@ -578,6 +661,7 @@ def make_think_node(
     tool_output_chain: GuardrailChain | None = None,
     *,
     privacy: PrivacyGateway | None = None,
+    token_counter: Callable[[str], Awaitable[int | None]] | None = None,
 ) -> Callable[[AgentState], dict]:
     # C1 (AUDIT.md): screened here, at prompt-build time, not when act()
     # appends the ToolMessage to state — depg_update's regex extractors and
@@ -638,6 +722,9 @@ def make_think_node(
         )
         context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
         history, dropped = _compact_history(state["messages"], system_prompt, context_window)
+        history, dropped = await _verify_real_token_budget(
+            history, dropped, state["messages"], system_prompt, context_window, token_counter
+        )
         history = [
             m.model_copy(update={"content": _for_model(str(m.content))})
             if isinstance(m, ToolMessage) else m

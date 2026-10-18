@@ -92,3 +92,27 @@ def test_malformed_json_content_returns_none_not_an_exception(monkeypatch) -> No
     backend = LlamaCppExtractionBackend("http://localhost:8080")
 
     assert backend.extract("prompt") is None
+
+
+def test_a_failure_logs_the_real_exception_type_and_message(monkeypatch) -> None:
+    """2026-10-18, live: curl's extraction failed 3/3 times with nothing
+    beyond "unavailable" ever recorded -- no way to tell a timeout from a
+    schema-validation failure after the fact. A logger must now capture
+    which one actually happened."""
+    import logging
+
+    def fake_post(url, *, json, timeout):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    records: list[logging.LogRecord] = []
+    logger = logging.getLogger("test-llamacpp-backend-logging")
+    logger.addHandler(logging.Handler())
+    logger.handlers[-1].emit = records.append  # type: ignore[method-assign]
+    backend = LlamaCppExtractionBackend("http://localhost:8080", logger=logger)
+
+    assert backend.extract("prompt") is None
+
+    assert len(records) == 1
+    assert records[0].data["error_type"] == "ConnectError"
+    assert "connection refused" in records[0].data["error"]
