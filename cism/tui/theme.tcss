@@ -262,7 +262,7 @@ StatusBar > .status--target { color: $fg; }
 
 /* ── modal overlays ───────────────────────────────────────────────── */
 
-DEPGModal, MemoryModal {
+DEPGModal, MemoryModal, PhaseApprovalModal {
     align: center middle;
     background: $bg 70%;
 }
@@ -273,6 +273,30 @@ DEPGModal, MemoryModal {
     border: round $accent;
     background: $bg;
     padding: 0 1;
+}
+
+#phase-approval-frame {
+    width: 60;
+    height: auto;
+    border: round $warn;
+    background: $bg;
+    padding: 1 2;
+}
+
+#phase-approval-body {
+    height: auto;
+    color: $fg;
+    padding: 1 0;
+}
+
+#phase-approval-buttons {
+    height: auto;
+    align: right middle;
+    padding-top: 1;
+}
+
+#phase-approval-buttons > Button {
+    margin-left: 1;
 }
 
 #depg-frame {

@@ -53,6 +53,7 @@ from .widgets.banner import Banner
 from .widgets.composer import Composer, ComposerInput
 from .widgets.depg_modal import DEPGModal
 from .widgets.memory_modal import MemoryModal
+from .widgets.phase_modal import PhaseApprovalModal
 from .widgets.slash import SlashCommand, SlashOverlay
 from .widgets.spinner import WorkingIndicator
 from .widgets.status import StatusBar
@@ -151,6 +152,7 @@ class CISMApp(App[None]):
         #: once the modal actually closes.
         self._depg_modal: DEPGModal | None = None
         self._memory_modal: MemoryModal | None = None
+        self._phase_modal: PhaseApprovalModal | None = None
         self.token_total = 0
         self.unknown_events = 0
         #: Set when agent.start() raised; the pump drains on regardless.
@@ -352,9 +354,22 @@ class CISMApp(App[None]):
             self.indicator.set_phase(event.phase)
             transcript.add_phase_rule(event.framework, event.phase)
             self._phase_history.append(PhaseTransition(timestamp=_now_iso(), phase=event.phase))
+            if self._phase_modal is not None:
+                # Resolved some other way (operator typed /phase directly)
+                # while the modal was still open — close it rather than
+                # leave it sitting there asking about a decision that's
+                # already made.
+                self._phase_modal.dismiss(False)
 
         elif isinstance(event, PhaseProposed):
             self.status.phase_proposal = event.phase
+            if len(self.screen_stack) <= 1:
+                modal = PhaseApprovalModal(self.phase, event.phase)
+                self._phase_modal = modal
+                self.push_screen(
+                    modal,
+                    callback=lambda approved: self._resolve_phase_modal(approved, event.phase),
+                )
 
         elif isinstance(event, ScopeChanged):
             verb = "added" if event.action == "add" else "removed"
@@ -678,6 +693,13 @@ class CISMApp(App[None]):
         modal = MemoryModal(self.memory_rows, self.memory_terms)
         self._memory_modal = modal
         self.push_screen(modal, callback=lambda _: setattr(self, "_memory_modal", None))
+
+    def _resolve_phase_modal(self, approved: bool | None, phase: str) -> None:
+        self._phase_modal = None
+        if approved:
+            line = f"/phase {phase}"
+            self.transcript.add_user_turn(line)
+            self._run_command(line)
 
     def action_toggle_output(self) -> None:
         entry = self.transcript.last_collapsible()
