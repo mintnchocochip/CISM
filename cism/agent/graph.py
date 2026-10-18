@@ -28,6 +28,8 @@ whether the model/tools/guardrails behind it are dummy or real.
 
 from __future__ import annotations
 
+from typing import Awaitable, Callable
+
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -61,11 +63,15 @@ def build_graph(
     *,
     graded_propagation: bool = False,
     privacy: PrivacyGateway | None = None,
+    token_counter: Callable[[str], Awaitable[int | None]] | None = None,
 ) -> CompiledStateGraph:
     graph = StateGraph(AgentState)
 
     graph.add_node(
-        "think", make_think_node(llm, tools, profiles, guardrails.tool_output, privacy=privacy)
+        "think",
+        make_think_node(
+            llm, tools, profiles, guardrails.tool_output, privacy=privacy, token_counter=token_counter
+        ),
     )
     graph.add_node("act", make_act_node(tools, guardrails.action, profiles))
     graph.add_node(

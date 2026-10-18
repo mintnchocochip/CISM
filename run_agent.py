@@ -216,7 +216,7 @@ def _enable_live_tools(
 def _llamacpp_extractors(base_url: str) -> ExtractorRegistry:
     """Same regex extractors LangGraphAgent defaults to, but the LLM
     fallback goes through LlamaCppExtractionBackend."""
-    backend = LlamaCppExtractionBackend(base_url)
+    backend = LlamaCppExtractionBackend(base_url, logger=get_agent_logger())
     tool_extractors = {**EXTRACTORS, "dummy_nmap": EXTRACTORS["nmap"]}
     return ExtractorRegistry(
         tool_extractors, LLMExtractor(backend, logger=get_agent_logger())
