@@ -1279,6 +1279,67 @@ async def test_think_drops_the_oldest_turns_when_history_overflows_the_budget() 
     assert sent[-1] is recent
 
 
+class _RecordingChatModelWithMaxTokens(_RecordingMessagesChatModel):
+    """Same recorder, plus a real max_tokens field so a test can set the
+    generation cap the way build_chat_model's --max-tokens kwarg does."""
+
+    max_tokens: int | None = None
+
+
+async def test_think_reserves_the_models_own_max_tokens_not_a_flat_512() -> None:
+    """2026-10-18, live: budget only ever reserved a flat 512 tokens for
+    the response regardless of the real --max-tokens cap (4096 by
+    default) -- a reasoning model given that much room routinely used far
+    more than 512, so a prompt compacted right up to the old margin left
+    the model free to generate past n_ctx mid-stream (confirmed:
+    llama.cpp truncated at exactly n_ctx_slot). response_reserve must now
+    scale with the model's own configured max_tokens, so the SAME history
+    and context_window compacts harder once a real cap is set."""
+    old = HumanMessage(content="x" * 3000)
+    recent = HumanMessage(content="y" * 300)
+
+    unset_llm = _RecordingChatModelWithMaxTokens(seen=[])
+    think_unset = make_think_node(unset_llm, ToolRegistry([]), _NO_OP_PROFILES)
+    state = _state([old, recent])
+    state["context_window"] = 1700
+    update_unset = await think_unset(state)
+    assert update_unset["compacted"] == 0
+
+    capped_llm = _RecordingChatModelWithMaxTokens(seen=[], max_tokens=4096)
+    think_capped = make_think_node(capped_llm, ToolRegistry([]), _NO_OP_PROFILES)
+    state = _state([old, recent])
+    state["context_window"] = 1700
+    update_capped = await think_capped(state)
+    assert update_capped["compacted"] > 0
+    assert capped_llm.seen[-1][-1] is recent
+
+
+async def test_think_keeps_exactly_one_leading_system_message_when_turns_are_dropped() -> None:
+    """2026-10-18, live: _compact_history used to prepend its own
+    "[N earlier turn(s) omitted]" SystemMessage onto `kept` -- which think()
+    then placed at index 1, right after the real leading SystemMessage it
+    builds. Two system-role messages, the second not at position 0, crashed
+    this model's chat template outright the same way
+    test_think_retry_keeps_exactly_one_leading_system_message's bug did
+    ("Jinja Exception: System message must be at the beginning") -- just
+    via compaction instead of the retry path, and it hit live mid-engagement.
+    The note must fold into the one real leading SystemMessage instead."""
+    llm = _RecordingMessagesChatModel(seen=[])
+    think = make_think_node(llm, ToolRegistry([]), _NO_OP_PROFILES)
+    old_turns = [HumanMessage(content="x" * 500) for _ in range(20)]
+    state = _state([*old_turns, HumanMessage(content="recent")])
+    state["context_window"] = 200
+
+    update = await think(state)
+
+    assert update["compacted"] > 0
+    sent = llm.seen[-1]
+    system_messages = [m for m in sent if isinstance(m, SystemMessage)]
+    assert len(system_messages) == 1
+    assert isinstance(sent[0], SystemMessage)
+    assert "omitted" in str(sent[0].content)
+
+
 async def test_think_passes_token_counter_through_to_the_real_budget_check() -> None:
     """End-to-end wiring check: make_think_node's token_counter reaches
     _verify_real_token_budget and can trigger a corrective recompaction
@@ -1307,6 +1368,28 @@ async def test_think_passes_token_counter_through_to_the_real_budget_check() -> 
     shrunk = next(m for m in sent if isinstance(m, ToolMessage))
     assert len(shrunk.content) < 2000
     assert any("omitted" in str(m.content) for m in sent if isinstance(m, SystemMessage))
+
+
+def test_response_reserve_uses_the_models_max_tokens_when_larger_than_the_floor() -> None:
+    from cism.agent.nodes import _RESPONSE_RESERVE_TOKENS, _response_reserve
+
+    llm = _RecordingChatModelWithMaxTokens(seen=[], max_tokens=4096)
+    assert _response_reserve(llm) == 4096
+    assert 4096 > _RESPONSE_RESERVE_TOKENS
+
+
+def test_response_reserve_falls_back_to_the_floor_when_unset() -> None:
+    from cism.agent.nodes import _RESPONSE_RESERVE_TOKENS, _response_reserve
+
+    llm = _RecordingChatModelWithMaxTokens(seen=[])
+    assert _response_reserve(llm) == _RESPONSE_RESERVE_TOKENS
+
+
+def test_response_reserve_never_drops_below_the_floor_for_a_tiny_configured_cap() -> None:
+    from cism.agent.nodes import _RESPONSE_RESERVE_TOKENS, _response_reserve
+
+    llm = _RecordingChatModelWithMaxTokens(seen=[], max_tokens=128)
+    assert _response_reserve(llm) == _RESPONSE_RESERVE_TOKENS
 
 
 def test_compact_history_counts_fat_tool_calls_not_just_empty_content() -> None:

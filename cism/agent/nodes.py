@@ -69,8 +69,27 @@ MAX_AI_TURNS = 2
 #: too early (cheap — DEPG/memory context already covers what's lost)
 #: over a real 400 mid-engagement (a whole turn lost outright).
 _CHARS_PER_TOKEN = 3
+#: Floor only — think() below reserves the model's own configured
+#: max_tokens instead whenever one is set (see _response_reserve).
 _RESPONSE_RESERVE_TOKENS = 512
 DEFAULT_CONTEXT_WINDOW = 32_768
+
+
+def _response_reserve(llm: BaseChatModel) -> int:
+    """2026-10-18, live: this budget only ever reserved a flat 512 tokens
+    for the model's own response, independent of --max-tokens (4096 by
+    default, scripts/run_tui*.sh) -- a reasoning model given room to think
+    routinely used far more than 512, so a compacted prompt sized right up
+    to that 512-token margin left the *actual* generation to run past
+    n_ctx mid-stream (confirmed live: llama.cpp truncated a response at
+    exactly n_ctx_slot, `truncated: 1`, after prompt + in-progress
+    generation together exceeded it). Reserving the real configured cap
+    instead means compaction may trigger a little earlier than strictly
+    needed on a turn whose response turns out short -- cheap, and the
+    established bias here (see _CHARS_PER_TOKEN above) is already toward
+    that trade over a lost turn."""
+    configured = getattr(llm, "max_tokens", None)
+    return max(configured or 0, _RESPONSE_RESERVE_TOKENS)
 
 #: Flat per-message overhead chars/4 can't see on content alone — keeps a
 #: long run of near-empty messages from estimating as free.
@@ -227,7 +246,11 @@ _PROACTIVE_COMPACTION_THRESHOLD = 0.75
 
 
 def _compact_history(
-    messages: list, system_prompt: str, context_window: int, tool_schema_text: str = ""
+    messages: list,
+    system_prompt: str,
+    context_window: int,
+    tool_schema_text: str = "",
+    response_reserve: int = _RESPONSE_RESERVE_TOKENS,
 ) -> tuple[list, int]:
     """Keeps the most recent messages that fit the budget; drops older ones
     and, if any were dropped, prepends one summary line in their place.
@@ -250,7 +273,7 @@ def _compact_history(
     rebuilt fresh from state every think() call, not from this history."""
     budget = (
         context_window
-        - _RESPONSE_RESERVE_TOKENS
+        - response_reserve
         - _estimate_tokens(system_prompt)
         - _estimate_tokens(tool_schema_text)
     )
@@ -279,9 +302,15 @@ def _compact_history(
         stubbed_kept, stubbed_dropped, stubbed_used = _fit(_stub_old_tool_output(messages))
         if stubbed_dropped < dropped or stubbed_used < used:
             kept, dropped, used = stubbed_kept, stubbed_dropped, stubbed_used
-    if dropped:
-        note = SystemMessage(content=f"[{dropped} earlier turn(s) omitted to fit the context window]")
-        kept = [note, *kept]
+    # Not a prepended SystemMessage here (as this used to do): that put a
+    # second system-role message ahead of the real history, one slot after
+    # the real leading SystemMessage think() builds -- the exact shape
+    # test_think_retry_keeps_exactly_one_leading_system_message's own fix
+    # was written to prevent, just via a different code path. Confirmed
+    # live 2026-10-18: this one crashed the chat template the same way
+    # ("Jinja Exception: System message must be at the beginning") the
+    # moment a real engagement first dropped any history. The caller folds
+    # this count into its own single leading SystemMessage instead.
     return kept, dropped
 
 
@@ -301,10 +330,11 @@ async def _verify_real_token_budget(
     context_window: int,
     token_counter: Callable[[str], Awaitable[int | None]] | None,
     tool_schema_text: str = "",
+    response_reserve: int = _RESPONSE_RESERVE_TOKENS,
 ) -> tuple[list, int]:
     if token_counter is None:
         return kept, dropped
-    budget = context_window - _RESPONSE_RESERVE_TOKENS
+    budget = context_window - response_reserve
     full_text = system_prompt + tool_schema_text + "".join(str(m.content) for m in kept)
     real_tokens = await token_counter(full_text)
     if real_tokens is None or real_tokens <= budget:
@@ -316,7 +346,9 @@ async def _verify_real_token_budget(
     # call would almost always just confirm the first.
     overshoot_ratio = real_tokens / max(budget, 1)
     corrected_window = max(int(context_window / overshoot_ratio) - 1, 0)
-    return _compact_history(messages, system_prompt, corrected_window, tool_schema_text)
+    return _compact_history(
+        messages, system_prompt, corrected_window, tool_schema_text, response_reserve
+    )
 
 
 _DEPG_CONTEXT_CAP_PER_TARGET = 8
@@ -727,12 +759,14 @@ def make_think_node(
         )
         context_window = state.get("context_window") or DEFAULT_CONTEXT_WINDOW
         tool_schema_text = _tool_schema_text(phase_tools)
+        response_reserve = _response_reserve(llm)
         history, dropped = _compact_history(
-            state["messages"], system_prompt, context_window, tool_schema_text
+            state["messages"], system_prompt, context_window, tool_schema_text,
+            response_reserve,
         )
         history, dropped = await _verify_real_token_budget(
             history, dropped, state["messages"], system_prompt, context_window,
-            token_counter, tool_schema_text,
+            token_counter, tool_schema_text, response_reserve,
         )
         history = [
             m.model_copy(update={"content": _for_model(str(m.content))})
@@ -741,6 +775,11 @@ def make_think_node(
         ]
         if privacy is not None:
             system_prompt = privacy.anonymize(system_prompt)
+        if dropped:
+            system_prompt = (
+                f"{system_prompt}\n\n"
+                f"[{dropped} earlier turn(s) omitted to fit the context window]"
+            )
         messages = [SystemMessage(content=system_prompt), *history]
         # The opening move gets its own retry trigger below
         # (_is_asking_for_known_target / truly empty). A later step gets a
