@@ -76,6 +76,15 @@ _CURL_VALUE_AWARE_FLAGS: frozenset[str] = frozenset({
     "-F", "--form",
 })
 _CURL_FORM_FLAGS: frozenset[str] = frozenset({"-F", "--form"})
+#: --data-urlencode has its own file-read shape distinct from -d/--data's
+#: "whole value starts with @" rule: a BARE `name@file` (no `=` at all) also
+#: reads a local file and URL-encodes it — the `@` need not be the value's
+#: first character, just unseparated from a preceding field name by any
+#: `=`. A plain `value.startswith("@")` check (as used for every other
+#: data flag) misses this entirely, letting e.g.
+#: `--data-urlencode "x@/etc/passwd"` through as if it were a harmless
+#: literal — curl still reads the file. See _dangerous_data_value.
+_CURL_URLENCODE_FLAGS: frozenset[str] = frozenset({"--data-urlencode"})
 
 
 def _curl_value_aware_flag(token: str) -> tuple[str, str | None] | None:
@@ -108,11 +117,28 @@ def _curl_value_aware_flag(token: str) -> tuple[str, str | None] | None:
 def _dangerous_data_value(flag: str, value: str) -> bool:
     """`-F`/`--form`'s own syntax is `name=@file` (upload) or `name=<file`
     (read) — the `@`/`<` marks the right side of that assignment, not the
-    flag's value as a whole, unlike `-d`/`--data*` where the value itself
-    is the file reference."""
+    flag's value as a whole, unlike `-d`/`--data`/`--data-binary`/
+    `--data-raw`, where the value itself is the file reference.
+
+    `--data-urlencode` is a third, distinct shape: curl's own parser picks
+    `name=content` (always literal, even if `content` itself contains an
+    `@`) the moment a `=` appears *before* any `@` in the value — a leading
+    `=` forces this reading even when the rest starts with `@` (the
+    documented way to pass a literal value like `=user@example.com`).
+    Otherwise, if an `@` appears with no earlier `=`, that's curl's
+    `[name]@filename` file-read form, whether or not `@` is the value's
+    very first character. `value.startswith("@")` alone — correct for the
+    other data flags — misses the bare `name@file` case entirely."""
     if flag in _CURL_FORM_FLAGS:
         _, _, rhs = value.partition("=")
         return rhs.startswith("@") or rhs.startswith("<")
+    if flag in _CURL_URLENCODE_FLAGS:
+        if value.startswith("="):
+            return False
+        at, eq = value.find("@"), value.find("=")
+        if at == -1:
+            return False
+        return eq == -1 or at < eq
     return value.startswith("@")
 
 
