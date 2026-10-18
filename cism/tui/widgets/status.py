@@ -130,10 +130,14 @@ class StatusBar(Static):
             out.append(Segment("model", self.model, self.model, 1, "status--model"))
 
         if self.phase_proposal:
+            # The full /phase <name> command used to be spelled out here too
+            # — dropped now that a pending proposal also pops a modal with
+            # that detail, since the extra width was crowding out depg/mem
+            # below on an ordinary ~80-column terminal.
             out.append(
                 Segment(
                     "phase",
-                    f"phase: {self.phase} -> {self.phase_proposal}? (/phase {self.phase_proposal})",
+                    f"phase: {self.phase} -> {self.phase_proposal}?",
                     f"{self.phase}->{self.phase_proposal}?",
                     1,
                     "status--warn",
@@ -170,11 +174,16 @@ class StatusBar(Static):
                 Segment("target", full, self.target_os or full, 2, "status--target")
             )
 
+        # Priority 2, not the 3-default: these are the engagement's own
+        # findings count, worth keeping over tok/s or the target line when
+        # a pending phase proposal widens that segment and something has
+        # to give on a normal-width terminal.
         out.append(
             Segment(
                 "depg",
                 f"depg {self.depg_nodes} nodes",
                 f"depg {self.depg_nodes}",
+                2,
                 label="depg ",
             )
         )
@@ -185,6 +194,7 @@ class StatusBar(Static):
                 "mem",
                 f"mem T1:{self.mem_t1} T2:{self.mem_t2} T3:{self.mem_t3}",
                 f"mem {total}",
+                2,
                 label="mem ",
             )
         )

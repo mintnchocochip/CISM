@@ -85,9 +85,32 @@ def test_detail_is_lost_before_fields_are() -> None:
 
 
 def test_low_priority_fields_go_first() -> None:
+    """depg/mem (priority 2) outrank rate/target (priority 3, the lowest) —
+    the engagement's own findings count survives over nice-to-haves when
+    width is tight."""
     kept = {s.key for s in elide(demo_segments(), 64)}
-    assert "depg" not in kept  # priority 3
+    assert "rate" not in kept
+    assert "target" not in kept
     assert "ctx" in kept  # priority 1
+    assert "depg" in kept  # priority 2
+    assert "mem" in kept  # priority 2
+
+
+def test_depg_and_mem_survive_at_a_normal_width_even_with_a_pending_phase_proposal() -> None:
+    """2026-10-18 regression: a pending proposal widened the phase segment
+    enough that depg/mem (then priority 3, the lowest) silently dropped out
+    at an ordinary ~80-column terminal — the operator's own report of
+    "the bar kinda misses the depg nodes now"."""
+    bar = StatusBar()
+    bar.model = "qwen2.5-7b"
+    bar.phase = "recon"
+    bar.phase_proposal = "enumeration"
+    bar.ctx_used, bar.ctx_max = 12420, 32768
+    bar.depg_nodes = 47
+    bar.mem_t1, bar.mem_t2, bar.mem_t3 = 8, 31, 5
+    kept = {s.key for s in elide(bar.segments(), 80)}
+    assert "depg" in kept
+    assert "mem" in kept
 
 
 def test_absent_values_are_omitted_entirely() -> None:
