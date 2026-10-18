@@ -337,6 +337,22 @@ def _strip_trailing_dot(value: str) -> str:
 def _extract_host(value: str) -> str | None:
     value = _strip_trailing_dot(value)
 
+    # A scheme marks this as one single URL target, never a comma-separated
+    # host list -- checked before the comma split below so a comma that's
+    # just part of the URL's own path/query (e.g. a UNION-based SQLi
+    # payload's "SELECT user,password") is never mistaken for a second
+    # target. Confirmed live 2026-10-18: a real UNION SQLi curl call
+    # against an in-scope URL was blocked outright as
+    # "<unparseable-multi-target>", because "user,password" in the query
+    # string split into two non-host-shaped fragments. --target/--scope
+    # values (what the comma-split below exists for) never carry "://".
+    if "://" in value:
+        hostname = urlparse(value).hostname
+        if not hostname:
+            return value
+        hostname = _strip_trailing_dot(hostname)
+        return _extract_host(hostname) or hostname
+
     if "," in value:
         parts = value.split(",")
         hosts = [h for p in parts if (h := _extract_host(p))]
@@ -381,13 +397,6 @@ def _extract_host(value: str) -> str | None:
         host_part, _, port_part = value.rpartition(":")
         if port_part.isdigit() and host_part:
             return _extract_host(host_part)
-
-    if "://" in value:
-        hostname = urlparse(value).hostname
-        if not hostname:
-            return value
-        hostname = _strip_trailing_dot(hostname)
-        return _extract_host(hostname) or hostname
 
     match = _USER_HOST_RE.search(value)
     if match:
