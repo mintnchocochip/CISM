@@ -28,11 +28,16 @@ async def test_a_submitted_turn_runs_through_the_real_agent_and_renders(
         await pilot.press("enter")
         await drain(pilot, agent)
 
+        # 2026-10-18: phase no longer auto-advances (operator approval via
+        # /phase required), and MAX_AI_TURNS dropped 4 -> 2 the same day --
+        # dummy_msfconsole (ENUMERATION-only) is proposed on AI turn 2 but
+        # the turn cap stops the run before act() ever runs it, so only
+        # dummy_nmap's call actually executes.
         tool_entries = app.transcript.query(ToolEntry)
-        assert len(tool_entries) == 2
+        assert len(tool_entries) == 1
 
         narrations = app.transcript.query(NarrationEntry)
         assert narrations
-        assert "Stub run finished" in narrations.last().text
+        assert "enumeration" in narrations.last().text
 
-        assert app.phase == "vulnerability-discovery"
+        assert app.phase == "recon"

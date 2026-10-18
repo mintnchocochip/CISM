@@ -1058,3 +1058,179 @@ too); otherwise an `@` with no earlier `=` is the file-read form.
 Verification: `pytest -n auto` 857/857 (one pre-existing flaky snapshot
 test, confirmed unrelated — it replays a static fixture log, not live
 code — and passes in isolation). `graphify update .` run after.
+
+## 16. Interrupting an in-flight run and resubmitting could crash the next run with `KeyError: 'depg_nodes'` (2026-10-18)
+
+Every `~/.cism/logs/agent.log*` file on the host had the same `ERROR run
+failed` traceback (37 occurrences across today's and yesterday's logs, one
+per log): `think()` (`cism/agent/nodes.py`) crashing on
+`state["depg_nodes"]` — a plain `KeyError`, not a guardrail/tool failure,
+swallowed by `_run()`'s own `except Exception` into a silent
+`RunFinished(ok=False)`. Traced every occurrence to the same trigger: a
+new `submit()` arriving while a previous run was still in flight
+("superseded by new submission") — confirmed the existing
+`test_a_new_submit_emits_interrupted_for_the_run_it_superseded`
+(`tests/test_langgraph_agent.py`) already exercises exactly this sequence
+and has been silently hitting this crash on every test run; it only ever
+asserted on the `Interrupted` event, never on whether the superseding run
+actually succeeded.
+
+Root cause: `depg_nodes`/`depg_edges`/`memory_items` have no reducer, so
+`_run()` (`cism/agent/core.py`) used to seed them into `initial_state`
+with `{}` only on the thread's first-ever run (a `self._thread_seeded`
+flag, flipped unconditionally before `graph.astream()` was even called),
+relying on every later run omitting the keys to keep the checkpoint's
+accumulated value. That flag desynced from reality the moment a run was
+cancelled before completing its own turn: the flag was already `True`,
+but nothing had actually been committed for this thread yet — so every
+run after that omitted the keys from `initial_state` while the checkpoint
+still had nothing to fall back on, and `think()` crashed outright.
+Checking `graph.aget_state(run_config)` instead of the flag turned out not
+to be enough on its own either — it can report a channel as present in the
+checkpoint even when a `graph.astream()` call immediately after, on an
+`initial_state` that omits that channel, still doesn't carry it forward
+into the first node's `state` (reproduced directly: `aget_state()` showed
+`depg_nodes` in the checkpoint's `values`, yet `think()`'s own `state`
+dict, logged the same run, didn't have the key at all). Fixed by not
+relying on omission-means-keep-existing at all: read the checkpoint via
+`aget_state()` and **always** write `depg_nodes`/`depg_edges`/
+`memory_items` into `initial_state` explicitly (falling back to
+`{}`/`[]`/`{}` when the checkpoint doesn't have them yet), every run.
+
+Also hardened the actual race `submit()` has (cancelling the old task and
+scheduling the new one in the same breath, no await between, so two
+`graph.astream()` calls on the same checkpointer+thread_id could overlap):
+`submit()` now passes the cancelled task to the new one, which awaits it
+(swallowing `CancelledError`) before touching the checkpointer at all, so
+two runs on one thread are never concurrent. This wasn't the actual root
+cause of the crash above — a scan of the delay between the two
+submissions, and direct instrumentation of the checkpoint read vs. what
+`think()` received, showed the corruption already baked into a single
+cancelled run's incomplete checkpoint, not a timing race between two — but
+there's no reason to leave two readers/writers of the same in-memory
+checkpoint able to overlap regardless, so it stays as defense in depth.
+
+Verification: strengthened the existing test to assert every `RunFinished`
+in the sequence has `ok=True`, confirmed it reproduces the crash
+deterministically against the pre-fix code (not flaky — 8/8 failures),
+then confirmed 8/8 passes after the fix. `pytest -n auto tests/` 877/878
+(the same pre-existing flaky snapshot test as §15, confirmed unrelated —
+passes standalone). `graphify update .` run after.
+
+## 17. Lower `MAX_AI_TURNS` to 2, proactive 75%-threshold compaction, tool-schema token accounting (2026-10-18)
+
+Live, against `Ornith-1.5-9B-MTP-IQ3_M` (`--backend llamacpp`): two real,
+distinct failures in the same session, neither a CISM crash.
+
+**Looked hung, wasn't.** A `--live-tools` run sat on "Chaining…" for
+minutes with `↑0 tokens`. The container and the llama.cpp server were both
+fine (`/health` instant, `/slots` responsive); the server's own log showed
+continuous generation the whole time — several consecutive AI turns each
+ran all the way to the 4096-token `max_tokens` cap before stopping
+(confirmed: tasks hit exactly 4096 `n_gen`, ~2.2-2.5 min each at this
+hardware's ~30 tok/s). Root cause: this model forces a `<think>` lead-in
+(`reasoning_format: deepseek` in its own `/props`) and often doesn't
+finish reasoning within budget. Chained across `MAX_AI_TURNS` turns before
+the existing step-limit checkpoint (§14) ever hands control back, that's
+several uninterrupted minutes of apparent silence. Fix: `MAX_AI_TURNS`
+4 → 2 (`cism/agent/nodes.py`) — halves the worst case; the step-limit/
+phase-checkpoint narration (DEPG findings included either way) now fires
+twice as often instead of once every ~9-10 minutes.
+
+**Actually crashed.** Separately, a real `run failed` traceback:
+llama.cpp's own 400 — `request (16697 tokens) exceeds the available
+context size (16384 tokens)`. llama.cpp handled this correctly (a clean
+refusal, not silent truncation or corruption); the gap was entirely
+upstream. Root cause: `_compact_history`'s budget (both the chars/N
+estimate and `_verify_real_token_budget`'s real `/tokenize`-verified
+correction) only ever measured `system_prompt` + message content — neither
+accounted for the bound tools' own OpenAI tool-call schema JSON, which the
+server folds into the real prompt and counts against `n_ctx` the instant
+any tools are bound. For a tool-heavy phase that invisible overhead is
+easily a few hundred tokens — enough to explain the exact 313-token
+overshoot on its own. Fixed with `_tool_schema_text()`
+(`cism/agent/nodes.py`, via `langchain_core.utils.function_calling.
+convert_to_openai_tool`), threaded into both budget tiers the same way
+`system_prompt` already was.
+
+Also added proactive compaction: `_compact_history` used to be purely
+reactive (only engage Tier 1/2 once Tier 0 literally couldn't fit).
+`_PROACTIVE_COMPACTION_THRESHOLD = 0.75` now engages the cheaper tiers
+once usage crosses that fraction of budget even when nothing would yet be
+dropped — insurance against the chars/N estimate's own documented swings
+(§15: ~6k-14k turn to turn on one real prompt), reacting before an
+overshoot rather than one turn after.
+
+Verification: `pytest -n auto tests/` 879/880 (same pre-existing flaky
+snapshot test as §15/§16, confirmed unrelated — passes standalone).
+`graphify update .` run after.
+
+## 18. PTES phase transitions now require operator approval instead of applying automatically (2026-10-18)
+
+`phase_router` used to apply a detected phase transition the instant
+`_phase_ready()` returned true, with the only existing safeguard
+(`route_after_think`'s phase-change checkpoint, §14) pausing the *tool
+loop* for one turn — narration like "the engagement just moved into the
+enumeration phase" — after the move had already happened. The operator
+had no way to decline or delay it; text framed as a checkpoint, applied as
+a fait accompli.
+
+`phase_router` (`cism/agent/nodes.py`) now only *proposes*: on readiness it
+sets `AgentState.phase_proposal` (wire-format name of the target phase)
+and `phase_proposal_is_new` (true for exactly the one step it was just
+set, driving the one-shot checkpoint/narration/memory side effects —
+`phase_proposal` itself stays truthy for as many turns as it's outstanding
+and must not re-trigger them each time). While a proposal is outstanding,
+`phase_router` holds rather than re-detecting readiness. The existing
+`/phase <name>` command (`core.py`'s `_set_phase`) is the only thing that
+actually commits a move — unchanged itself, but now also clears any
+pending `phase_proposal` on a successful manual transition (confirming the
+one proposed, or overtaking it with a different move, either way resolves
+it). `route_after_think`'s checkpoint and `respond()`'s wording
+(`_PHASE_CHECKPOINT_NOTE`, reworded from "just moved" to "looks ready to
+move... run /phase {phase} to confirm") now key off `phase_proposal_is_new`
+instead of an already-applied `phase_changed`. `memory_update` logs a
+"phase proposal -> X (pending /phase approval)" item instead of an applied
+change.
+
+`core.py` tracks `self._phase_proposal` the same way it already tracks
+`self._phase` — written explicitly into every run's `initial_state`, never
+relied on via checkpoint carry-forward (the exact omission-semantics
+fragility §16 fixed for `depg_nodes`, applied here too rather than risking
+it again for a second field). A new `PhaseProposed` event
+(`cism/tui/events.py`) and status-bar segment (`cism/tui/widgets/
+status.py`: `phase: recon -> enumeration? (/phase enumeration)`, warn-styled)
+give the operator a persistent, visible signal distinct from the one-line
+narration, cleared on the next `PhaseChanged`.
+
+Exposed a real, previously-latent TUI bug along the way: `respond()`'s
+checkpoint-note content (built fresh, never streamed from the model) used
+to always route through `NarrationRedacted`, which only updates an
+*already-mounted* narration widget (`transcript.py`'s `existing_narration`
+is deliberately create-nothing, so a redaction for an entry `clear_entries()`
+removed doesn't mount a phantom). A pure tool-call turn with empty
+streamed content — the common case for a checkpoint note, since nothing
+was ever live-streamed into that `entry_id` — had no widget to update, so
+the note silently never appeared in the TUI at all. Only surfaced because
+lowering `MAX_AI_TURNS` (§17) made the scripted dummy-tool demo hit this
+path for the first time. Fixed in `core.py`'s respond-handling: when
+nothing was streamed, emit a fresh `Narration(done=True)` with the final
+text instead of a `NarrationRedacted` with nothing to attach to.
+
+Also fixes the dummy-tool demo's own old behavior: it used to race through
+multiple phase changes unsupervised in one `submit()` (the whole reason
+`route_after_think`'s checkpoint was gated on `live_tools` in the first
+place) — now it just holds at one pending proposal like every other path,
+since nothing auto-applies regardless of `live_tools` anymore.
+
+Verification: renamed/rewrote the `phase_router`/`route_after_think`/
+`memory_update`/`respond` unit tests in `tests/test_nodes.py` for the new
+propose-not-apply semantics, updated `tests/test_langgraph_agent.py`'s
+dummy-run test (now asserts one `PhaseProposed`, zero `PhaseChanged`, and
+the checkpoint note's text) and `tests/test_app_with_langgraph_agent.py`'s
+TUI integration test (1 tool entry, not 2 — `dummy_msfconsole` is
+ENUMERATION-only and the lowered turn cap now stops the run before `act()`
+ever reaches it; `app.phase` stays `"recon"`), added `PhaseProposed`'s
+round-trip/registration coverage to `tests/test_events.py`. `pytest -n
+auto tests/` 879/880 (same pre-existing flaky snapshot test, confirmed
+unrelated — passes standalone). `graphify update .` run after.

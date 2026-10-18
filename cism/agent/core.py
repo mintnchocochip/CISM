@@ -5,6 +5,7 @@ self.events. Nothing here touches a widget."""
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import os
 import time
@@ -58,6 +59,7 @@ from cism.tui.events import (
     NarrationRedacted,
     NarrationRetracted,
     PhaseChanged,
+    PhaseProposed,
     RunFinished,
     RunStarted,
     ScopeChanged,
@@ -177,9 +179,6 @@ class LangGraphAgent:
             serde=JsonPlusSerializer(allowed_msgpack_modules=_ALLOWED_MSGPACK_MODULES)
         )
         self._thread_id = uuid.uuid4().hex
-        #: True once depg_nodes/depg_edges/memory_items have been seeded —
-        #: after that, re-supplying `{}` would wipe checkpointed state (see _run).
-        self._thread_seeded = False
         self._graph = build_graph(
             self._llm,
             self._tools,
@@ -192,6 +191,12 @@ class LangGraphAgent:
             token_counter=self._token_counter(),
         )
         self._phase = PhaseStateMachine(Phase.RECON)
+        #: Wire-format name of a phase_router-detected move awaiting operator
+        #: approval via /phase <name>, or None — mirrors self._phase's own
+        #: pattern (tracked here, not relied on via checkpoint carry-forward,
+        #: for the same reason depg_nodes/depg_edges/memory_items are now
+        #: always written explicitly into initial_state rather than omitted).
+        self._phase_proposal: str | None = None
         self._target = target
         self._task: asyncio.Task[None] | None = None
         self._log = get_agent_logger()
@@ -285,9 +290,11 @@ class LangGraphAgent:
                     self._task.cancel()
                 self._task = asyncio.create_task(self._replay(argument.strip()))
                 return
+        predecessor = None
         if self._task is not None and not self._task.done():
+            predecessor = self._task
             self._task.cancel()
-        self._task = asyncio.create_task(self._run(text))
+        self._task = asyncio.create_task(self._run(text, predecessor))
 
     async def _set_target(self, argument: str) -> None:
         """Bare /target reports the value; /target <value> replaces it —
@@ -333,6 +340,11 @@ class LangGraphAgent:
                 Narration(entry_id=f"cfg-{uuid.uuid4().hex[:8]}", text=str(exc), done=True)
             )
             return
+        # A pending proposal this confirms (or one for a different phase,
+        # overtaken by the manual move) is resolved either way — clear it
+        # so phase_router can propose again instead of seeing a stale
+        # phase_proposal and assuming nothing has changed.
+        self._phase_proposal = None
         await self._emit(PhaseChanged(phase=requested.to_wire()))
 
     def _scope_guard(self) -> ScopeGuardStage | None:
@@ -579,7 +591,19 @@ class LangGraphAgent:
         if self._task is not None and not self._task.done():
             self._task.cancel()
 
-    async def _run(self, text: str) -> None:
+    async def _run(self, text: str, predecessor: asyncio.Task | None = None) -> None:
+        if predecessor is not None:
+            # submit() cancels the old task and schedules this one in the same
+            # breath, with no await between — without this wait, this run's
+            # graph.astream() could start on the same checkpointer+thread_id
+            # while the old one is still mid-unwind. Nothing below actually
+            # needs two runs on one thread to be concurrent, and the
+            # checkpointer gives no guarantee about what a reader sees while
+            # a writer on the same thread is still in flight, so keep them
+            # strictly sequential rather than find out the hard way.
+            with contextlib.suppress(asyncio.CancelledError):
+                await predecessor
+
         run_id = uuid.uuid4().hex
 
         # Consumed before any await, so a concurrent /ablate can't change "this run".
@@ -653,19 +677,32 @@ class LangGraphAgent:
         initial_state: dict[str, Any] = {
             "messages": [HumanMessage(content=guarded.value)],
             "phase": self._phase.current,
-            "phase_changed": False,
+            "phase_proposal": self._phase_proposal,
+            "phase_proposal_is_new": False,
             "live_tools": self._live_tools,
             "run_id": run_id,
             "target": self._target,
             "context_window": self._context_window,
         }
-        if not self._thread_seeded:
-            # Seed once only — no reducer, so resupplying `{}` every run would wipe checkpointed state.
-            initial_state["depg_nodes"] = {}
-            initial_state["depg_edges"] = []
-            initial_state["memory_items"] = {}
-            self._thread_seeded = True
         run_config = {"configurable": {"thread_id": self._thread_id}}
+        # Always explicit, never by omission. depg_nodes/depg_edges/
+        # memory_items have no reducer configured, so the *intent* has
+        # always been "supply {} only on the thread's first run, then rely
+        # on omitting the key from later input to keep the checkpoint's
+        # value" — but that reliance turned out to not hold: a run
+        # cancelled (or crashed) before completing its own turn can leave a
+        # later run's astream() call not actually carrying the prior
+        # checkpoint's value forward for an omitted key, even though
+        # aget_state() reports that same checkpoint as having it — and
+        # think() then crashes outright on state["depg_nodes"] (2026-10-18,
+        # live, from this exact cancel-and-resubmit sequence). Reading the
+        # checkpoint ourselves and always writing the value explicitly
+        # removes the ambiguity rather than relying on omitted-key-means-
+        # keep-existing semantics under every possible prior-run outcome.
+        checkpointed = (await graph.aget_state(run_config)).values
+        initial_state["depg_nodes"] = checkpointed.get("depg_nodes") or {}
+        initial_state["depg_edges"] = checkpointed.get("depg_edges") or []
+        initial_state["memory_items"] = checkpointed.get("memory_items") or {}
 
         pending_calls: dict[str, ToolCall] = {}
         streamed: dict[str, str] = {"text": ""}
@@ -829,16 +866,21 @@ class LangGraphAgent:
                     )
 
         elif node == "phase_router":
+            # 2026-10-18: phase_router no longer applies a move on its own
+            # (update["phase"] is always the unchanged current phase now) —
+            # this branch is dead for the automatic path and only still
+            # fires if something upstream ever changes that again. The real
+            # signal today is phase_proposal: operator approval (/phase
+            # <name>, _set_phase above) is what actually calls .transition
+            # and emits PhaseChanged.
             new_phase = update.get("phase")
             if new_phase is not None and new_phase != self._phase.current:
-                # The graph's own phase_router node already validated this
-                # move's legality against its own PhaseStateMachine; mirroring
-                # it here via .transition() would re-validate against a
-                # separate instance that can legitimately be out of step
-                # (e.g. right after a replay) and raise on an already-legal
-                # move. This mirror only ever needs to record what happened.
                 self._phase.current = new_phase
                 await self._emit(PhaseChanged(phase=new_phase.to_wire()))
+            proposal = update.get("phase_proposal")
+            if update.get("phase_proposal_is_new") and proposal:
+                self._phase_proposal = proposal
+                await self._emit(PhaseProposed(phase=proposal))
 
         elif node == "depg_update":
             nodes = update.get("depg_nodes") or {}
@@ -863,9 +905,26 @@ class LangGraphAgent:
                 entry_id = f"{run_id}-final-{turn}"
                 final_text = str(message.content)
                 if final_text != streamed["text"]:
-                    await self._emit(
-                        NarrationRedacted(entry_id=entry_id, reason=final_text)
-                    )
+                    if streamed["text"]:
+                        await self._emit(
+                            NarrationRedacted(entry_id=entry_id, reason=final_text)
+                        )
+                    else:
+                        # 2026-10-18: nothing was ever streamed into this
+                        # entry_id -- a pure tool-call turn (empty content)
+                        # that got cut off before act() ran, e.g. by the
+                        # phase-proposal checkpoint or the turn cap, has no
+                        # live-streamed text at all. NarrationRedacted only
+                        # updates an *existing* widget (transcript.py's
+                        # existing_narration is deliberately create-nothing,
+                        # so a redaction for an entry clear_entries() removed
+                        # doesn't mount a phantom) -- with none to find, the
+                        # whole checkpoint/step-limit note silently vanished
+                        # from the TUI. Nothing to redact away either; show
+                        # it as a fresh narration instead.
+                        await self._emit(
+                            Narration(entry_id=entry_id, text=final_text, done=True)
+                        )
                 else:
                     await self._emit(Narration(entry_id=entry_id, text="", done=True))
                 streamed["text"] = ""

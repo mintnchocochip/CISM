@@ -89,7 +89,17 @@ class AgentState(TypedDict):
 
     messages: Annotated[list[Any], add_messages]
     phase: Phase
-    phase_changed: bool
+    #: Wire-format name of the next phase once phase_router has detected
+    #: readiness, or None — the move itself is no longer applied
+    #: automatically (2026-10-18: operator wants to approve it first via
+    #: /phase <name>, which clears this). Persists across turns until
+    #: approved or the run ends.
+    phase_proposal: str | None
+    #: True only on the one step phase_proposal was just set — the signal
+    #: for the one-shot checkpoint/narration/memory side effects below,
+    #: since phase_proposal itself stays truthy for many turns while
+    #: outstanding and must not re-trigger them each time.
+    phase_proposal_is_new: bool
     depg_nodes: dict[str, Node]
     depg_edges: list[Edge]
     memory_items: dict[str, MemoryItem]

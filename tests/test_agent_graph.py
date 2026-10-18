@@ -60,7 +60,8 @@ async def test_an_end_to_end_dummy_run_reaches_respond() -> None:
     initial_state = {
         "messages": [HumanMessage(content="scan it")],
         "phase": Phase.RECON,
-        "phase_changed": False,
+        "phase_proposal": None,
+        "phase_proposal_is_new": False,
         "run_id": "test-run",
         "target": "10.0.0.5",
         "depg_nodes": {},

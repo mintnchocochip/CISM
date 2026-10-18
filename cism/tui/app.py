@@ -36,6 +36,7 @@ from .events import (
     NarrationRedacted,
     NarrationRetracted,
     PhaseChanged,
+    PhaseProposed,
     RunFinished,
     RunStarted,
     SalienceTerms,
@@ -324,9 +325,13 @@ class CISMApp(App[None]):
             self.phase = event.phase
             self.framework = event.framework
             self.status.phase = event.phase
+            self.status.phase_proposal = ""
             self.indicator.set_phase(event.phase)
             transcript.add_phase_rule(event.framework, event.phase)
             self._phase_history.append(PhaseTransition(timestamp=_now_iso(), phase=event.phase))
+
+        elif isinstance(event, PhaseProposed):
+            self.status.phase_proposal = event.phase
 
         elif isinstance(event, ScopeChanged):
             verb = "added" if event.action == "add" else "removed"

@@ -67,12 +67,13 @@ class _RecordingChatModelForNodesTest(BaseChatModel):
 
 def _state(
     messages, depg_nodes=None, depg_edges=None, memory_items=None, target="10.0.0.5",
-    phase=Phase.RECON, phase_changed=False, live_tools=False,
+    phase=Phase.RECON, phase_proposal=None, phase_proposal_is_new=False, live_tools=False,
 ) -> dict:
     return {
         "messages": messages,
         "phase": phase,
-        "phase_changed": phase_changed,
+        "phase_proposal": phase_proposal,
+        "phase_proposal_is_new": phase_proposal_is_new,
         "live_tools": live_tools,
         "depg_nodes": depg_nodes or {},
         "depg_edges": depg_edges or [],
@@ -263,19 +264,19 @@ def test_route_after_think_still_acts_one_short_of_the_turn_cap() -> None:
 def test_route_after_think_stops_on_a_phase_change_even_well_under_the_turn_cap() -> None:
     """2026-10-18, live: a --live-tools engagement raced through four
     phases in one submit() with nothing to stop it in between.
-    phase_changed is now a second, earlier trigger alongside
+    phase_proposal_is_new is now a second, earlier trigger alongside
     MAX_AI_TURNS -- "whichever comes first" -- but only for real engagements
     (live_tools=True); see test_route_after_think_does_not_checkpoint_the_
     dummy_tool_demo_on_a_phase_change below for why."""
     messages = [HumanMessage(content="scan it"), _toolcall_reply()]
-    state = _state(messages, phase_changed=True, live_tools=True)
+    state = _state(messages, phase_proposal="enumeration", phase_proposal_is_new=True, live_tools=True)
 
     assert route_after_think(state) == "respond"
 
 
 def test_route_after_think_still_acts_when_phase_unchanged_and_under_cap() -> None:
     messages = [HumanMessage(content="scan it"), _toolcall_reply()]
-    state = _state(messages, phase_changed=False, live_tools=True)
+    state = _state(messages, phase_proposal_is_new=False, live_tools=True)
 
     assert route_after_think(state) == "act"
 
@@ -284,12 +285,12 @@ def test_route_after_think_does_not_checkpoint_the_dummy_tool_demo_on_a_phase_ch
     """The scripted dummy-tool demo path (live_tools=False, the default
     when LangGraphAgent is built with no real tools) deliberately races
     through multiple phase changes in one submit() with no human in the
-    loop -- confirmed live 2026-10-18 that gating this on phase_changed
+    loop -- confirmed live 2026-10-18 that gating this on phase_proposal_is_new
     alone broke test_dummy_run_produces_a_final_narration_and_two_phase_
     changes (test_langgraph_agent.py). live_tools=False must keep acting
     straight through a phase change."""
     messages = [HumanMessage(content="scan it"), _toolcall_reply()]
-    state = _state(messages, phase_changed=True, live_tools=False)
+    state = _state(messages, phase_proposal="enumeration", phase_proposal_is_new=True, live_tools=False)
 
     assert route_after_think(state) == "act"
 
@@ -619,7 +620,10 @@ def _resolved_node(cause_class: str, *, phase: str, target: str = "10.0.0.5", si
     )
 
 
-def test_phase_router_advances_when_recon_found_an_open_port() -> None:
+def test_phase_router_proposes_when_recon_found_an_open_port() -> None:
+    """2026-10-18: phase_router no longer applies the move itself -- it only
+    proposes (phase_proposal), and the phase itself stays put until an
+    operator confirms via /phase <name> (core.py's _set_phase)."""
     from cism.agent.nodes import make_phase_router
 
     router = make_phase_router()
@@ -631,11 +635,12 @@ def test_phase_router_advances_when_recon_found_an_open_port() -> None:
 
     update = router(state)
 
-    assert update["phase_changed"] is True
-    assert update["phase"] == Phase.ENUMERATION
+    assert update["phase_proposal_is_new"] is True
+    assert update["phase_proposal"] == "enumeration"
+    assert update["phase"] == Phase.RECON
 
 
-def test_phase_router_does_not_advance_on_a_successful_call_with_no_findings() -> None:
+def test_phase_router_does_not_propose_on_a_successful_call_with_no_findings() -> None:
     """The bug this replaces: DEFAULT_NEXT_PHASE advanced on any successful
     tool call, so a scan that found nothing still moved the phase along."""
     from cism.agent.nodes import make_phase_router
@@ -648,10 +653,11 @@ def test_phase_router_does_not_advance_on_a_successful_call_with_no_findings() -
 
     update = router(state)
 
-    assert update["phase_changed"] is False
+    assert update["phase_proposal_is_new"] is False
+    assert not update.get("phase_proposal")
 
 
-def test_phase_router_reports_no_change_when_it_stays_put() -> None:
+def test_phase_router_reports_no_proposal_when_it_stays_put() -> None:
     from cism.agent.nodes import make_phase_router
 
     router = make_phase_router()
@@ -660,7 +666,7 @@ def test_phase_router_reports_no_change_when_it_stays_put() -> None:
 
     update = router(state)
 
-    assert update["phase_changed"] is False
+    assert update["phase_proposal_is_new"] is False
 
 
 def test_phase_router_exploitation_requires_a_found_credential_not_just_an_attempt() -> None:
@@ -676,10 +682,10 @@ def test_phase_router_exploitation_requires_a_found_credential_not_just_an_attem
 
     update = router(state)
 
-    assert update["phase_changed"] is False
+    assert update["phase_proposal_is_new"] is False
 
 
-def test_phase_router_advances_exploitation_on_a_found_credential() -> None:
+def test_phase_router_proposes_exploitation_to_post_exploitation_on_a_found_credential() -> None:
     from cism.agent.nodes import make_phase_router
 
     router = make_phase_router()
@@ -692,8 +698,29 @@ def test_phase_router_advances_exploitation_on_a_found_credential() -> None:
 
     update = router(state)
 
-    assert update["phase_changed"] is True
-    assert update["phase"] == Phase.POST_EXPLOITATION
+    assert update["phase_proposal_is_new"] is True
+    assert update["phase_proposal"] == "post-exploitation"
+    assert update["phase"] == Phase.EXPLOITATION
+
+
+def test_phase_router_does_not_repropose_while_one_is_already_pending() -> None:
+    """Once phase_proposal is set, phase_router must hold rather than
+    re-detect readiness every subsequent turn -- the operator resolves it
+    via /phase, nothing re-triggers on its own."""
+    from cism.agent.nodes import make_phase_router
+
+    router = make_phase_router()
+    nodes = {"n1": _resolved_node("open-port", phase="recon")}
+    state = _state(
+        [HumanMessage(content="x"), ToolMessage(content="ok", tool_call_id="c1", name="nmap")],
+        depg_nodes=nodes,
+        phase_proposal="enumeration",
+    )
+
+    update = router(state)
+
+    assert update["phase_proposal_is_new"] is False
+    assert "phase_proposal" not in update
 
 
 def test_phase_router_enumeration_accepts_any_resolved_in_phase_node() -> None:
@@ -712,15 +739,19 @@ def test_phase_router_enumeration_accepts_any_resolved_in_phase_node() -> None:
 
     update = router(state)
 
-    assert update["phase_changed"] is True
-    assert update["phase"] == Phase.VULNERABILITY_DISCOVERY
+    assert update["phase_proposal_is_new"] is True
+    assert update["phase_proposal"] == "vulnerability-discovery"
+    assert update["phase"] == Phase.ENUMERATION
 
 
-def _memory_state(messages, depg_nodes=None, phase_changed=False) -> dict:
+def _memory_state(
+    messages, depg_nodes=None, phase_proposal=None, phase_proposal_is_new=False
+) -> dict:
     return {
         "messages": messages, "phase": Phase.RECON, "depg_nodes": depg_nodes or {},
         "depg_edges": [], "run_id": "run-1", "target": "10.0.0.5",
-        "memory_items": {}, "phase_changed": phase_changed,
+        "memory_items": {}, "phase_proposal": phase_proposal,
+        "phase_proposal_is_new": phase_proposal_is_new,
     }
 
 
@@ -788,11 +819,14 @@ def test_memory_update_records_narration_from_the_most_recent_ai_message() -> No
     assert len(update["memory_items"]) == 1
 
 
-def test_memory_update_records_a_phase_change() -> None:
+def test_memory_update_records_a_phase_proposal() -> None:
     from cism.agent.nodes import make_memory_update_node
 
     ai, result = _tool_round("c1", "nmap", "ok")
-    state = _memory_state([HumanMessage(content="scan"), ai, result], phase_changed=True)
+    state = _memory_state(
+        [HumanMessage(content="scan"), ai, result],
+        phase_proposal="enumeration", phase_proposal_is_new=True,
+    )
 
     update = make_memory_update_node()(state)
 
@@ -2014,12 +2048,14 @@ def test_respond_still_names_the_dropped_call_with_no_lead_in_text() -> None:
     assert "nikto" in update["messages"][0].content
 
 
-def test_respond_reports_a_phase_change_checkpoint_with_a_findings_summary() -> None:
-    """2026-10-18, live: route_after_think now also stops on a phase
-    change, so respond() needs its own wording for that case (distinct
+def test_respond_reports_a_phase_proposal_checkpoint_with_a_findings_summary() -> None:
+    """2026-10-18, live: route_after_think now also stops on a new phase
+    proposal, so respond() needs its own wording for that case (distinct
     from the turn-cap's _STEP_LIMIT_NOTE) plus the findings gathered so
     far -- the whole point of the checkpoint is to give the operator
-    something to act on before deciding how to proceed."""
+    something to act on before deciding how to proceed. Note this reads
+    phase_proposal, not phase -- the move hasn't been applied, so state["phase"]
+    is deliberately still the phase *before* the proposed one here."""
     respond = make_respond_node(GuardrailChain([]))
     node = Node(
         id="open-port:10.0.0.5:80/tcp", cause_class="open-port",
@@ -2030,8 +2066,9 @@ def test_respond_reports_a_phase_change_checkpoint_with_a_findings_summary() -> 
             content="Let's run nikto next for a full web scan.",
             tool_calls=[{"id": "c1", "name": "nikto", "args": {}}],
         )],
-        "phase_changed": True,
-        "phase": Phase.EXPLOITATION,
+        "phase_proposal": "exploitation",
+        "phase_proposal_is_new": True,
+        "phase": Phase.VULNERABILITY_DISCOVERY,
         "depg_nodes": {node.id: node},
     }
 
