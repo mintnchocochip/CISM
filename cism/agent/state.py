@@ -99,3 +99,11 @@ class AgentState(TypedDict):
     #: set by think() each turn; how many older messages it dropped from the
     #: prompt to fit context_window (B2, AUDIT.md) — 0 when nothing was dropped.
     compacted: int
+    #: True only when real (non-dummy) tools are bound — route_after_think
+    #: uses this to gate the phase-change checkpoint stop (2026-10-18) to
+    #: live engagements only. The scripted dummy-tool demo path
+    #: deliberately races through multiple phase changes in one submit()
+    #: with no human in the loop (AUDIT.md: a phase-advance-rate cap was
+    #: tried and reverted for exactly this reason) — nothing to checkpoint
+    #: there, since there's no real model decision to pause and redirect.
+    live_tools: bool

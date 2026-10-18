@@ -1204,6 +1204,34 @@ async def test_preamble_before_a_tool_call_does_not_corrupt_the_final_narration(
     assert narrations[-1].text == ""
 
 
+async def test_narration_entry_id_is_scoped_per_ai_turn_not_per_run(
+    tmp_path, monkeypatch
+) -> None:
+    """Regression test for the "a later turn's text lands above an earlier
+    turn's tool call in the TUI" bug: entry_id used to be one constant per
+    *run* (f"{run_id}-final") for every "think" call's streamed text, so
+    turn 2's narration got appended into the widget turn 1 already
+    mounted -- positioned above whatever tool call ran in between. Each AI
+    turn must get its own entry_id, and the final done=True marker must
+    land on the *last* turn's entry, not the first's."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    llm = _PreambleThenToolCallChatModel()
+    agent = LangGraphAgent(llm=llm, target="10.0.0.5")
+
+    events = await _run_to_completion(agent, "scan it")
+    await agent.aclose()
+
+    narrations = [e for e in events if isinstance(e, Narration)]
+    turn1_ids = {e.entry_id for e in narrations if e.text == "Let me check. "}
+    turn2_ids = {e.entry_id for e in narrations if e.text in ("Scan ", "complete.")}
+    assert turn1_ids and turn2_ids
+    assert turn1_ids.isdisjoint(turn2_ids)
+
+    final = next(e for e in narrations if e.done)
+    assert final.entry_id in turn2_ids
+    assert final.entry_id not in turn1_ids
+
+
 async def test_guardrail_rewrite_emits_narration_redacted_instead_of_close(
     tmp_path, monkeypatch
 ) -> None:

@@ -60,6 +60,61 @@ _SINGLE_DASH_LONG_OPTION_TOOLS: frozenset[str] = frozenset({"nmap"})
 #: short flags like `-sV`/`-Pn`/`-T4` (matching is case-sensitive prefix).
 _MIN_SINGLE_DASH_LONG_HEAD = 3
 
+#: curl's data/form flags are the one case in this file where the real risk
+#: lives in the VALUE, not the flag: `-d "literal post body"` is harmless,
+#: `-d @/etc/passwd` is a local-file-read-and-exfil primitive. Blocking the
+#: flag outright (as every other entry here does) punishes the harmless,
+#: common case — verifying credentials/form data the agent already found —
+#: for no safety gain, since sqlmap's own `--data` already covers the
+#: dangerous shape just as hard. Scoped to curl only, and only to a flag
+#: used standalone, not bundled into a short-flag cluster (e.g. "-sSd...")
+#: — that shape is rare enough from a model that failing closed there costs
+#: nothing real, and it lets the rest of _hits()'s bundling logic stay
+#: exactly as-is.
+_CURL_VALUE_AWARE_FLAGS: frozenset[str] = frozenset({
+    "-d", "--data", "--data-binary", "--data-urlencode", "--data-raw",
+    "-F", "--form",
+})
+_CURL_FORM_FLAGS: frozenset[str] = frozenset({"-F", "--form"})
+
+
+def _curl_value_aware_flag(token: str) -> tuple[str, str | None] | None:
+    """If `token` is one of curl's value-aware data/form flags — exact,
+    `=`-joined, an unambiguous long-flag abbreviation, or a short flag with
+    an attached value (`-d@file`) — returns ``(canonical_flag, value)``.
+    ``value`` is ``None`` when nothing is attached to this token at all (a
+    bare flag like plain `-d`), meaning the real value is the *next*
+    token. Returns ``None`` for anything that isn't one of these flags,
+    including a short flag bundled with other letters (e.g. "-sSd...") —
+    that deliberately falls through to the normal, always-block path."""
+    head = token.split("=", 1)[0]
+    attached = token[len(head) + 1 :] if "=" in token else None
+    if head in _CURL_VALUE_AWARE_FLAGS:
+        if attached is not None:
+            return head, attached
+        if len(head) == 2 and token != head:
+            return head, token[len(head) :]
+        return head, None
+    if len(head) > 2:
+        matches = [f for f in _CURL_VALUE_AWARE_FLAGS if len(f) > 2 and f.startswith(head)]
+        if len(matches) == 1:
+            return matches[0], attached
+    for flag in _CURL_VALUE_AWARE_FLAGS:
+        if len(flag) == 2 and token.startswith(flag) and token != flag:
+            return flag, token[len(flag) :]
+    return None
+
+
+def _dangerous_data_value(flag: str, value: str) -> bool:
+    """`-F`/`--form`'s own syntax is `name=@file` (upload) or `name=<file`
+    (read) — the `@`/`<` marks the right side of that assignment, not the
+    flag's value as a whole, unlike `-d`/`--data*` where the value itself
+    is the file reference."""
+    if flag in _CURL_FORM_FLAGS:
+        _, _, rhs = value.partition("=")
+        return rhs.startswith("@") or rhs.startswith("<")
+    return value.startswith("@")
+
 
 def _hits(token: str, denylist: frozenset[str], *, single_dash_long: bool = False) -> set[str]:
     """The denylisted flags `token` invokes, via three matching modes:
@@ -114,7 +169,24 @@ class DangerousFlagGuardStage:
         denylist = _SHARED_DANGEROUS_TOKENS | _PER_TOOL_DANGEROUS_TOKENS.get(tool, frozenset())
         single_dash_long = tool in _SINGLE_DASH_LONG_OPTION_TOOLS
         hit: set[str] = set()
-        for token in tokens:
+        skip_next = False
+        for index, token in enumerate(tokens):
+            if skip_next:
+                skip_next = False
+                continue
+            if tool == "curl":
+                matched = _curl_value_aware_flag(token)
+                if matched is not None:
+                    flag, value = matched
+                    if value is None:
+                        if index + 1 < len(tokens):
+                            value = tokens[index + 1]
+                            skip_next = True
+                        else:
+                            value = None  # nothing to verify as safe -- fail closed
+                    if value is None or _dangerous_data_value(flag, value):
+                        hit.add(flag)
+                    continue
             hit |= _hits(token, denylist, single_dash_long=single_dash_long)
         if hit:
             return GuardrailResult(

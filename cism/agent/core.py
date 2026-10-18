@@ -157,6 +157,10 @@ class LangGraphAgent:
         self._graded_propagation = graded_propagation
         #: Privacy Gateway (5.1) — None means no anonymization, the default.
         self._privacy = privacy
+        #: route_after_think's phase-change checkpoint gate (state.py) —
+        #: must be captured before the `or` default below substitutes in
+        #: the dummy registry.
+        self._live_tools = tools is not None
         self._tools = tools or ToolRegistry([dummy_nmap, dummy_msfconsole])
         self._guardrails = guardrails or GuardrailSeam.no_op()
         default_extractor = (
@@ -633,6 +637,7 @@ class LangGraphAgent:
             "messages": [HumanMessage(content=guarded.value)],
             "phase": self._phase.current,
             "phase_changed": False,
+            "live_tools": self._live_tools,
             "run_id": run_id,
             "target": self._target,
             "context_window": self._context_window,
@@ -654,6 +659,15 @@ class LangGraphAgent:
         # started; `tokens` is its own output_tokens so far. See the retry
         # case below for how this gets retracted.
         retriable: dict[str, int] | None = None
+        # One narration entry_id per AI turn, not per run: a run can have
+        # several "think" calls (one per tool-calling turn) before the
+        # final respond(). Reusing one id for all of them made a later
+        # turn's text get appended into the *first* turn's already-mounted
+        # TUI widget — positioned above whatever tool calls ran in
+        # between — instead of a new block below the latest one. Bumped
+        # once per new (non-retry) streaming attempt, the same boundary
+        # already used below to detect "a new attempt started".
+        turn = {"n": 0}
         ok = True
         try:
             async for stream_mode, payload in graph.astream(
@@ -667,17 +681,20 @@ class LangGraphAgent:
                         continue
                     is_retriable = bool(metadata.get("cism_retriable"))
                     if is_retriable and retriable is None:
+                        turn["n"] += 1
                         retriable = {"checkpoint": len(streamed["text"]), "tokens": 0}
                     elif not is_retriable and retriable is not None:
                         # A non-retriable chunk for "think" while a retriable
                         # attempt was active: think() discarded that attempt
-                        # and retried — retract what it already leaked.
+                        # and retried — retract what it already leaked. Same
+                        # turn as the discarded attempt (the retry is still
+                        # this turn's own second try, not a new one).
                         discarded_len = len(streamed["text"]) - retriable["checkpoint"]
                         if discarded_len > 0:
                             streamed["text"] = streamed["text"][: retriable["checkpoint"]]
                             await self._emit(
                                 NarrationRetracted(
-                                    entry_id=f"{run_id}-final", chars=discarded_len
+                                    entry_id=f"{run_id}-final-{turn['n']}", chars=discarded_len
                                 )
                             )
                         if retriable["tokens"]:
@@ -695,7 +712,7 @@ class LangGraphAgent:
                     if content:
                         streamed["text"] += content
                         await self._emit(
-                            Narration(entry_id=f"{run_id}-final", text=content, done=False)
+                            Narration(entry_id=f"{run_id}-final-{turn['n']}", text=content, done=False)
                         )
                     usage = getattr(chunk, "usage_metadata", None)
                     if usage:
@@ -722,7 +739,7 @@ class LangGraphAgent:
                     if node == "think" and retriable is not None:
                         # The attempt was accepted (no retry) — nothing to retract.
                         retriable = None
-                    await self._translate(node, update, run_id, pending_calls, streamed)
+                    await self._translate(node, update, run_id, pending_calls, streamed, turn["n"])
         except asyncio.CancelledError:  # submit() cancelled us for a new run — mirror interrupt()
             await self._emit(Interrupted(reason="superseded by new submission"))
             raise
@@ -751,6 +768,7 @@ class LangGraphAgent:
         run_id: str,
         pending_calls: dict[str, ToolCall],
         streamed: dict[str, str],
+        turn: int,
     ) -> None:
         if node == "think":
             dropped = update.get("compacted") or 0
@@ -823,7 +841,9 @@ class LangGraphAgent:
 
         elif node == "respond":
             for message in update.get("messages", []):
-                entry_id = f"{run_id}-final"
+                # Same id the last "think" call streamed into — respond()
+                # never makes its own LLM call, so there's no new turn here.
+                entry_id = f"{run_id}-final-{turn}"
                 final_text = str(message.content)
                 if final_text != streamed["text"]:
                     await self._emit(

@@ -27,6 +27,7 @@ from cism.agent.nodes import (
     _RETRY_NUDGE,
     _compact_history,
     _depg_context,
+    _format_findings_summary,
     _memory_context,
     make_act_node,
     make_depg_update_node,
@@ -62,10 +63,15 @@ class _RecordingChatModelForNodesTest(BaseChatModel):
         return self
 
 
-def _state(messages, depg_nodes=None, depg_edges=None, memory_items=None, target="10.0.0.5") -> dict:
+def _state(
+    messages, depg_nodes=None, depg_edges=None, memory_items=None, target="10.0.0.5",
+    phase=Phase.RECON, phase_changed=False, live_tools=False,
+) -> dict:
     return {
         "messages": messages,
-        "phase": Phase.RECON,
+        "phase": phase,
+        "phase_changed": phase_changed,
+        "live_tools": live_tools,
         "depg_nodes": depg_nodes or {},
         "depg_edges": depg_edges or [],
         "memory_items": memory_items or {},
@@ -248,6 +254,40 @@ def test_route_after_think_still_acts_one_short_of_the_turn_cap() -> None:
     messages = [HumanMessage(content="scan it")]
     messages.extend(_toolcall_reply() for _ in range(MAX_AI_TURNS - 1))
     state = _state(messages)
+
+    assert route_after_think(state) == "act"
+
+
+def test_route_after_think_stops_on_a_phase_change_even_well_under_the_turn_cap() -> None:
+    """2026-10-18, live: a --live-tools engagement raced through four
+    phases in one submit() with nothing to stop it in between.
+    phase_changed is now a second, earlier trigger alongside
+    MAX_AI_TURNS -- "whichever comes first" -- but only for real engagements
+    (live_tools=True); see test_route_after_think_does_not_checkpoint_the_
+    dummy_tool_demo_on_a_phase_change below for why."""
+    messages = [HumanMessage(content="scan it"), _toolcall_reply()]
+    state = _state(messages, phase_changed=True, live_tools=True)
+
+    assert route_after_think(state) == "respond"
+
+
+def test_route_after_think_still_acts_when_phase_unchanged_and_under_cap() -> None:
+    messages = [HumanMessage(content="scan it"), _toolcall_reply()]
+    state = _state(messages, phase_changed=False, live_tools=True)
+
+    assert route_after_think(state) == "act"
+
+
+def test_route_after_think_does_not_checkpoint_the_dummy_tool_demo_on_a_phase_change() -> None:
+    """The scripted dummy-tool demo path (live_tools=False, the default
+    when LangGraphAgent is built with no real tools) deliberately races
+    through multiple phase changes in one submit() with no human in the
+    loop -- confirmed live 2026-10-18 that gating this on phase_changed
+    alone broke test_dummy_run_produces_a_final_narration_and_two_phase_
+    changes (test_langgraph_agent.py). live_tools=False must keep acting
+    straight through a phase change."""
+    messages = [HumanMessage(content="scan it"), _toolcall_reply()]
+    state = _state(messages, phase_changed=True, live_tools=False)
 
     assert route_after_think(state) == "act"
 
@@ -1248,6 +1288,42 @@ def test_compact_history_truncates_old_tool_output_but_keeps_the_current_turns_f
     assert kept[-1].content == "B" * 2000
 
 
+def test_compact_history_stubs_old_tool_output_harder_once_shrinking_alone_is_not_enough() -> None:
+    """Tier 2: Tier 1's 350/100-char shrink alone still can't fit this
+    budget (4 old turns' worth of shrunk-but-nonzero nmap dumps), so old
+    ToolMessage content gets stubbed to near-nothing instead, letting more
+    of the old turns survive as bare shape rather than being dropped
+    outright. At this exact budget, shrink-only compaction keeps only the
+    current turn (drops 11 of 15 messages); the stub tier keeps 3 of the 4
+    old turns too (drops 3 — one turn's worth of HumanMessage+AIMessage+
+    ToolMessage, still needed to clear the budget), each with its
+    ToolMessage content replaced by the fixed stub, not dropped outright."""
+
+    def old_turn(i: int) -> list:
+        return [
+            HumanMessage(content=f"scan it {i}"),
+            AIMessage(content="", tool_calls=[{"id": f"c{i}", "name": "nmap", "args": {}}]),
+            ToolMessage(content="A" * 2000, tool_call_id=f"c{i}", name="nmap"),
+        ]
+
+    messages = [m for i in range(4) for m in old_turn(i)] + [
+        HumanMessage(content="scan it now"),
+        AIMessage(content="", tool_calls=[{"id": "c_now", "name": "nmap", "args": {}}]),
+        ToolMessage(content="B" * 2000, tool_call_id="c_now", name="nmap"),
+    ]
+
+    kept, dropped = _compact_history(messages, "sys", 1413)
+
+    assert dropped == 3
+    stubbed = [
+        m for m in kept
+        if isinstance(m, ToolMessage) and "omitted under context pressure" in str(m.content)
+    ]
+    assert len(stubbed) == 3
+    # The current turn's own tool result is never touched by either tier.
+    assert kept[-1].content == "B" * 2000
+
+
 def test_compact_history_leaves_short_old_tool_output_untouched() -> None:
     old_tool = ToolMessage(content="short output", tool_call_id="c1", name="nmap")
     messages = [
@@ -1709,3 +1785,59 @@ def test_respond_still_names_the_dropped_call_with_no_lead_in_text() -> None:
 
     assert "investigation-step limit" in update["messages"][0].content
     assert "nikto" in update["messages"][0].content
+
+
+def test_respond_reports_a_phase_change_checkpoint_with_a_findings_summary() -> None:
+    """2026-10-18, live: route_after_think now also stops on a phase
+    change, so respond() needs its own wording for that case (distinct
+    from the turn-cap's _STEP_LIMIT_NOTE) plus the findings gathered so
+    far -- the whole point of the checkpoint is to give the operator
+    something to act on before deciding how to proceed."""
+    respond = make_respond_node(GuardrailChain([]))
+    node = Node(
+        id="open-port:10.0.0.5:80/tcp", cause_class="open-port",
+        target="10.0.0.5", signal="80/tcp http", state="resolved",
+    )
+    state = {
+        "messages": [AIMessage(
+            content="Let's run nikto next for a full web scan.",
+            tool_calls=[{"id": "c1", "name": "nikto", "args": {}}],
+        )],
+        "phase_changed": True,
+        "phase": Phase.EXPLOITATION,
+        "depg_nodes": {node.id: node},
+    }
+
+    update = respond(state)
+
+    text = update["messages"][0].content
+    assert "exploitation" in text
+    assert "nikto" in text
+    assert "80/tcp http" in text
+    assert "investigation-step limit" not in text
+
+
+def test_format_findings_summary_empty_when_nothing_resolved() -> None:
+    node = Node(
+        id="x", cause_class="open-port", target="10.0.0.5",
+        signal="80/tcp", state="untested",
+    )
+
+    assert _format_findings_summary({node.id: node}) == ""
+
+
+def test_format_findings_summary_caps_and_notes_omitted_count() -> None:
+    nodes = {
+        f"n{i}": Node(
+            id=f"n{i}", cause_class="nikto-finding", target="10.0.0.5",
+            signal=f"finding {i}", state="resolved", generality=float(i),
+        )
+        for i in range(15)
+    }
+
+    summary = _format_findings_summary(nodes)
+
+    assert summary.count("- [nikto-finding]") == 12
+    assert "3 more finding(s) not shown" in summary
+    # Highest generality first.
+    assert "finding 14" in summary.splitlines()[1]

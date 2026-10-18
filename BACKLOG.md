@@ -931,3 +931,114 @@ an edge case.
   against the real stack before committing; the SystemMessage crash fix
   specifically confirmed by reproducing the exact Jinja error pre-fix and
   its absence post-fix across repeated runs.
+
+## 14. `--live-tools` launch scripts, a phase-change checkpoint, and a `--max-tokens` default (2026-10-18)
+
+Added `scripts/start_lab.sh` (the `cism-lab` network + dvwa + metasploitable2),
+`scripts/run_tui.sh` (plain host-shell TUI), and `scripts/run_tui_container.sh`
+(the hardened `cism-runner` container from `docker/README.md`, both `cism-lab`
+and `cism-egress` attached — `host.docker.internal` only resolves on the
+latter, D4). Live-tested the container variant and found two real problems
+with the engagement itself, not the scripts:
+
+- **No supervision point.** The TUI's `⏸ manual`/`⏵⏵ auto` status-bar toggle
+  (`cism/tui/widgets/status.py:113,175`) looks like a pause control but is
+  dead — nothing in the codebase ever sets it. A live run raced through
+  recon → enumeration → vulnerability-discovery → exploitation inside one
+  `submit()` with no checkpoint at all.
+- **Unbounded reasoning.** Neither script passed `--max-tokens`, so a turn
+  ran away to 11,000+ decoded tokens (confirmed live via llama.cpp's
+  `/slots` endpoint: `max_tokens: -1`), nearly exhausting the model's 16K
+  context on one single turn.
+
+Fixes:
+- `scripts/run_tui.sh`/`run_tui_container.sh` now default `--max-tokens 4096`
+  (`CISM_MAX_TOKENS` to override) — above both `run_agent.py`'s hard floor
+  (512) and its documented safe default (2048+).
+- `route_after_think` (`cism/agent/nodes.py`) now also stops the loop on a
+  phase change, not just the `MAX_AI_TURNS` cap — "whichever comes first",
+  per the user's explicit choice. Gated on a new `AgentState.live_tools`
+  flag (`cism/agent/state.py`, set from `LangGraphAgent.__init__`'s
+  `tools is not None`, `cism/agent/core.py`): the scripted dummy-tool demo
+  path deliberately races through two phase changes per `submit()`
+  (confirmed by `test_dummy_run_produces_a_final_narration_and_two_phase_
+  changes` breaking when the gate wasn't scoped to live engagements only)
+  and must keep doing so — nothing to checkpoint there, no real model
+  decision to pause and redirect.
+- `respond()` now distinguishes *why* it stopped — the existing
+  `_STEP_LIMIT_NOTE` for the turn cap, a new `_PHASE_CHECKPOINT_NOTE` for a
+  phase change — and appends a real findings digest (`_format_findings_summary`,
+  capped at 12 resolved DEPG nodes by generality) instead of leaving the
+  operator to guess what was found before deciding how to proceed.
+- Verification: `pytest -n auto` 845/845. Live-verified via a headless
+  harness driving `LangGraphAgent` directly inside the real hardened
+  container against dvwa (same approach as §13): one `nmap` call, phase
+  advanced to `enumeration`, and the run stopped with
+  `"Findings so far:\n- [open-port] 80/tcp"` plus the pending tool name
+  (`whatweb`) instead of continuing unsupervised.
+
+## 15. `--backend llamacpp` default, value-aware curl data guardrail, per-turn narration entry_id, threshold-triggered DEPG-only compaction (2026-10-18)
+
+Live-testing §14's checkpoint feature surfaced three more real problems,
+all root-caused directly against the running container's `agent.log`:
+
+- **Context window silently wrong.** Neither launch script passed
+  `--backend llamacpp` (`run_agent.py`'s own default is `"openai"`), so
+  `_refresh_context_window()` (`cism/agent/core.py`) probed Ollama's
+  `/api/show` against a llama.cpp server, 404'd, and silently fell back to
+  the hardcoded 32768 default — double the model's real `n_ctx` (16384),
+  confirmed via `SessionState.context` in the log. `_compact_history`
+  (`cism/agent/nodes.py`) sizes its keep/drop budget off that value, so it
+  was computing room for roughly double what the server would actually
+  accept. `scripts/run_tui.sh`/`run_tui_container.sh` now default
+  `--backend llamacpp` (`CISM_BACKEND` to override) — also switches DEPG
+  extraction onto the json_schema-constrained `/completion` path
+  `run_agent.py --backend` was built for, instead of OpenAI function-calling.
+- **Curl's `-d`/`--data*`/`-F`/`--form` guardrail was value-blind.**
+  `DangerousFlagGuardStage` (`cism/agent/guardrails/dangerous_flags.py`)
+  matched these flags by name only, blocking a literal POST (e.g.
+  verifying credentials the agent just found: `curl -d
+  "username=app&password=vulnerables"`) exactly as hard as the real risk,
+  `curl -d @/etc/passwd` (local-file-read-and-exfil). Added
+  `_curl_value_aware_flag`/`_dangerous_data_value`: only an `@`- (or, for
+  `-F`/`--form`'s `name=<file` syntax, `<`-) prefixed value still blocks;
+  a short flag bundled into a cluster (`-sSd...`) deliberately isn't
+  recognized here and keeps failing closed through the existing generic
+  path. Scoped to curl's data/form flags only — every other entry in the
+  denylist (nmap's `-oN`/etc., sqlmap's `--file-read`/etc.) is inherently
+  about a *path*, not an optionally-literal value, so there's no safe
+  literal case to carve out there.
+- **Narration `entry_id` was scoped to the whole run, not per AI turn.**
+  `_run()` (`cism/agent/core.py`) streams token deltas from every `think()`
+  call in a run, not just the final answer, but emitted all of them under
+  one constant `f"{run_id}-final"`. `Transcript.narration()`
+  (`cism/tui/widgets/transcript.py`) mounts a new widget the first time an
+  id is seen and reuses the existing one — wherever it already sits in the
+  DOM — every time after, so a later turn's text got appended into an
+  earlier turn's already-mounted widget, positioned above whatever tool
+  call ran in between. Fixed by bumping a turn counter at the same
+  boundary already used to detect "a new think() attempt started"
+  (`is_retriable and retriable is None`) and keying every narration event
+  in the live-streaming path — including the final `done=True`/
+  `NarrationRedacted` marker emitted from `respond()` — off
+  `f"{run_id}-final-{turn}"` instead.
+- **History compaction now has a second, threshold-triggered tier.**
+  Measured against a real live engagement log: raw tool output ≈4,401
+  tokens; today's 350/100-char shrink (`_shrink_old_tool_output`) already
+  gets that to ≈808 untouched; a DEPG-only equivalent of the same findings
+  ≈220. Shrinking already captures most of the win over raw, so
+  `_compact_history` (`cism/agent/nodes.py`) only pays the rest of that
+  cost when there's real pressure: a new Tier 2 (`_stub_old_tool_output`)
+  engages *only* when Tier 1's shrink-only pass still has to drop a whole
+  old turn to fit the budget (`dropped > 0`) — stubbing old `ToolMessage`
+  content to a fixed, near-free placeholder instead, which can only let
+  *more* old turns survive as bare conversational shape than Tier 1 could,
+  never fewer. `_depg_context()`/`_memory_context()` already carry the
+  same signal either way, rebuilt fresh from `depg_nodes`/`memory_items`
+  every `think()` call, not from this chat history.
+- Verification: `pytest -n auto` 855/855 (49 in `test_dangerous_flags.py`
+  covering the new value-aware cases, a new per-turn `entry_id` regression
+  test in `test_langgraph_agent.py`, a new Tier 2 compaction test in
+  `test_nodes.py` showing a budget that drops 11/15 messages under
+  shrink-only compaction but only 3/15 once stubbing engages).
+  `graphify update .` run after.

@@ -75,10 +75,17 @@ def hydra(
     pass the exact protocol name hydra expects (e.g. "ssh", "ftp",
     "telnet"). This tool does NOT support HTTP form logins (hydra's
     http-post-form module needs a form-path/field/failure-string argument
-    this tool doesn't expose) — for a web login form, use sqlmap for
-    injection or test credentials with curl instead. Confirmed live
-    2026-10-12: a call aimed at a web login URL with no service argument
-    failed outright with a validation error.
+    this tool doesn't expose) — for a web login form, use sqlmap's --data
+    for injection testing, or curl's -d/--data with a literal (not
+    @filename) value to verify credentials already found elsewhere — a
+    literal value is allowed by DangerousFlagGuardStage, only an
+    @filename-prefixed one (arbitrary local file read) is blocked.
+    Confirmed live 2026-10-18: following the old wording here ("curl to
+    test credentials") sent the model into a dead-end retry loop against
+    that guardrail back when curl's -d was blocked outright, regardless of
+    value; fixed at the guardrail (now value-aware) rather than here.
+    Confirmed live 2026-10-12: a call aimed at a web login URL with no
+    service argument failed outright with a validation error.
 
     Exactly one of usernames/userlist and one of passwords/passwordlist
     must be given; threads is capped at 16 — real safety here is the scope
@@ -87,8 +94,9 @@ def hydra(
         raise ValueError(
             f"{service!r} is not a network service this tool supports (choose "
             f"one of {sorted(_SERVICES)}); there is no web-form module here — "
-            "use sqlmap for injection or curl to test credentials against a "
-            "login page instead."
+            "use sqlmap's --data for injection testing, or curl's -d with a "
+            "literal (non-@filename) value to verify credentials against a "
+            "login page."
         )
     argv = ["-t", str(min(threads, _MAX_THREADS))]
     argv += _cred_flag("-L", usernames, userlist, scratch / "users.txt")
