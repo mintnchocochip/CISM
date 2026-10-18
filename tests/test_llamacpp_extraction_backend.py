@@ -64,6 +64,59 @@ def test_strips_a_trailing_slash_from_base_url(monkeypatch) -> None:
     assert captured["url"] == "http://localhost:8080/completion"
 
 
+def test_strips_a_trailing_v1_suffix_from_base_url(monkeypatch) -> None:
+    """2026-10-18, live: --base-url is the OpenAI-compatible endpoint
+    (".../v1", scripts/run_tui*.sh's own default for --backend llamacpp),
+    but llama.cpp's native /completion lives at the server root. Posting
+    to ".../v1/completion" 404'd on every single call all engagement
+    long, silently falling back to GenericExtractor for every finding."""
+    captured: dict = {}
+
+    def fake_post(url, *, json, timeout):
+        captured["url"] = url
+        return _FakeResponse(payload={"content": '{"findings": []}'})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    backend = LlamaCppExtractionBackend("http://host.docker.internal:8189/v1")
+
+    backend.extract("prompt")
+
+    assert captured["url"] == "http://host.docker.internal:8189/completion"
+
+
+def test_a_v1_suffix_with_a_trailing_slash_is_also_stripped(monkeypatch) -> None:
+    captured: dict = {}
+
+    def fake_post(url, *, json, timeout):
+        captured["url"] = url
+        return _FakeResponse(payload={"content": '{"findings": []}'})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    backend = LlamaCppExtractionBackend("http://host.docker.internal:8189/v1/")
+
+    backend.extract("prompt")
+
+    assert captured["url"] == "http://host.docker.internal:8189/completion"
+
+
+def test_a_host_segment_that_merely_ends_in_v1_is_not_mistaken_for_the_suffix(monkeypatch) -> None:
+    """Regression guard: only a real trailing "/v1" path segment is
+    stripped -- a base URL that just happens to end in those two
+    characters some other way must be left alone."""
+    captured: dict = {}
+
+    def fake_post(url, *, json, timeout):
+        captured["url"] = url
+        return _FakeResponse(payload={"content": '{"findings": []}'})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    backend = LlamaCppExtractionBackend("http://localhost:8080/api/v10")
+
+    backend.extract("prompt")
+
+    assert captured["url"] == "http://localhost:8080/api/v10/completion"
+
+
 def test_an_http_error_returns_none_not_an_exception(monkeypatch) -> None:
     def fake_post(url, *, json, timeout):
         return _FakeResponse(status_code=500)

@@ -506,7 +506,19 @@ class LlamaCppExtractionBackend:
         # way with nothing beyond "unavailable" recorded anywhere -- no
         # way to tell a timeout from a schema-validation failure from a
         # connection error after the fact. `logger` makes that visible.
-        self._base_url = base_url.rstrip("/")
+        # 2026-10-18, live: every single call failed with a 404 all
+        # engagement long -- --base-url is the OpenAI-compatible endpoint
+        # (".../v1", scripts/run_tui*.sh's own default), but llama.cpp's
+        # native /completion lives at the server root, not nested under
+        # /v1. The 2026-10-11 live test this class's docstring describes
+        # predates --base-url carrying a /v1 suffix at all, so it never
+        # hit this. Every tool result silently fell back to
+        # GenericExtractor's opaque hash node instead of a real
+        # structured finding for the whole run.
+        base_url = base_url.rstrip("/")
+        if base_url.endswith("/v1"):
+            base_url = base_url[: -len("/v1")]
+        self._base_url = base_url
         self._n_predict = n_predict
         self._timeout = timeout
         self._log = logger
