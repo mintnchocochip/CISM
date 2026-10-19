@@ -1,0 +1,2155 @@
+{
+  "run_id": "70455d58faa44074adfb08c2eb1de157",
+  "generated_at": "2026-10-19T07:14:46+00:00",
+  "target": "172.28.0.3",
+  "phase_history": [
+    {
+      "timestamp": "2026-10-19T06:17:04+00:00",
+      "phase": "recon"
+    },
+    {
+      "timestamp": "2026-10-19T06:17:59+00:00",
+      "phase": "enumeration"
+    },
+    {
+      "timestamp": "2026-10-19T06:18:29+00:00",
+      "phase": "vulnerability-discovery"
+    },
+    {
+      "timestamp": "2026-10-19T06:19:28+00:00",
+      "phase": "exploitation"
+    }
+  ],
+  "findings": [
+    {
+      "id": "open-port:172.28.0.3:80/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 7,
+      "evidence": [
+        {
+          "timestamp": "06:17:25",
+          "tool": "nmap",
+          "exit_signal": "80/tcp http",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "80/tcp"
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "cause_class": "web-fingerprint",
+      "target": "172.28.0.3",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:18:23",
+          "tool": "whatweb",
+          "exit_signal": "http://172.28.0.3: 302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]"
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "cause_class": "web-fingerprint",
+      "target": "172.28.0.3",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:18:23",
+          "tool": "whatweb",
+          "exit_signal": "http://172.28.0.3/login.php: 200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/phpinfo.php (302)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:19:12",
+          "tool": "gobuster",
+          "exit_signal": "/phpinfo.php (302)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/phpinfo.php (302)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/docs (301)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:19:12",
+          "tool": "gobuster",
+          "exit_signal": "/docs (301)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/docs (301)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/robots.txt (200)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:19:12",
+          "tool": "gobuster",
+          "exit_signal": "/robots.txt (200)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/robots.txt (200)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/config (301)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:19:12",
+          "tool": "gobuster",
+          "exit_signal": "/config (301)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/config (301)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/setup.php (200)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:19:12",
+          "tool": "gobuster",
+          "exit_signal": "/setup.php (200)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/setup.php (200)"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/config:Apache/2.4.25 (Debian)",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.3/config",
+      "generality": 0.5454545454545454,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:20:21",
+          "tool": "curl",
+          "exit_signal": "Server banner reveals Apache 2.4.25 on Debian.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.4.25 (Debian)"
+    },
+    {
+      "id": "redirect:172.28.0.3/config:Moved Permanently",
+      "cause_class": "redirect",
+      "target": "172.28.0.3/config",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:20:21",
+          "tool": "curl",
+          "exit_signal": "Server issues a 301 redirect to /config/.",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "06:20:21",
+          "tool": "curl",
+          "exit_signal": "Server issues a 3 typo'd spelling of Moved Permanently.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:20:21",
+          "tool": "curl",
+          "exit_signal": "Server issues a 301 redirect to /config/.",
+          "tier": "T1"
+        },
+        {
+          "timestamp": "06:20:21",
+          "tool": "curl",
+          "exit_signal": "signal",
+          "tier": "T1"
+        },
+        {
+          "timestamp": "06:20:21",
+          "tool": "curl",
+          "exit_signal": "Server issues a 301 redirect to /config/ blocks all other paths.",
+          "tier": "T1"
+        }
+      ],
+      "decision": null,
+      "signal": "Moved Permanently"
+    },
+    {
+      "id": "redirect:172.28.0.3/config:/config/",
+      "cause_class": "redirect",
+      "target": "172.28.0.3/config",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 2,
+      "evidence": [
+        {
+          "timestamp": "06:20:21",
+          "tool": "curl",
+          "exit_signal": "Server issues a 301 redirect to /config/.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/config/"
+    },
+    {
+      "id": "directory-listing:172.28.0.3/config:Directory listing enabled at /config",
+      "cause_class": "directory-listing",
+      "target": "172.28.0.3/config",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:21:02",
+          "tool": "curl",
+          "exit_signal": "Directory listing exposed at /config",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "06:21:02",
+          "tool": "curl",
+          "exit_signal": "Directory listing exposed at /config",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Directory listing enabled at /config"
+    },
+    {
+      "id": "sensitive-file:172.28.0.3/config:Backup file config.inc.php.bak present",
+      "cause_class": "sensitive-file",
+      "target": "172.28.0.3/config",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:21:02",
+          "tool": "curl",
+          "exit_signal": "Backup file config.inc.php.b accidentally exposed",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "Backup file config.inc.php.bak present"
+    },
+    {
+      "id": "open-port:172.28.0.3/config/config.inc.php.bak:127.00.1",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/config/config.inc.php.bak",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:21:42",
+          "tool": "curl",
+          "exit_signal": "Database server address",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "127.00.1"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/config/config.inc.php.bak:Apache/2.2.8",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.3/config/config.inc.php.bak",
+      "generality": 0.5454545454545454,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:21:42",
+          "tool": "curl",
+          "exit_signal": "Outdated web server",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.2.8"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/config/config.inc.php.bak:Apache/ an old version",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.3/config/config.inc.php.bak",
+      "generality": 0.5454545454545454,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:21:42",
+          "tool": "curl",
+          "exit_signal": "Outdated web server",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/ an old version"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:b17df7ec00ec",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.36363636363636365,
+      "state": "resolved",
+      "downstream": 10,
+      "evidence": [
+        {
+          "timestamp": "06:24:25",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "b17df7ec00ec"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:abc6748fb956",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.36363636363636365,
+      "state": "resolved",
+      "downstream": 9,
+      "evidence": [
+        {
+          "timestamp": "06:27:21",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "abc6748fb956"
+    },
+    {
+      "id": "open-port:172.28.0.3/login.php:HTTP 200",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 8,
+      "evidence": [
+        {
+          "timestamp": "06:28:36",
+          "tool": "curl",
+          "exit_signal": "HTTP 200 response",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:28:36",
+          "tool": "curl",
+          "exit_signal": "HTTP 20 server",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:28:36",
+          "tool": "curl",
+          "exit_signal": "HTTP 200",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "HTTP 200"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:ec62ef3fdc07",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.36363636363636365,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:29:04",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "ec62ef3fdc07"
+    },
+    {
+      "id": "open-port:172.28.0.3/login.php:443/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:35:55",
+          "tool": "curl",
+          "exit_signal": "Open port 443/tcp is open to the network.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:36:23",
+          "tool": "curl",
+          "exit_signal": "Open port 443/tcp is open to the network.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "443/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.3/login.php:80/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:35:55",
+          "tool": "curl",
+          "exit_signal": "Open port 8 open to the network.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "80/tcp"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/login.php:Apache/2.2.8",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.5454545454545454,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:36:23",
+          "tool": "curl",
+          "exit_signal": "Open port 22/tcp is open to the network.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.2.8"
+    },
+    {
+      "id": "signal:172.28.0.3/login.php:Apache/2.2.8",
+      "cause_class": "signal",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:36:23",
+          "tool": "curl",
+          "exit_signal": "Open port 22/tcp is open to the network.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.2.8"
+    },
+    {
+      "id": "open-port:172.28.0.3/login.php:Apache/2.4.25 (Debian)",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:37:30",
+          "tool": "curl",
+          "exit_signal": "Server header reveals Apache 2.4.25 on Debian.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.4.25 (Debian)"
+    },
+    {
+      "id": "open-port:172.28.0.3/login.php:Apache/2.4. output",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:37:30",
+          "tool": "curl",
+          "exit_signal": "Server header reveals Apache 2.2.8",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.4. output"
+    },
+    {
+      "id": "curl:172.28.0.3/index.php:897f7fe7bd93",
+      "cause_class": "curl",
+      "target": "172.28.0.3/index.php",
+      "generality": 0.36363636363636365,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:38:58",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "897f7fe7bd93"
+    },
+    {
+      "id": "curl:172.28.0.3/security.php:e8a6e1c0a6d7",
+      "cause_class": "curl",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.36363636363636365,
+      "state": "resolved",
+      "downstream": 15,
+      "evidence": [
+        {
+          "timestamp": "06:39:43",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "e8a6e1c0a6d7"
+    },
+    {
+      "id": "open-port:172.28.0.3/security.php:HTTP 200",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:40:47",
+          "tool": "curl",
+          "exit_signal": "HTTP 200 response",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:40:47",
+          "tool": "curl",
+          "exit_signal": "HTTP 2 extracting a response",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "HTTP 200"
+    },
+    {
+      "id": "vulnerable-component:172.28.0.3/security.php:Apache 2.2.8",
+      "cause_class": "vulnerable-component",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:40:47",
+          "tool": "curl",
+          "exit_signal": "Apache 2.2.8 server",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache 2.2.8"
+    },
+    {
+      "id": "open-port:172.28.0.3/security.php:HTTP 2 ",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 12,
+      "evidence": [
+        {
+          "timestamp": "06:40:47",
+          "tool": "curl",
+          "exit_signal": "HTTP 200",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "HTTP 2 "
+    },
+    {
+      "id": "open-port:172.28.0.3/security.php:443/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 10,
+      "evidence": [
+        {
+          "timestamp": "06:41:23",
+          "tool": "curl",
+          "exit_signal": "Port 443 is open and accepting TLS traffic.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:46:45",
+          "tool": "curl",
+          "exit_signal": "HTTP server banner",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "443/tcp"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/security.php:Apache/2.2.8",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.5454545454545454,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:41:23",
+          "tool": "curl",
+          "exit_signal": "Apache 2.2.8 is a known-vulnerable version.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.2.8"
+    },
+    {
+      "id": "application-version:172.28.0.3/security.php:DVWA v1.10",
+      "cause_class": "application-version",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:47:50",
+          "tool": "curl",
+          "exit_signal": "Damn Vulnerable Web Application version 1.10 disclosed in page title and footer.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "DVWA v1.10"
+    },
+    {
+      "id": "config-info-disclosure:172.28.0.3/security.php:PHPIDS disabled",
+      "cause_class": "config-info-disclosure",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:47:50",
+          "tool": "curl",
+          "exit_signal": "PHPIDS WAF is disabled, exposing the application to web application firewalls being bypassed.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "PHPIDS disabled"
+    },
+    {
+      "id": "security-level-low:172.28.0.3/security.php:DVWA security level set to low",
+      "cause_class": "security-level-low",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:47:50",
+          "tool": "curl",
+          "exit_signal": "DVWA security level is set to low, making it completely vulnerable with no security measures.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "DVWA security level set to low"
+    },
+    {
+      "id": "csrf-token-missing:172.28.0.3/security.php:CSRF token hidden in hidden input",
+      "cause_class": "csrf-token-missing",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:47:50",
+          "tool": "curl",
+          "exit_signal": "CSRF token present but hidden in a hidden input field.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "CSRF token hidden in hidden input"
+    },
+    {
+      "id": "waf-version:172.28.0.3/security.php:PHPIDS v0.6",
+      "cause_class": "waf-version",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:47:50",
+          "tool": "curl",
+          "exit_signal": "PHPIDS version 0.6 disclosed, which is an outdated WAF.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "PHPIDS v0.6"
+    },
+    {
+      "id": "session-id-weak:172.28.0.3/security.php:Weak session IDs",
+      "cause_class": "session-id-weak",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:47:50",
+          "tool": "curl",
+          "exit_signal": "Weak session IDs vulnerability available in DVWA.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "Weak session IDs"
+    },
+    {
+      "id": "csp-bypass:172.28.0.3/security.php:CSP Bypass",
+      "cause_class": "csp-bypass",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:47:50",
+          "tool": "curl",
+          "exit_signal": "CSP Bypass vulnerability available in DVWA.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "CSP Bypass"
+    },
+    {
+      "id": "xss-dom:172.28.0.3/security.php:XSS (DOM)",
+      "cause_class": "xss-dom",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:47:50",
+          "tool": "curl",
+          "exit_signal": "XSS (DOM) vulnerability available in DVWA.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "XSS (DOM)"
+    },
+    {
+      "id": "xss-reflected:172.28.0.3/security.php:XSS (Reflected)",
+      "cause_class": "xss-reflected",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:47:50",
+          "tool": "curl",
+          "exit_signal": "XSS (Reflected) vulnerability available in DVWA.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "XSS (Reflected)"
+    },
+    {
+      "id": "xss-stored:172.28.0.3/security.php:XSS (Stored)",
+      "cause_class": "xss-stored",
+      "target": "172.28.0.3/security.php",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:47:50",
+          "tool": "curl",
+          "exit_signal": "XSS (Stored) vulnerability available in document title.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "XSS (Stored)"
+    },
+    {
+      "id": "sql-injection:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1:SQL Injection",
+      "cause_class": "sql-injection",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1",
+      "generality": 0.18181818181818182,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:48:59",
+          "tool": "curl",
+          "exit_signal": "Page explicitly labels itself as a SQL Injection vulnerability page.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "SQL Injection"
+    },
+    {
+      "id": "missing-csp-header:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1:missing-csp-header",
+      "cause_class": "missing-csp-header",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:48:59",
+          "tool": "curl",
+          "exit_signal": "No CSP header present in response.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:48:59",
+          "tool": "curl",
+          "exit_signal": "No CSP header present in response.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "missing-csp-header"
+    },
+    {
+      "id": "missing-csp-header:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1:missing-c typo in the prompt",
+      "cause_class": "missing-csp-header",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:48:59",
+          "tool": "curl",
+          "exit_signal": "No CSP header present in response.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "missing-c typo in the prompt"
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1&submit=submit:443/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1&submit=submit",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:50:02",
+          "tool": "curl",
+          "exit_signal": "Port 443 is open.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:51:24",
+          "tool": "curl",
+          "exit_signal": "Port 443 is open.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "443/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1&submit=submit:80/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1&submit=submit",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "06:50:02",
+          "tool": "curl",
+          "exit_signal": "Port 4 JSON is open.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:50:02",
+          "tool": "curl",
+          "exit_signal": "Port 80/tcp is open.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:50:02",
+          "tool": "curl",
+          "exit_signal": "Port 80/tcp is open.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:51:24",
+          "tool": "curl",
+          "exit_signal": "Port 4 JSON is open.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:51:24",
+          "tool": "curl",
+          "exit_signal": "Port 80/tcp is open.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "06:51:24",
+          "tool": "curl",
+          "exit_signal": "Port 80/tcp is open.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "80/tcp"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/vulnerabilities/sqli/?id=1 or 1=1&submit=submit:Apache/2.2.8",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1 or 1=1&submit=submit",
+      "generality": 0.5454545454545454,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:50:50",
+          "tool": "curl",
+          "exit_signal": "Outdated web server version disclosed in the Server header.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.2.8"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/vulnerabilities/sqli:Apache/2.2.8",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.5454545454545454,
+      "state": "resolved",
+      "downstream": 9,
+      "evidence": [
+        {
+          "timestamp": "06:51:49",
+          "tool": "curl",
+          "exit_signal": "Outdated web server version disclosed in the Server header.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "07:03:29",
+          "tool": "curl",
+          "exit_signal": "Outdated web server version disclosed in the Server header.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "07:10:00",
+          "tool": "curl",
+          "exit_signal": "Outdated Apache server version disclosed in the Server header.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.2.8"
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli:7e98516c58c6",
+      "cause_class": "curl",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.36363636363636365,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:54:15",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "7e98516c58c6"
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli/?id=union%20select%20null,null,null,null,null:443/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=union%20select%20null,null,null,null,null",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "07:03:06",
+          "tool": "curl",
+          "exit_signal": "Port 443 is open.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "443/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli/?id=union%20select%20null,null,null,null,null:80/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=union%20select%20null,null,null,null,null",
+      "generality": 0.6363636363636364,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "07:03:06",
+          "tool": "curl",
+          "exit_signal": "Port 4 JSON is open.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "07:03:06",
+          "tool": "curl",
+          "exit_signal": "Port 80/tcp is open.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "07:03:06",
+          "tool": "curl",
+          "exit_signal": "Port 80/tcp is open.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "80/tcp"
+    },
+    {
+      "id": "sql-injection:172.28.0.3/vulnerabilities/sqli:SQL Injection",
+      "cause_class": "sql-injection",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.18181818181818182,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "07:04:15",
+          "tool": "curl",
+          "exit_signal": "DVWA confirms SQL injection vulnerability is present and exploitable.",
+          "tier": "T1"
+        }
+      ],
+      "decision": null,
+      "signal": "SQL Injection"
+    },
+    {
+      "id": "command-injection:172.28.0.3/vulnerabilities/sqli:Command Injection",
+      "cause_class": "command-injection",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.09090909090909091,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "07:04:15",
+          "tool": "curl",
+          "exit_signal": "DVWA confirms command injection vulnerability is present.",
+          "tier": "T1"
+        }
+      ],
+      "decision": null,
+      "signal": "Command Injection"
+    }
+  ],
+  "open_items": [
+    {
+      "id": "pruned:172.28.0.3/login.php:outdated-server-header:172.28.0.3/login.php:Apache/2.4. output",
+      "cause_class": "dead-region",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.2727272727272727,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:37:30",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: outdated-server-header:172.28.0.3/login.php:Apache/2.4. output",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "outdated-server-header:172.28.0.3/login.php:Apache/2.4. output"
+    },
+    {
+      "id": "pruned:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1:csp-bypass:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1:CSP Bypass",
+      "cause_class": "dead-region",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1",
+      "generality": 0.2727272727272727,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "06:48:59",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: csp-bypass:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1:CSP Bypass",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "csp-bypass:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1:CSP Bypass"
+    },
+    {
+      "id": "pruned:172.28.0.3/vulnerabilities/sqli:csrf:172.28.0.3/vulnerabilities/sqli:CSRF",
+      "cause_class": "dead-region",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.2727272727272727,
+      "state": "blocked",
+      "downstream": 5,
+      "evidence": [
+        {
+          "timestamp": "07:04:15",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: csrf:172.28.0.3/vulnerabilities/sqli:CSRF",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "csrf:172.28.0.3/vulnerabilities/sqli:CSRF"
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli:443/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.6363636363636364,
+      "state": "contested",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "07:09:18",
+          "tool": "curl",
+          "exit_signal": "Open port 443/tcp",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "443/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli:HTTP/1.1 200 OK",
+      "cause_class": "open-port",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.6363636363636364,
+      "state": "contested",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "07:10:00",
+          "tool": "curl",
+          "exit_signal": "HTTP 200 response confirms the target is up and serving content.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "HTTP/1.1 200 OK"
+    },
+    {
+      "id": "sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,password FROM users--",
+      "cause_class": "sql-injection",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.18181818181818182,
+      "state": "contested",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "07:10:00",
+          "tool": "curl",
+          "exit_signal": "UNION-based SQL injection confirmed by dumping user/password columns.",
+          "tier": "T1"
+        },
+        {
+          "timestamp": "07:10:00",
+          "tool": "curl",
+          "exit_signal": "UNION-based SQL injection confirmed by dumping user/password columns.",
+          "tier": "T1"
+        }
+      ],
+      "decision": null,
+      "signal": "UNION SELECT user,password FROM users--"
+    },
+    {
+      "id": "sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,passwo",
+      "cause_class": "sql-injection",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.18181818181818182,
+      "state": "contested",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "07:10:00",
+          "tool": "curl",
+          "exit_signal": "UNION-based SQL injection confirmed by dumping user/password columns.",
+          "tier": "T1"
+        }
+      ],
+      "decision": null,
+      "signal": "UNION SELECT user,passwo"
+    },
+    {
+      "id": "sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,password",
+      "cause_class": "sql-injection",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.18181818181818182,
+      "state": "contested",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "07:10:00",
+          "tool": "curl",
+          "exit_signal": "UNION-based SQL active on this host.",
+          "tier": "T1"
+        }
+      ],
+      "decision": null,
+      "signal": "UNION SELECT user,password"
+    }
+  ],
+  "edges": [
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "web-fingerprint:172.28.0.3:302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "web-fingerprint:172.28.0.3:200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "exposed-path:172.28.0.3:/phpinfo.php (302)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "exposed-path:172.28.0.3:/docs (301)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "exposed-path:172.28.0.3:/robots.txt (200)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "exposed-path:172.28.0.3:/config (301)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "exposed-path:172.28.0.3:/setup.php (200)",
+      "weight": 1.0
+    },
+    {
+      "parent": "redirect:172.28.0.3/config:/config/",
+      "child": "directory-listing:172.28.0.3/config:Directory listing enabled at /config",
+      "weight": 1.0
+    },
+    {
+      "parent": "redirect:172.28.0.3/config:/config/",
+      "child": "sensitive-file:172.28.0.3/config:Backup file config.inc.php.bak present",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:b17df7ec00ec",
+      "child": "curl:172.28.0.3/login.php:abc6748fb956",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:abc6748fb956",
+      "child": "open-port:172.28.0.3/login.php:HTTP 200",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/login.php:HTTP 200",
+      "child": "curl:172.28.0.3/login.php:ec62ef3fdc07",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/login.php:HTTP 200",
+      "child": "open-port:172.28.0.3/login.php:443/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/login.php:HTTP 200",
+      "child": "open-port:172.28.0.3/login.php:80/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/login.php:HTTP 200",
+      "child": "outdated-server-header:172.28.0.3/login.php:Apache/2.2.8",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/login.php:HTTP 200",
+      "child": "signal:172.28.0.3/login.php:Apache/2.2.8",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/login.php:HTTP 200",
+      "child": "open-port:172.28.0.3/login.php:Apache/2.4.25 (Debian)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/login.php:HTTP 200",
+      "child": "pruned:172.28.0.3/login.php:outdated-server-header:172.28.0.3/login.php:Apache/2.4. output",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/login.php:HTTP 200",
+      "child": "open-port:172.28.0.3/login.php:Apache/2.4. output",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/security.php:e8a6e1c0a6d7",
+      "child": "open-port:172.28.0.3/security.php:HTTP 200",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/security.php:e8a6e1c0a6d7",
+      "child": "vulnerable-component:172.28.0.3/security.php:Apache 2.2.8",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/security.php:e8a6e1c0a6d7",
+      "child": "open-port:172.28.0.3/security.php:HTTP 2 ",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:HTTP 2 ",
+      "child": "open-port:172.28.0.3/security.php:443/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:HTTP 2 ",
+      "child": "outdated-server-header:172.28.0.3/security.php:Apache/2.2.8",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:443/tcp",
+      "child": "application-version:172.28.0.3/security.php:DVWA v1.10",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:443/tcp",
+      "child": "config-info-disclosure:172.28.0.3/security.php:PHPIDS disabled",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:443/tcp",
+      "child": "security-level-low:172.28.0.3/security.php:DVWA security level set to low",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:443/tcp",
+      "child": "csrf-token-missing:172.28.0.3/security.php:CSRF token hidden in hidden input",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:443/tcp",
+      "child": "waf-version:172.28.0.3/security.php:PHPIDS v0.6",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:443/tcp",
+      "child": "session-id-weak:172.28.0.3/security.php:Weak session IDs",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:443/tcp",
+      "child": "csp-bypass:172.28.0.3/security.php:CSP Bypass",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:443/tcp",
+      "child": "xss-dom:172.28.0.3/security.php:XSS (DOM)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:443/tcp",
+      "child": "xss-reflected:172.28.0.3/security.php:XSS (Reflected)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/security.php:443/tcp",
+      "child": "xss-stored:172.28.0.3/security.php:XSS (Stored)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1&submit=submit:80/tcp",
+      "child": "open-port:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1&submit=submit:443/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "outdated-server-header:172.28.0.3/vulnerabilities/sqli:Apache/2.2.8",
+      "child": "curl:172.28.0.3/vulnerabilities/sqli:7e98516c58c6",
+      "weight": 1.0
+    },
+    {
+      "parent": "outdated-server-header:172.28.0.3/vulnerabilities/sqli:Apache/2.2.8",
+      "child": "sql-injection:172.28.0.3/vulnerabilities/sqli:SQL Injection",
+      "weight": 1.0
+    },
+    {
+      "parent": "outdated-server-header:172.28.0.3/vulnerabilities/sqli:Apache/2.2.8",
+      "child": "command-injection:172.28.0.3/vulnerabilities/sqli:Command Injection",
+      "weight": 1.0
+    },
+    {
+      "parent": "outdated-server-header:172.28.0.3/vulnerabilities/sqli:Apache/2.2.8",
+      "child": "pruned:172.28.0.3/vulnerabilities/sqli:csrf:172.28.0.3/vulnerabilities/sqli:CSRF",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.3/vulnerabilities/sqli:csrf:172.28.0.3/vulnerabilities/sqli:CSRF",
+      "child": "open-port:172.28.0.3/vulnerabilities/sqli:443/tcp",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.3/vulnerabilities/sqli:csrf:172.28.0.3/vulnerabilities/sqli:CSRF",
+      "child": "open-port:172.28.0.3/vulnerabilities/sqli:HTTP/1.1 200 OK",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.3/vulnerabilities/sqli:csrf:172.28.0.3/vulnerabilities/sqli:CSRF",
+      "child": "sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,password FROM users--",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.3/vulnerabilities/sqli:csrf:172.28.0.3/vulnerabilities/sqli:CSRF",
+      "child": "sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,passwo",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.3/vulnerabilities/sqli:csrf:172.28.0.3/vulnerabilities/sqli:CSRF",
+      "child": "sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,password",
+      "weight": 1.0
+    }
+  ],
+  "memory_context": [
+    {
+      "id": "open-port:172.28.0.3:80/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 3154.8009979724884,
+      "snippet": "80/tcp http",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:i'll start reconnaissance on dvwa (172.28.0.3) with an nmap scan to map open ports and services.",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 3154.800977706909,
+      "snippet": "I'll start reconnaissance on DVWA (172.28.0.3) with an nmap scan to map open ports and services.",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:recon:phase proposal -> enumeration (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.0,
+      "age_s": 3154.8009741306305,
+      "snippet": "phase proposal -> enumeration (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 3097.149074077606,
+      "snippet": "http://172.28.0.3: 302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "hits": 1
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 3097.149068593979,
+      "snippet": "http://172.28.0.3/login.php: 200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "hits": 1
+    },
+    {
+      "id": "narration:enumeration:i'll run whatweb to fingerprint the full web technology stack on dvwa.",
+      "tier": "T3",
+      "phase_tag": "enumeration",
+      "salience": 0.8,
+      "age_s": 3097.149044752121,
+      "snippet": "I'll run whatweb to fingerprint the full web technology stack on DVWA.",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:enumeration:phase proposal -> vulnerability-discovery (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.0,
+      "age_s": 3097.149041414261,
+      "snippet": "phase proposal -> vulnerability-discovery (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/phpinfo.php (302)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 3047.969051361084,
+      "snippet": "/phpinfo.php (302)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/docs (301)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 3047.969047307968,
+      "snippet": "/docs (301)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/robots.txt (200)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 3047.969046831131,
+      "snippet": "/robots.txt (200)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/config (301)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 3047.9690475463867,
+      "snippet": "/config (301)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/setup.php (200)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 3047.9690461158752,
+      "snippet": "/setup.php (200)",
+      "hits": 1
+    },
+    {
+      "id": "narration:vulnerability-discovery:i'll run gobuster against dvwa to enumerate additional exposed paths.",
+      "tier": "T3",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 0.8,
+      "age_s": 3047.9689841270447,
+      "snippet": "I'll run gobuster against DVWA to enumerate additional exposed paths.",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:vulnerability-discovery:phase proposal -> exploitation (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.0,
+      "age_s": 3047.9689786434174,
+      "snippet": "phase proposal -> exploitation (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/config:Apache/2.4.25 (Debian)",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2979.124826669693,
+      "snippet": "Server banner reveals Apache 2.4.25 on Debian.",
+      "hits": 1
+    },
+    {
+      "id": "redirect:172.28.0.3/config:Moved Permanently",
+      "tier": "T1",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2979.1248207092285,
+      "snippet": "Server issues a 301 redirect to /config/ blocks all other paths.",
+      "hits": 1
+    },
+    {
+      "id": "redirect:172.28.0.3/config:/config/",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2979.12482047081,
+      "snippet": "Server issues a 301 redirect to /config/.",
+      "hits": 1
+    },
+    {
+      "id": "directory-listing:172.28.0.3/config:Directory listing enabled at /config",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2938.057801961899,
+      "snippet": "Directory listing exposed at /config",
+      "hits": 1
+    },
+    {
+      "id": "sensitive-file:172.28.0.3/config:Backup file config.inc.php.bak present",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2938.0577924251556,
+      "snippet": "Backup file config.inc.php.b accidentally exposed",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/config/config.inc.php.bak:127.00.1",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2897.802866458893,
+      "snippet": "Database server address",
+      "hits": 1
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/config/config.inc.php.bak:Apache/2.2.8",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2897.8028614521027,
+      "snippet": "Outdated web server",
+      "hits": 1
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/config/config.inc.php.bak:Apache/ an old version",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2897.802860736847,
+      "snippet": "Outdated web server",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:b17df7ec00ec",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2734.847445487976,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:abc6748fb956",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2559.6034309864044,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll fetch login.php fresh to capture the set-cookie header and the user_token, then post with those exact values.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 2559.6034111976624,
+      "snippet": "I'll fetch login.php fresh to capture the Set-Cookie header and the user_token, then POST with those exact values.",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/login.php:HTTP 200",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2483.8270256519318,
+      "snippet": "HTTP 200",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:ec62ef3fdc07",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2455.8961424827576,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll fetch login.php with -i to see the set-cookie header, then post with the cookie attached.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 2455.8961017131805,
+      "snippet": "I'll fetch login.php with -i to see the Set-Cookie header, then POST with the cookie attached.",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/login.php:443/tcp",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2045.0949275493622,
+      "snippet": "Open port 443/tcp is open to the network.",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.3/login.php:80/tcp",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2045.0949189662933,
+      "snippet": "Open port 8 open to the network.",
+      "hits": 1
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/login.php:Apache/2.2.8",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2017.483328819275,
+      "snippet": "Open port 22/tcp is open to the network.",
+      "hits": 1
+    },
+    {
+      "id": "signal:172.28.0.3/login.php:Apache/2.2.8",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 2017.4833226203918,
+      "snippet": "Open port 22/tcp is open to the network.",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/login.php:Apache/2.4.25 (Debian)",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1950.6264703273773,
+      "snippet": "Server header reveals Apache 2.4.25 on Debian.",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/login.php:Apache/2.4. output",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1950.62646150589,
+      "snippet": "Server header reveals Apache 2.2.8",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/index.php:897f7fe7bd93",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1861.7319672107697,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/security.php:e8a6e1c0a6d7",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1816.7650737762451,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/security.php:HTTP 200",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1753.4778814315796,
+      "snippet": "HTTP 2 extracting a response",
+      "hits": 1
+    },
+    {
+      "id": "vulnerable-component:172.28.0.3/security.php:Apache 2.2.8",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1753.4778757095337,
+      "snippet": "Apache 2.2.8 server",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/security.php:HTTP 2 ",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1753.4778740406036,
+      "snippet": "HTTP 200",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/security.php:443/tcp",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1717.0932672023773,
+      "snippet": "Port 443 is open and accepting TLS traffic.",
+      "hits": 2
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/security.php:Apache/2.2.8",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1717.0932641029358,
+      "snippet": "Apache 2.2.8 is a known-vulnerable version.",
+      "hits": 1
+    },
+    {
+      "id": "application-version:172.28.0.3/security.php:DVWA v1.10",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1330.429963350296,
+      "snippet": "Damn Vulnerable Web Application version 1.10 disclosed in page title and footer.",
+      "hits": 1
+    },
+    {
+      "id": "config-info-disclosure:172.28.0.3/security.php:PHPIDS disabled",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1330.4299550056458,
+      "snippet": "PHPIDS WAF is disabled, exposing the application to web application firewalls being bypassed.",
+      "hits": 1
+    },
+    {
+      "id": "security-level-low:172.28.0.3/security.php:DVWA security level set to low",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1330.4299502372742,
+      "snippet": "DVWA security level is set to low, making it completely vulnerable with no security measures.",
+      "hits": 1
+    },
+    {
+      "id": "csrf-token-missing:172.28.0.3/security.php:CSRF token hidden in hidden input",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1330.429949760437,
+      "snippet": "CSRF token present but hidden in a hidden input field.",
+      "hits": 1
+    },
+    {
+      "id": "waf-version:172.28.0.3/security.php:PHPIDS v0.6",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1330.4299495220184,
+      "snippet": "PHPIDS version 0.6 disclosed, which is an outdated WAF.",
+      "hits": 1
+    },
+    {
+      "id": "session-id-weak:172.28.0.3/security.php:Weak session IDs",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1330.4299488067627,
+      "snippet": "Weak session IDs vulnerability available in DVWA.",
+      "hits": 1
+    },
+    {
+      "id": "csp-bypass:172.28.0.3/security.php:CSP Bypass",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1330.4299483299255,
+      "snippet": "CSP Bypass vulnerability available in DVWA.",
+      "hits": 1
+    },
+    {
+      "id": "xss-dom:172.28.0.3/security.php:XSS (DOM)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1330.429948091507,
+      "snippet": "XSS (DOM) vulnerability available in DVWA.",
+      "hits": 1
+    },
+    {
+      "id": "xss-reflected:172.28.0.3/security.php:XSS (Reflected)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1330.4299478530884,
+      "snippet": "XSS (Reflected) vulnerability available in DVWA.",
+      "hits": 1
+    },
+    {
+      "id": "xss-stored:172.28.0.3/security.php:XSS (Stored)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1330.429948091507,
+      "snippet": "XSS (Stored) vulnerability available in document title.",
+      "hits": 1
+    },
+    {
+      "id": "sql-injection:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1:SQL Injection",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1261.340265750885,
+      "snippet": "Page explicitly labels itself as a SQL Injection vulnerability page.",
+      "hits": 1
+    },
+    {
+      "id": "missing-csp-header:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1:missing-csp-header",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1261.3402607440948,
+      "snippet": "No CSP header present in response.",
+      "hits": 1
+    },
+    {
+      "id": "missing-csp-header:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1:missing-c typo in the prompt",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1261.340259552002,
+      "snippet": "No CSP header present in response.",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1&submit=submit:443/tcp",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1198.6275177001953,
+      "snippet": "Port 443 is open.",
+      "hits": 2
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli/?id=1%20or%201=1&submit=submit:80/tcp",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1198.6275050640106,
+      "snippet": "Port 80/tcp is open.",
+      "hits": 2
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/vulnerabilities/sqli/?id=1 or 1=1&submit=submit:Apache/2.2.8",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1150.3269984722137,
+      "snippet": "Outdated web server version disclosed in the Server header.",
+      "hits": 1
+    },
+    {
+      "id": "tool-failure:exploitation:toolexecutionerror: curl exited 3 curl: (3) url rejected: malformed input to a url function",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.0,
+      "age_s": 1150.3269302845001,
+      "snippet": "ToolExecutionError: curl exited 3\ncurl: (3) URL rejected: Malformed input to a URL function\n",
+      "hits": 3
+    },
+    {
+      "id": "outdated-server-header:172.28.0.3/vulnerabilities/sqli:Apache/2.2.8",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1091.286273241043,
+      "snippet": "Outdated web server version disclosed in the Server header.",
+      "hits": 3
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli:7e98516c58c6",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 944.9132173061371,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli/?id=union%20select%20null,null,null,null,null:443/tcp",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 414.58656644821167,
+      "snippet": "Port 443 is open.",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli/?id=union%20select%20null,null,null,null,null:80/tcp",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 414.58656072616577,
+      "snippet": "Port 80/tcp is open.",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll dump the full users table using union-based injection. the dvwa users table has 5 columns (user_id, user, password,",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 414.5865364074707,
+      "snippet": "I'll dump the full users table using UNION-based injection. The DVWA users table has 5 columns (user_id, user, password,",
+      "hits": 1
+    },
+    {
+      "id": "sql-injection:172.28.0.3/vulnerabilities/sqli:SQL Injection",
+      "tier": "T1",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 344.94947719573975,
+      "snippet": "DVWA confirms SQL injection vulnerability is present and exploitable.",
+      "hits": 1
+    },
+    {
+      "id": "command-injection:172.28.0.3/vulnerabilities/sqli:Command Injection",
+      "tier": "T1",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 344.9494695663452,
+      "snippet": "DVWA confirms command injection vulnerability is present.",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli:443/tcp",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 42.59382462501526,
+      "snippet": "Open port 443/tcp",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.3/vulnerabilities/sqli:HTTP/1.1 200 OK",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 0.001814126968383789,
+      "snippet": "HTTP 200 response confirms the target is up and serving content.",
+      "hits": 1
+    },
+    {
+      "id": "sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,password FROM users--",
+      "tier": "T1",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 0.0018110275268554688,
+      "snippet": "UNION-based SQL injection confirmed by dumping user/password columns.",
+      "hits": 1
+    },
+    {
+      "id": "sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,passwo",
+      "tier": "T1",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 0.001809835433959961,
+      "snippet": "UNION-based SQL injection confirmed by dumping user/password columns.",
+      "hits": 1
+    },
+    {
+      "id": "sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,password",
+      "tier": "T1",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 0.0018091201782226562,
+      "snippet": "UNION-based SQL active on this host.",
+      "hits": 1
+    }
+  ],
+  "metrics": {
+    "ok": true,
+    "tool_calls": 1,
+    "tool_failures": 0,
+    "guardrail_blocks": 0,
+    "extraction_fallbacks": 1,
+    "tokens_total": 26352
+  }
+}
