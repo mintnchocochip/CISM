@@ -1751,3 +1751,37 @@ is `test_snapshots.py`'s pre-existing order-dependent flakiness under
 strip, the CSRF-token mask, that a real dumped hash is *not* masked, and
 the combined real-world repro (two login-page fetches differing only by
 timing + token, now hashing identically). `graphify update .` run after.
+
+## 25. Noted, not yet fixed: a text submission sent while a `PhaseProposed` is pending can silently auto-confirm it instead of being treated as a new operator message (2026-10-19)
+
+Live, driving a TUI session via `tmux send-keys`: with a phase-approval
+modal/proposal pending, submitting a plain text redirect (not `/phase
+...`, not the approve keybinding) twice landed as the pending proposal
+getting silently confirmed — the engagement jumped straight from
+`post-exploitation` to the terminal `reporting` phase mid-investigation,
+before the model had actually used a credential it had only just found
+(not yet attempted the login). Phase transitions in this state machine
+are one-directional (confirmed live: `/phase post-exploitation` from
+`reporting` returns `"cannot transition from REPORTING to
+POST_EXPLOITATION"`), so this isn't just a wasted turn — it permanently
+ends that engagement's ability to complete the step the operator
+actually asked for, with no recovery but starting over.
+
+Not root-caused yet — candidates worth checking first, not yet
+narrowed down: whether a pending `PhaseProposed` modal is still
+intercepting plain `Enter`/text submission as "approve" even after new
+text has been typed into the input box; a race between the TUI's event
+loop and `tmux send-keys`' near-simultaneous keystrokes-then-Enter
+(plausible but unconfirmed, since this reproduced even with the text
+visibly present in the input box before Enter was sent the second time);
+or something specific to this model/build's modal-dismissal path, since
+it didn't happen with the other models driven the same way earlier
+tonight. Revisit with a controlled, slowed-down repro (type, wait,
+screenshot/capture-pane, then Enter as a separate step) before touching
+any code — right now there's a reproduced symptom but no confirmed root
+cause, and this file's own working policy is root-cause-first.
+
+Interim mitigation until fixed: don't submit a new instruction while a
+phase proposal is visibly pending in the TUI — dismiss or explicitly
+approve/reject it first, then send the next message as its own,
+separate step.
