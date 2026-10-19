@@ -1785,3 +1785,54 @@ Interim mitigation until fixed: don't submit a new instruction while a
 phase proposal is visibly pending in the TUI — dismiss or explicitly
 approve/reject it first, then send the next message as its own,
 separate step.
+
+## 26. A model declared a login "successful" from an empty response body alone — the same empty body is DVWA's actual response on both success and rejection (2026-10-19)
+
+Live, Gemma 4 E4B against DVWA: it POSTed `admin`/`password` to
+`login.php` with no session cookie attached and a stale CSRF token
+reused from several turns earlier, got back a 0-byte response, and
+narrated "the login attempt ... was successful ... we have successfully
+gained access" — then planned its next step (an LFI attempt) on that
+premise, without ever checking the one thing that would have confirmed
+or refuted it.
+
+Verified directly against the live target (bypassing the agent, same
+ground-truth-check pattern as earlier live sessions) that this
+conclusion cannot be drawn from an empty body alone on this target:
+
+- A **well-formed** login (matching `PHPSESSID` cookie + a token fetched
+  from that same session) returns `302 Found`, `Content-Length: 0`,
+  `Location: index.php` — real success.
+- The model's **actual** request shape (no cookie at all, stale token)
+  also returns `302 Found`, `Content-Length: 0` — but `Location:
+  login.php` — rejected, bounced straight back to the login page.
+
+Both cases are byte-for-byte identical in everything the model's own
+`curl` call captured, because it never requested `-i`/`-D-` to see
+status code or headers — only the `Location` value distinguishes them,
+and that was never visible to it. So this wasn't just a wrong
+conclusion, it was an *unfalsifiable* one from the evidence the model
+chose to look at: a 0-byte body genuinely doesn't tell you which case
+you're in without headers, on this specific target's login behavior.
+
+Options worth weighing next time this is picked up, not yet decided
+between:
+- Force `-i` (or a header-revealing flag) onto curl's own forced flags
+  in the catalog, so the agent always has status/redirect-target
+  visibility and physically cannot reach this blind spot — the
+  strongest fix, but changes curl's default output shape for every
+  call, including ones where it's irrelevant noise.
+- A narrower nudge via the tool's own description (similar to the
+  existing curl catalog entry's live-correction comments) telling the
+  model specifically that an empty body on a POST to a login endpoint
+  is not evidence of success and `-i` is required to confirm a
+  redirect's target — cheaper, but relies on the model reading and
+  acting on prose rather than a structural guarantee.
+- Leave as an operator-nudge case (what happened live tonight): catch
+  it when the narration claims an unverified success and redirect the
+  model to actually check, same as any other wrong-conclusion. Doesn't
+  scale to an unattended run, but needs no code change.
+
+Not fixed tonight — flagged live to the operator, who redirected the
+model directly rather than waiting for it to self-correct (it hadn't,
+across one full turn of acting on the false premise already).
