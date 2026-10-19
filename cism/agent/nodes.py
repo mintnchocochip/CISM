@@ -9,6 +9,7 @@ import asyncio
 import json
 import re
 import uuid
+from collections import deque
 from typing import Awaitable, Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -414,13 +415,54 @@ def _display_signal(n: Node) -> str:
     return n.signal or n.id
 
 
-def _depg_context(depg_nodes: dict) -> str:
+def _select_subgraph(graph: Graph, target: str, nodes: list[Node]) -> list[Node]:
+    """BACKLOG.md #24: an edge-aware replacement for a flat per-target cap.
+    Fills the per-target budget in priority order: (1) every T1 node,
+    unconditionally -- a confirmed credential/exploit must never be
+    crowded out by recency or position; (2) a bounded BFS outward from
+    the target's most recently touched node (``graph.last_for_target``),
+    over both ``_children`` and ``_parents`` -- same traversal shape as
+    ``Graph._weakly_connected``, just not state-restricted -- recovering
+    the causal neighborhood of wherever the engagement's attention
+    currently is; (3) only once that's exhausted, whatever's left in
+    `nodes`' existing unresolved-first order (in practice, almost always
+    GenericExtractor's edge-less orphans) as the lowest-priority filler.
+    `nodes` is assumed already sorted unresolved/contested-first."""
+    tier1 = [n for n in nodes if any(e.tier == "T1" for e in n.evidence)]
+    seen = {n.id for n in tier1}
+
+    neighborhood: list[Node] = []
+    budget = max(_DEPG_CONTEXT_CAP_PER_TARGET - len(tier1), 0)
+    start = graph.last_for_target.get(target)
+    if start is not None and budget:
+        queue = deque([start])
+        queued = {start}
+        while queue and len(neighborhood) < budget:
+            current = queue.popleft()
+            node = graph.nodes.get(current)
+            if node is not None and current not in seen:
+                neighborhood.append(node)
+                seen.add(current)
+            for neighbor in graph._children.get(current, []) + graph._parents.get(current, []):
+                if neighbor not in queued:
+                    queued.add(neighbor)
+                    queue.append(neighbor)
+
+    budget = max(_DEPG_CONTEXT_CAP_PER_TARGET - len(tier1) - len(neighborhood), 0)
+    filler = [n for n in nodes if n.id not in seen][:budget]
+    return tier1 + neighborhood + filler
+
+
+def _depg_context(depg_nodes: dict, depg_edges: list | None = None) -> str:
     """Per-target findings summary, rebuilt fresh every think() call from
     DEPG state so it survives _compact_history dropping the turns a finding
-    came from. Targets and nodes are capped and unresolved-first sorted so
-    a big multi-host run can't grow this unboundedly or bury a live finding."""
+    came from. Targets are capped and unresolved-first sorted; which nodes
+    are shown within a target comes from _select_subgraph, not just a flat
+    slice, so a big multi-host run can't grow this unboundedly or bury a
+    live finding under whatever happens to sort first."""
     if not depg_nodes:
         return ""
+    graph = Graph.from_state(depg_nodes, depg_edges or [])
     by_target: dict[str, list] = {}
     for node in depg_nodes.values():
         by_target.setdefault(node.target, []).append(node)
@@ -437,7 +479,7 @@ def _depg_context(depg_nodes: dict) -> str:
     lines = ["Findings so far, by target (from the dependency graph, not the chat above):"]
     for target in targets[:_DEPG_CONTEXT_MAX_TARGETS]:
         nodes = by_target[target]
-        shown = nodes[:_DEPG_CONTEXT_CAP_PER_TARGET]
+        shown = _select_subgraph(graph, target, nodes)
         parts = [f"{n.cause_class}:{_display_signal(n)} ({n.state})" for n in shown]
         if len(nodes) > len(shown):
             parts.append(f"+{len(nodes) - len(shown)} more")
@@ -791,7 +833,7 @@ def make_think_node(
 
         context_summary = "\n\n".join(
             part for part in (
-                _depg_context(state["depg_nodes"]),
+                _depg_context(state["depg_nodes"], state["depg_edges"]),
                 _memory_context(state["memory_items"], screen=_for_model),
             ) if part
         )

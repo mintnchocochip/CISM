@@ -69,7 +69,10 @@ curl:
   allow_raw: true
   # D7: without this, "curl file:///etc/passwd" is a live local-file read
   # through a tool the model thinks only hits the network.
-  forced_flags: ["--proto", "-all,+http,+https"]
+  # BACKLOG.md #26: -i makes the status line and headers (Location, in
+  # particular) always visible, closing the blind spot where a 0-byte
+  # body is identical on both a successful and a rejected login.
+  forced_flags: ["--proto", "-all,+http,+https", "-i"]
   phases: [recon, enumeration, vulnerability-discovery, exploitation, post-exploitation]
 
 # §4.1 (BACKLOG.md): next tools picked by target-type gap against DVWA —

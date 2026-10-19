@@ -133,7 +133,7 @@ def test_curl_catalog_row_builds_argv_from_target_and_extra() -> None:
         tool.invoke({"target": "https://example.com", "extra": "-sS -L"})
 
     assert mock_run.call_args.args[0] == [
-        "curl", "--proto", "-all,+http,+https", "-sS", "-L", "https://example.com",
+        "curl", "--proto", "-all,+http,+https", "-i", "-sS", "-L", "https://example.com",
     ]
 
 

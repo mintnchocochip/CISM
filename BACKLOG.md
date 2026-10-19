@@ -1836,3 +1836,101 @@ between:
 Not fixed tonight — flagged live to the operator, who redirected the
 model directly rather than waiting for it to self-correct (it hadn't,
 across one full turn of acting on the false premise already).
+
+## 27. Overnight build: CurlExtractor, the edge-aware DEPG subgraph (#24), and a graded-propagation integration test (2026-10-19/20)
+
+Three of this file's own open items, picked up together per the
+operator's standing overnight instruction ("build all changed").
+
+**Built: `CurlExtractor` (closes #26's gap).** curl's catalog entry now
+forces `-i` (`cism/agent/tools/catalog.yaml`) so the status line and
+headers are always present, and a new `CurlExtractor`
+(`cism/depg/extractors.py`) parses them deterministically: the final
+`HTTP/x.y <status>` line (last match, in case curl itself followed a
+redirect) and the `Location` header produce a `http-redirect`
+(`"302 -> index.php"`) or `http-response` (`"200"`) node at T2 — never
+infers success/failure itself, only surfaces the fact for the model to
+reason from. Also runs the same `_scan_for_credentials` sweep
+`GenericExtractor` already does, so a leaked credential in a curl'd body
+(e.g. `config.inc.php`) still surfaces alongside the status node. Falls
+back to `GenericExtractor` only when no status line is present at all
+(a connection failure). This was verified the same night it was
+designed: the live Gemma 4 E4B DVWA engagement (below) independently hit
+the exact failure mode #26 described — "CSRF token is incorrect" and a
+stale `Security Level: impossible` were both only resolvable by reading
+`Location`/body text the model's own `curl` calls already had but
+GenericExtractor's opaque hash was throwing away.
+
+**Built: the edge-aware `_depg_context` subgraph scoped in #24.**
+`_select_subgraph` (`cism/agent/nodes.py`) replaces the flat
+per-target slice with the three-tier priority #24 specified: every T1
+node unconditionally (never crowded out by recency/state), then a
+budget-bounded BFS outward from `graph.last_for_target[target]` over
+both `_children` and `_parents` (same traversal shape as
+`Graph._weakly_connected`, just not state-restricted), then whatever's
+left in the existing unresolved-first order as filler. Shipped as the
+flat-but-ordered text format #24 flagged as the smaller first step, not
+the indented/structured variant. `_depg_context` now takes
+`depg_edges` too (threaded from the one call site in `think()`) and
+builds a `Graph.from_state` once per call to get `last_for_target`/
+`_children`/`_parents` — no new indexing, reuses what `Graph` already
+maintains. Two new tests confirm the behavior the flat cap couldn't
+guarantee: a T1 node sorted *last* (resolved, inserted last) still
+survives an 8-cap alongside 8 higher-sorting nodes, and two nodes
+connected to `last_for_target` win their slots over edge-less orphans
+that would otherwise rank first by the resolved/untested sort alone.
+All 6 pre-existing `_depg_context` tests pass unchanged against the new
+selection logic (verified concretely, not assumed, since several depend
+on exactly which nodes get cut by the cap).
+
+**Validated, not rebuilt: `--graded-propagation`.** The reducer math
+(`GradedSupport`, `cism/depg/reducer.py`) already had 12 passing unit
+tests covering monotonicity/boundary/clamp/idempotence/tier-discount —
+but grepping `graded_propagation` across `tests/` before tonight found
+zero hits outside the pure-reducer test file, and that file's own
+`test_binary_support_stays_the_default...` docstring says outright:
+"GradedSupport is opt-in only until validated against a real run." No
+real run (or even a `make_depg_update_node`-level integration test) had
+ever actually exercised the flag. Added one: a T1 hydra credential
+followed by a second same-target call (confirmed elsewhere to get
+linked as its child) comes out with a non-default `.reachability` under
+`graded_propagation=True`, and stays at the untested-prior `0.3` with
+the flag off (default) — the same shape, same two calls, flag is the
+only variable. This is the first test that would fail if the
+`run_agent.py` → `core.py` → `graph.py` → `nodes.py` wiring chain were
+ever silently broken, which nothing before tonight would have caught.
+Did not attempt a live GPU A/B run tonight: doing so would have meant a
+second concurrent llama.cpp-backed session competing with the live
+Gemma 4 E4B DVWA engagement already running on the same box for the
+operator to review in the morning, which seemed like the wrong
+trade-off to make unilaterally overnight. Recommended next step: a
+real `--graded-propagation` run against tonight's actual DVWA findings
+shape once the operator can watch for resource contention.
+
+**Live-session note, same engagement this was built next to:** the
+operator-driven Gemma 4 E4B DVWA run referenced above reached a genuine,
+ground-truth-confirmed UNION-capable SQL injection at `vulnerabilities/
+sqli/` (dumped all 5 DVWA users via `id=1' OR '1'='1 -- -`) after two
+real, substantive blockers that both needed an operator nudge rather
+than self-correcting: (1) it never noticed `Security Level: impossible`
+made the module unexploitable by design until told, and (2) after
+fixing that, it carried only the `PHPSESSID` cookie forward, not the
+`security=low` cookie `security.php` had just set, and separately sent
+the GET-only `sqli` form's parameters as a POST `-d` body instead of a
+query string — needing a second, more detailed nudge naming both issues
+and giving an exact corrected call before it worked. Once corrected, it
+read the dumped user list and chose the right next technique
+(`ORDER BY` column-count probing ahead of a `UNION SELECT`) entirely on
+its own, and separately self-diagnosed a stale-CSRF-token failure
+without prompting. Net picture: reliable *within* a technique once
+correctly set up, but did not independently notice two real
+environment-state facts (`security` cookie semantics, GET-vs-POST on a
+specific form) that a `CurlExtractor`-grounded status/redirect view
+might make more visible going forward — worth re-testing once this
+engagement's own container has the extractor in it, since tonight's
+run started before this backlog entry's code existed.
+
+Verification: `pytest -n auto tests/` 948/948 (939 prior baseline + 9
+new: 5 `CurlExtractor` cases, 2 `_select_subgraph` cases, 1
+`graded_propagation` integration case, 1 catalog-argv update for the
+forced `-i`). `graphify update .` run after.

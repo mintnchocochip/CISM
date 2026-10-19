@@ -6,6 +6,7 @@ from __future__ import annotations
 from langchain_core.messages import ToolMessage
 
 from cism.depg.extractors import (
+    CurlExtractor,
     GobusterExtractor,
     HydraExtractor,
     NiktoExtractor,
@@ -15,6 +16,34 @@ from cism.depg.extractors import (
     WhatwebExtractor,
 )
 from cism.depg.graph import Graph
+
+#: Real curl -i output against DVWA's login.php, 2026-10-19 — a genuine
+#: successful login: a 302 with Location: index.php, 0-byte body.
+_CURL_LOGIN_SUCCESS = (
+    "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\n"
+    "                                 Dload  Upload   Total   Spent    Left  Speed\n"
+    "100    88    0     0  100    88      0   6759 --:--:-- --:--:-- --:--:--  7333\n"
+    "HTTP/1.1 302 Found\r\n"
+    "Set-Cookie: PHPSESSID=5e7drnud3vg1g97g64e2gvnqn1; path=/\r\n"
+    "Location: index.php\r\n"
+    "Content-Length: 0\r\n\r\n"
+)
+
+#: Same target, same byte-for-byte empty body, but the rejected case —
+#: only the Location header differs. This is the exact pair BACKLOG.md
+#: #26 is about: a hash of the body alone can't tell these apart.
+_CURL_LOGIN_REJECTED = (
+    "HTTP/1.1 302 Found\r\n"
+    "Location: login.php\r\n"
+    "Content-Length: 0\r\n\r\n"
+)
+
+_CURL_PLAIN_200 = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html>ok</html>"
+
+_CURL_CONFIG_LEAK = (
+    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n"
+    "define('DB_PASSWORD', 'p@ssw0rd');\n"
+)
 
 _SQLMAP_VULNERABLE = """
 sqlmap identified the following injection point(s):
@@ -324,6 +353,63 @@ def test_wafw00f_extractor_malformed_json_is_zero_nodes_not_a_crash() -> None:
     assert extraction.nodes == []
 
 
+def test_curl_extractor_distinguishes_a_successful_login_redirect() -> None:
+    message = ToolMessage(content=_CURL_LOGIN_SUCCESS, tool_call_id="c1", name="curl")
+
+    extraction = CurlExtractor().extract(None, message, Graph(), "172.28.0.2/login.php")
+
+    (node,) = extraction.nodes
+    assert node.cause_class == "http-redirect"
+    assert node.signal == "302 -> index.php"
+    assert node.evidence[0].tier == "T2"
+
+
+def test_curl_extractor_distinguishes_a_rejected_login_redirect() -> None:
+    """The exact pair BACKLOG.md #26 is about: same status, same empty
+    body as the success case above, but a different Location — and so a
+    genuinely different node, not collapsed onto the success node."""
+    message = ToolMessage(content=_CURL_LOGIN_REJECTED, tool_call_id="c1", name="curl")
+
+    extraction = CurlExtractor().extract(None, message, Graph(), "172.28.0.2/login.php")
+
+    (node,) = extraction.nodes
+    assert node.cause_class == "http-redirect"
+    assert node.signal == "302 -> login.php"
+
+
+def test_curl_extractor_plain_response_with_no_redirect_is_a_status_node() -> None:
+    message = ToolMessage(content=_CURL_PLAIN_200, tool_call_id="c1", name="curl")
+
+    extraction = CurlExtractor().extract(None, message, Graph(), "172.28.0.2/")
+
+    (node,) = extraction.nodes
+    assert node.cause_class == "http-response"
+    assert node.signal == "200"
+
+
+def test_curl_extractor_falls_back_to_generic_extractor_with_no_status_line() -> None:
+    """A connection failure or any other case with no HTTP/x.y status line
+    at all must not be silently dropped -- it degrades to the same hash
+    fallback every other extractor-less tool already uses."""
+    message = ToolMessage(content="curl: (7) Failed to connect", tool_call_id="c1", name="curl")
+
+    extraction = CurlExtractor().extract(None, message, Graph(), "172.28.0.2/")
+
+    (node,) = extraction.nodes
+    assert node.cause_class == "curl"
+    assert node.evidence[0].tier == "T3"
+
+
+def test_curl_extractor_still_surfaces_a_leaked_credential_alongside_the_status_node() -> None:
+    message = ToolMessage(content=_CURL_CONFIG_LEAK, tool_call_id="c1", name="curl")
+
+    extraction = CurlExtractor().extract(None, message, Graph(), "172.28.0.2/config.inc.php")
+
+    cause_classes = {node.cause_class for node in extraction.nodes}
+    assert "credential-found" in cause_classes
+    assert "http-response" in cause_classes
+
+
 def test_extractors_dict_keys_are_known_tool_names() -> None:
     """One cheap test catches a typo in EXTRACTORS at CI time instead of it
     silently falling through to the default extractor at runtime — hydra
@@ -339,3 +425,4 @@ def test_extractors_maps_nmap_and_hydra_to_their_real_extractors() -> None:
 
     assert isinstance(EXTRACTORS["nmap"], NmapExtractor)
     assert isinstance(EXTRACTORS["hydra"], HydraExtractor)
+    assert isinstance(EXTRACTORS["curl"], CurlExtractor)

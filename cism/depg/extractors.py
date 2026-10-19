@@ -22,13 +22,14 @@ from langchain_core.messages.tool import ToolCall
 from pydantic import BaseModel
 
 from cism.depg.evidence import Evidence
-from cism.depg.extract import CauseExtractor, Extraction, GenericExtractor
+from cism.depg.extract import CauseExtractor, Extraction, GenericExtractor, _scan_for_credentials
 from cism.depg.graph import Graph
 from cism.depg.node import Node, derive_node_id
 
 __all__ = [
     "EXTRACTORS",
     "ChatModelExtractionBackend",
+    "CurlExtractor",
     "ExtractedFinding",
     "ExtractedFindings",
     "ExtractionBackend",
@@ -80,6 +81,12 @@ _WHATWEB_LINE_RE = re.compile(r"^(\S+)\s+\[(\d+[^\]]*)\]\s+(.+)$", re.MULTILINE)
 #: only for matching below, never to the evidence/summary text the
 #: operator actually reads.
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+#: curl's own `-i` output (forced on in catalog.yaml, BACKLOG.md #26) puts
+#: one "HTTP/x.y <status>" line per response -- more than one if curl
+#: itself followed a redirect (-L) -- so the *last* match is the final
+#: response, same reasoning as _LOCATION_RE below.
+_HTTP_STATUS_RE = re.compile(r"^HTTP/\d(?:\.\d)?\s+(\d{3})", re.MULTILINE)
+_LOCATION_RE = re.compile(r"^Location:\s*(\S+)", re.MULTILINE | re.IGNORECASE)
 
 
 def _clean(text: str) -> str:
@@ -407,6 +414,78 @@ class Wafw00fExtractor:
         return Extraction(nodes=[node])
 
 
+class CurlExtractor:
+    """BACKLOG.md #26: curl had no dedicated extractor, so it fell through
+    to GenericExtractor's opaque content hash -- the only thing that
+    distinguishes a successful login from a rejected one on a target whose
+    response body is empty either way (DVWA's login.php, confirmed live)
+    is the status line and the `Location` header, and GenericExtractor's
+    hash gives the model neither. Never infers success/failure itself --
+    only surfaces the status code and redirect target as grounded,
+    legible facts, leaving the semantic call (does this status/target
+    mean the login worked) to the model, now made from real evidence
+    instead of an unfalsifiable empty body."""
+
+    def __init__(self) -> None:
+        self._fallback = GenericExtractor()
+
+    def extract(
+        self, call: ToolCall | None, message: ToolMessage, graph: Graph, target: str
+    ) -> Extraction:
+        content = str(message.content)
+        call_id = _call_id(call, message)
+        failed = getattr(message, "status", "success") == "error"
+
+        credential_nodes = [
+            Node(
+                id=derive_node_id(cause_class, target, signal),
+                cause_class=cause_class,
+                target=target,
+                signal=signal,
+                evidence=[
+                    Evidence(
+                        timestamp=_now(), tool="curl", exit_signal=signal,
+                        tier="T2", source="deterministic", verdict="alive", call_id=call_id,
+                    )
+                ],
+            )
+            for cause_class, signal in (() if failed else _scan_for_credentials(content))
+        ]
+
+        status_matches = _HTTP_STATUS_RE.findall(content)
+        if not status_matches:
+            # No status line -- e.g. a connection failure, or -i somehow
+            # absent -- fall back rather than silently dropping the call.
+            fallback = self._fallback.extract(call, message, graph, target)
+            if credential_nodes:
+                return Extraction(nodes=credential_nodes + fallback.nodes)
+            return fallback
+
+        status = status_matches[-1]
+        location_matches = _LOCATION_RE.findall(content)
+        location = location_matches[-1].strip() if location_matches else None
+
+        if location:
+            cause_class, signal = "http-redirect", f"{status} -> {location}"
+        else:
+            cause_class, signal = "http-response", status
+
+        response_node = Node(
+            id=derive_node_id(cause_class, target, signal),
+            cause_class=cause_class,
+            target=target,
+            signal=signal,
+            evidence=[
+                Evidence(
+                    timestamp=_now(), tool="curl", exit_signal=signal,
+                    tier="T2", source="deterministic",
+                    verdict="dead" if failed else "alive", call_id=call_id,
+                )
+            ],
+        )
+        return Extraction(nodes=credential_nodes + [response_node])
+
+
 _MAX_PROMPT_CHARS = 6000
 
 _PROMPT = (
@@ -619,6 +698,7 @@ class LLMExtractor:
 
 EXTRACTORS: dict[str, CauseExtractor] = {
     "nmap": NmapExtractor(),
+    "curl": CurlExtractor(),
     "hydra": HydraExtractor(),
     "sqlmap": SqlmapExtractor(),
     "gobuster": GobusterExtractor(),

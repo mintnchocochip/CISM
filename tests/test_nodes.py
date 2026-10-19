@@ -586,6 +586,49 @@ async def test_a_second_call_on_the_same_target_gets_an_edge_from_the_first() ->
     assert len(update["depg_edges"]) == 1
 
 
+async def test_graded_propagation_flag_actually_changes_a_real_runs_reachability_scores() -> None:
+    """BACKLOG.md: --graded-propagation was wired from run_agent.py all the
+    way to make_depg_update_node but never validated end to end -- every
+    existing test of GradedSupport (test_depg_graded_support.py) exercises
+    the reducer in isolation, not this real pipeline. A T1 credential
+    (hydra) followed by a second call on the same target (which the
+    existing edge test above confirms gets linked as its child) must come
+    out with a non-default reachability score under graded_propagation --
+    and, with the flag off, must not (BinarySupport never touches it,
+    stays at the 0.3 untested prior)."""
+    from cism.depg import ExtractorRegistry
+    from cism.depg.extractors import HydraExtractor
+
+    async def _run(*, graded_propagation: bool) -> dict:
+        depg_update = make_depg_update_node(
+            ExtractorRegistry({"hydra": HydraExtractor()}, GenericExtractor()),
+            graded_propagation=graded_propagation,
+        )
+        ai1 = AIMessage(
+            content="", tool_calls=[{"id": "c1", "name": "hydra", "args": {"target": "10.0.0.5"}}]
+        )
+        result1 = ToolMessage(
+            content="[22][ssh] host: 10.0.0.5   login: admin   password: hunter2",
+            tool_call_id="c1", name="hydra",
+        )
+        first = await depg_update(_state([HumanMessage(content="brute it"), ai1, result1]))
+
+        ai2, result2 = _tool_round("c2", "dummy_msfconsole", "session opened")
+        second_state = _state(
+            [HumanMessage(content="brute it"), ai1, result1, ai2, result2],
+            depg_nodes=first["depg_nodes"], depg_edges=first["depg_edges"],
+        )
+        return await depg_update(second_state)
+
+    graded = await _run(graded_propagation=True)
+    child_id = next(n.id for n in graded["depg_nodes"].values() if n.cause_class == "dummy_msfconsole")
+    assert graded["depg_nodes"][child_id].reachability != 0.3
+
+    ungraded = await _run(graded_propagation=False)
+    child_id = next(n.id for n in ungraded["depg_nodes"].values() if n.cause_class == "dummy_msfconsole")
+    assert ungraded["depg_nodes"][child_id].reachability == 0.3
+
+
 async def test_nodes_produced_in_the_same_step_do_not_link_to_each_other() -> None:
     """Two sibling ports from one nmap-shaped call must not chain A -> B."""
     from cism.depg import ExtractorRegistry
@@ -2057,6 +2100,64 @@ def test_depg_context_still_shows_signal_for_a_grounded_node() -> None:
 
     assert "app:vulnerables" in text
     assert "Hydra v9.5 banner text" not in text
+
+
+def test_depg_context_never_crowds_out_a_t1_node_even_when_resolved_and_sorted_last() -> None:
+    """BACKLOG.md #24: a T1 node (credential-found, confirmed sql-injection)
+    must never be dropped by the flat per-target cap, regardless of its
+    state or position. 8 untested nodes (sort first) plus one *resolved*
+    T1 node (would sort last, and would be the 9th/dropped node under the
+    old flat-slice cap) on a single target at the existing cap of 8."""
+    from cism.depg.evidence import Evidence
+
+    noise = [
+        _node(f"n{i}", "open-port", "10.0.0.5", f"{i}/tcp", state="untested")
+        for i in range(8)
+    ]
+    t1 = Node(
+        id="credential-found:10.0.0.5:admin:admin",
+        cause_class="credential-found",
+        target="10.0.0.5",
+        signal="admin:admin",
+        state="resolved",
+        evidence=[
+            Evidence(
+                timestamp="12:00:00", tool="hydra", exit_signal="admin:admin",
+                tier="T1", source="deterministic",
+            )
+        ],
+    )
+    nodes = {n.id: n for n in [*noise, t1]}
+
+    text = _depg_context(nodes)
+
+    assert "credential-found:admin:admin" in text
+
+
+def test_depg_context_prefers_a_targets_causal_neighborhood_over_an_unrelated_orphan() -> None:
+    """BACKLOG.md #24: with the per-target cap tight enough to force a
+    choice, nodes connected to wherever the engagement's attention
+    currently is (graph.last_for_target) must win over edge-less orphans
+    that would otherwise rank higher by the unresolved-first sort alone.
+    `root`/`neighbor` are *resolved* (would normally sort last) and
+    inserted last (so `last_for_target` points into this pair); the 8
+    `orphans` are untested (would normally sort first) but carry no
+    edges at all."""
+    from cism.depg import Edge
+
+    orphans = [
+        _node(f"o{i}", "info-header", "10.0.0.5", f"header-{i}", state="untested")
+        for i in range(8)
+    ]
+    root = _node("root", "open-port", "10.0.0.5", "80/tcp", state="resolved")
+    neighbor = _node("neighbor", "exposed-path", "10.0.0.5", "/admin", state="resolved")
+    nodes = {n.id: n for n in [*orphans, root, neighbor]}
+    edges = [Edge(parent="root", child="neighbor")]
+
+    text = _depg_context(nodes, edges)
+
+    assert "open-port:80/tcp" in text
+    assert "exposed-path:/admin" in text
 
 
 def test_memory_context_skips_depg_derived_items() -> None:
