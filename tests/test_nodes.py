@@ -1589,7 +1589,9 @@ async def test_verify_real_token_budget_is_a_no_op_when_the_real_count_fits() ->
     assert result_dropped == 0
 
 
-async def test_verify_real_token_budget_is_a_no_op_when_the_counter_fails() -> None:
+async def test_verify_real_token_budget_is_a_no_op_when_the_counter_fails_and_nothing_is_at_risk() -> None:
+    """A failed probe still applies the defensive safety margin, but with
+    history this small there's nothing for the shrunk window to drop."""
     kept = [HumanMessage(content="hi")]
 
     async def counter(text: str) -> None:
@@ -1601,6 +1603,38 @@ async def test_verify_real_token_budget_is_a_no_op_when_the_counter_fails() -> N
 
     assert result_kept == kept
     assert result_dropped == 0
+
+
+async def test_verify_real_token_budget_applies_a_safety_margin_when_the_probe_fails() -> None:
+    """2026-10-19, live: a real "Context size has been exceeded" crash hit
+    mid-engagement when the real-tokenizer probe itself timed out under
+    concurrent server load -- the old contract passed the already-known-
+    unreliable chars/N estimate through with zero margin exactly when
+    load makes that estimate least trustworthy. A failed probe must now
+    shrink defensively, not no-op."""
+    old_tool = ToolMessage(content="A" * 2000, tool_call_id="c1", name="nmap")
+    new_tool = ToolMessage(content="B" * 2000, tool_call_id="c2", name="nmap")
+    messages = [
+        HumanMessage(content="scan it"),
+        AIMessage(content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {}}]),
+        old_tool,
+        HumanMessage(content="scan again"),
+        AIMessage(content="", tool_calls=[{"id": "c2", "name": "nmap", "args": {}}]),
+        new_tool,
+    ]
+    context_window = 2400  # chars/3 estimate fits with no pressure at all
+    first_kept, first_dropped = _compact_history(messages, "sys", context_window)
+    assert first_dropped == 0
+    assert first_kept[2].content == "A" * 2000  # nothing shrunk at this estimate
+
+    async def failing_counter(text: str) -> None:
+        return None  # probe unavailable/failed
+
+    kept, dropped = await _verify_real_token_budget(
+        first_kept, first_dropped, messages, "sys", context_window, failing_counter
+    )
+
+    assert dropped > first_dropped or len(kept[2].content) < 2000
 
 
 async def test_verify_real_token_budget_recompacts_when_the_real_tokenizer_disagrees() -> None:
