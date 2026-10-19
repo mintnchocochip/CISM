@@ -1424,17 +1424,18 @@ Fixed by skipping re-collapse when a component is exactly one node that
 is already a `dead-region` marker; a new dead node attached to an
 existing marker is still absorbed normally. Commit `acff6d3`.
 
-Separately — **not a code fix**: the SQLi node's own first-ever verdict
-was `"dead"` (the extraction prompt says `"dead" if the check failed or
-found nothing`, which plainly doesn't describe a UNION dump that returned
-six rows of real credentials), so the prune() fix stops the endless
-re-wrapping but doesn't correct this specific already-collected node's
-verdict. This looks like a one-off extraction misread by the small
-quantized model on its own successful tool output, not a prompt-wording
-or code defect — the prompt text is unambiguous. Worth a future look if
-it recurs: a deterministic secondary check (e.g. treat a `UNION SELECT`
-payload tool-call that echoes a plausible non-error, non-empty row back
-as T1/alive regardless of the model's own verdict label) would catch this
-specific failure mode without touching the general extraction path.
+Separately, root-caused rather than left speculative: the SQLi node's
+own first-ever verdict was `"dead"`. Initial theory was a one-off model
+misread, but replaying the *exact* same confirmed-SQLi curl output
+against the real running model 5 times with unchanged code proved it's
+sampling variance, not a one-off: **3 of 5 missed the sql-injection
+finding entirely**, 1 got it half right, only 1 fully correct —
+`LlamaCppExtractionBackend.extract()` set no `temperature` on its
+`/completion` call, so the server's own default sampling applied to
+what is a classification task, not creative generation. The same prompt
+at `temperature=0.0` was 6/6 identical and correct across repeated
+calls, and sanity-checked against a clean port-scan and a
+nothing-to-report case to confirm it doesn't suppress real findings.
+Fixed by pinning `temperature: 0.0` on the request. Commit `7c69808`.
 
-`pytest -n auto tests/` 922/922. `graphify update .` run after.
+`pytest -n auto tests/` 923/923. `graphify update .` run after.
