@@ -138,7 +138,15 @@ class Graph:
     def prune(self) -> None:
         """Collapses a maximal weakly-connected all-BLOCKED region into one
         dead-region marker, as long as nothing outside still depends on it.
-        Provenance is never deleted, only summarized."""
+        Provenance is never deleted, only summarized.
+
+        Idempotent: a component that is already exactly one settled marker
+        (nothing new merged into it since the last prune) is left alone,
+        rather than re-wrapped in a fresh marker every call. Without this,
+        a long-running engagement that calls prune() once per tick nests
+        the same marker deeper on every tick forever (confirmed live,
+        2026-10-18: one dead-region marker was re-collapsed 8 times across
+        a single run, ballooning its id/evidence string each time)."""
         blocked = {nid for nid, n in self.nodes.items() if n.state == "blocked"}
         visited: set[str] = set()
         for start in list(blocked):
@@ -146,6 +154,8 @@ class Graph:
                 continue
             component = self._weakly_connected(start, blocked)
             visited |= component
+            if len(component) == 1 and self.nodes[next(iter(component))].cause_class == "dead-region":
+                continue
             if self._has_edge_to_outside_non_blocked(component):
                 continue
             self._collapse(component)

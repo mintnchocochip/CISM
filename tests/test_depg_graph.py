@@ -245,6 +245,41 @@ def test_prune_rewires_a_live_ancestor_edge_onto_the_marker() -> None:
     ]
 
 
+def test_prune_is_idempotent_on_an_already_settled_marker() -> None:
+    """2026-10-18, live: calling prune() again on a graph whose only blocked
+    node is already a dead-region marker re-wrapped it in a brand new
+    marker every time -- across a long engagement (prune runs once per
+    tick) the same marker got nested 8 levels deep, ballooning its id and
+    evidence string on every tick for the rest of the run."""
+    graph = Graph()
+    graph.nodes = {"a": _blocked("a"), "b": _blocked("b")}
+    graph.add_edge(Edge(parent="a", child="b"))
+    graph.prune()
+    (marker_id,) = graph.nodes
+    first_marker = graph.nodes[marker_id]
+
+    graph.prune()
+
+    assert set(graph.nodes) == {marker_id}
+    assert graph.nodes[marker_id] is first_marker
+
+
+def test_prune_still_absorbs_a_new_dead_node_attached_to_an_existing_marker() -> None:
+    graph = Graph()
+    graph.nodes = {"a": _blocked("a"), "b": _blocked("b")}
+    graph.add_edge(Edge(parent="a", child="b"))
+    graph.prune()
+    (marker_id,) = graph.nodes
+
+    graph.upsert_node(_blocked("c"))
+    graph.add_edge(Edge(parent=marker_id, child="c"))
+    graph.prune()
+
+    (new_marker_id,) = graph.nodes
+    assert new_marker_id != marker_id
+    assert "c" in graph.nodes[new_marker_id].evidence[-1].exit_signal
+
+
 def test_compute_metrics_counts_transitive_descendants_once_in_a_diamond() -> None:
     graph = Graph()
     for node_id in ("a", "b", "c", "d"):
