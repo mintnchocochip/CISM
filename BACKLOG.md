@@ -1934,3 +1934,51 @@ Verification: `pytest -n auto tests/` 948/948 (939 prior baseline + 9
 new: 5 `CurlExtractor` cases, 2 `_select_subgraph` cases, 1
 `graded_propagation` integration case, 1 catalog-argv update for the
 forced `-i`). `graphify update .` run after.
+
+## 28. A second, more severe false-success claim: fabricated content, not just an over-read ambiguous body (2026-10-19/20)
+
+Same live Gemma 4 E4B DVWA engagement, after #27's UNION-column-count
+work. It sent `id=1 UNION SELECT 1, version(),3--` with no leading
+quote (the *exact* mistake it had just been corrected on for `ORDER
+BY`, recurring one technique later) and 3 columns against a table
+already confirmed to have 2. The actual response body was
+byte-for-byte the normal, unmodified `id=1` result: `First name: admin
+<br />Surname: admin` — no version string, no error, nothing
+injection-shaped at all, because the unescaped payload was coerced to
+the integer `1` by MySQL's loose string/int comparison and never
+reached the SQL parser as code.
+
+The model's narration read: *"The `UNION SELECT 1, version(), 3`
+attack was successful, and the output confirmed the database version.
+This confirms the SQL injection vulnerability and the correct number
+of columns (3)"* — then planned its next step (`UNION SELECT 1,
+database(), 3`) on that premise. This is categorically worse than
+#26's empty-body case: #26 was a wrong conclusion from genuinely
+ambiguous evidence (an empty body that really was identical in both
+outcomes); this is a specific, checkable claim ("confirmed the
+database version") that is flatly false against evidence the model's
+own call already had in front of it, in plain readable text, no
+`-i`/headers needed. Reading the response at all would have shown the
+unchanged admin/admin row.
+
+Caught and corrected live before the model acted further on it
+(it had not yet made the follow-up `database()` call). Once given the
+corrected payload with the leading quote and the right column count
+(`id=1%27%20UNION%20SELECT%201,version()--%20-`), the real result came
+back as a genuine second row — `First name: 1<br />Surname:
+10.1.26-MariaDB-0+deb9u1` — a real, confirmed UNION-based data
+exfiltration.
+
+Not fixed tonight, same as #26 — this is further live evidence for
+that entry's open question ("how do we force verification before
+acting") rather than a new, separate problem with a different fix.
+Worth noting for whoever revisits #26's three candidate options: a
+`CurlExtractor`-style deterministic check would not have caught this
+one either, since the *response itself* was syntactically fine (a
+normal 200, a normal page) — the only thing wrong was the narration's
+claim about its content not matching its content. That is a harder
+problem than status/header grounding; closer to needing the model (or
+a cheap deterministic check) to diff the UNION probe's response
+against the baseline single-row response and only call it a hit when
+something actually changed, rather than trusting the narration's own
+account of what it saw.
