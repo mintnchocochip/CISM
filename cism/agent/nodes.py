@@ -322,6 +322,18 @@ def _compact_history(
 #: until the NEXT turn's budget check. One real token_counter call (when
 #: available) catches an overshoot before this turn's prompt is sent,
 #: not after.
+#: 2026-10-19, live: a real "Context size has been exceeded" crash from
+#: the server, mid-engagement, under heavy concurrent load -- the probe
+#: itself (count_tokens_llamacpp's 5s /tokenize call) timed out, returned
+#: None, and this function's old contract ("counter failed -> no-op")
+#: passed the already-known-unreliable chars/N estimate through with zero
+#: safety margin, at exactly the moment concurrent load makes that
+#: estimate most likely to have drifted. A shrink this function can't
+#: verify is still better than trusting an estimate it just watched fail
+#: to confirm.
+_PROBE_FAILURE_SAFETY_MARGIN = 0.85
+
+
 async def _verify_real_token_budget(
     kept: list,
     dropped: int,
@@ -337,7 +349,12 @@ async def _verify_real_token_budget(
     budget = context_window - response_reserve
     full_text = system_prompt + tool_schema_text + "".join(str(m.content) for m in kept)
     real_tokens = await token_counter(full_text)
-    if real_tokens is None or real_tokens <= budget:
+    if real_tokens is None:
+        safe_window = int(context_window * _PROBE_FAILURE_SAFETY_MARGIN)
+        return _compact_history(
+            messages, system_prompt, safe_window, tool_schema_text, response_reserve
+        )
+    if real_tokens <= budget:
         return kept, dropped
     # The chars/N estimate was too optimistic for this prompt specifically
     # -- scale the window down by exactly how wrong it was and recompact
