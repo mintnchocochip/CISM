@@ -1378,3 +1378,63 @@ fail-closed handling for this exact case (tested:
 blocked cleanly rather than crashing or passing it through. Both are model
 -reliability observations about this specific small/quantized model, not
 CISM defects.
+
+## 21. Same overnight run, continued: scope-guard/URL comma conflation, llamacpp `/v1` extraction endpoint, dead-region re-wrap (2026-10-18/19)
+
+Three more live bugs found continuing §20's same unattended run, after the
+model successfully logged into DVWA and moved on to the SQL injection page.
+
+**`ScopeGuardStage._extract_host`'s comma-split ran before its URL check.**
+The comma-split exists for `--target`/`--scope`'s own `"10.0.0.1,10.0.0.2"`
+list syntax, but it ran on the raw value before checking whether the value
+was a URL at all. A real UNION-based SQLi payload in a curl call's query
+string (`...SELECT user,password FROM users-- -`) has its own comma, split
+into `"user"` and `"password..."` — neither host-shaped — and the call was
+blocked as `<unparseable-multi-target>`, live, against an otherwise
+in-scope target. Fixed by moving the URL-scheme check to the top of
+`_extract_host`, before the comma-split logic. Commit `20e404c`.
+
+**`LlamaCppExtractionBackend` posted to `{base_url}/completion` with
+`base_url` taken as-is from `--base-url`**, which is the OpenAI-compatible
+chat endpoint (`.../v1`, `scripts/run_tui*.sh`'s own default for
+`--backend llamacpp`) — not llama.cpp's native `/completion`, which lives
+at the server root. Every single call all engagement long went to
+`.../v1/completion`, 404'd, and silently fell back to `GenericExtractor`'s
+opaque hash node instead of a real structured finding. Confirmed directly
+against the live server (`.../v1/completion` → 404, `.../completion` →
+200) and confirmed fixed live immediately after rebuild: the first curl
+call post-fix produced a real `outdated-server-header` finding instead of
+a generic hash node. Fixed by stripping a trailing `/v1` path segment in
+`LlamaCppExtractionBackend.__init__`. Commit `e05f5e1`.
+
+**`Graph.prune()` wasn't idempotent on an already-settled dead-region
+marker.** `make_depg_update_node()` calls `prune()` roughly once per
+engagement tick. A dead-region marker's `_collapse()`-assigned state
+(`"blocked"`) never changes, so once a lone marker had nothing new
+attached to it, every subsequent `prune()` call still found it as a
+fresh single-node all-blocked component and re-wrapped it in yet another
+marker — nesting it 8 levels deep across one run, confirmed live via
+`agent.log`'s `DEPGUpdated` events, each one's id longer than the last
+(`pruned:...:pruned:...:pruned:...:sql-injection:...`). Found while
+auditing why a confirmed DVWA SQL-injection finding — a real UNION-based
+dump of the `users` table, 6 credentials, verified directly against the
+agent's own raw curl output — never appeared in the final `/report`
+output as a resolved finding: it was swept into one of these markers.
+Fixed by skipping re-collapse when a component is exactly one node that
+is already a `dead-region` marker; a new dead node attached to an
+existing marker is still absorbed normally. Commit `acff6d3`.
+
+Separately — **not a code fix**: the SQLi node's own first-ever verdict
+was `"dead"` (the extraction prompt says `"dead" if the check failed or
+found nothing`, which plainly doesn't describe a UNION dump that returned
+six rows of real credentials), so the prune() fix stops the endless
+re-wrapping but doesn't correct this specific already-collected node's
+verdict. This looks like a one-off extraction misread by the small
+quantized model on its own successful tool output, not a prompt-wording
+or code defect — the prompt text is unambiguous. Worth a future look if
+it recurs: a deterministic secondary check (e.g. treat a `UNION SELECT`
+payload tool-call that echoes a plausible non-error, non-empty row back
+as T1/alive regardless of the model's own verdict label) would catch this
+specific failure mode without touching the general extraction path.
+
+`pytest -n auto tests/` 922/922. `graphify update .` run after.
