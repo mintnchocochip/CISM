@@ -117,6 +117,27 @@ def test_a_host_segment_that_merely_ends_in_v1_is_not_mistaken_for_the_suffix(mo
     assert captured["url"] == "http://localhost:8080/api/v10/completion"
 
 
+def test_pins_temperature_to_zero_for_deterministic_extraction(monkeypatch) -> None:
+    """2026-10-18/19, live: with no temperature set, replaying the exact
+    same confirmed-SQLi curl output 5 times against the real server
+    produced 3 runs that missed the finding entirely and only 1 fully
+    correct one. Pinning temperature=0.0 made it 6/6 identical and
+    correct. Extraction is a classification task, not creative writing --
+    it must read the same evidence the same way every time."""
+    captured: dict = {}
+
+    def fake_post(url, *, json, timeout):
+        captured["json"] = json
+        return _FakeResponse(payload={"content": '{"findings": []}'})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    backend = LlamaCppExtractionBackend("http://localhost:8080")
+
+    backend.extract("prompt")
+
+    assert captured["json"]["temperature"] == 0.0
+
+
 def test_an_http_error_returns_none_not_an_exception(monkeypatch) -> None:
     def fake_post(url, *, json, timeout):
         return _FakeResponse(status_code=500)
