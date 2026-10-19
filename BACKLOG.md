@@ -1982,3 +1982,60 @@ a cheap deterministic check) to diff the UNION probe's response
 against the baseline single-row response and only call it a hit when
 something actually changed, rather than trusting the narration's own
 account of what it saw.
+
+## 29. A reproducible regression: forgetting a just-corrected mistake and reverting to an earlier completed step (2026-10-19/20)
+
+Same live engagement, continuing past #28's UNION work. Once extracting
+real data (database name `dvwa`, then table names `guestbook`/`users`
+via `information_schema`), the model repeatedly made the *same*
+specific mistake across four separate turns: `%26`-encoding the `&`
+that separates the `id` query param from `Submit=Submit`, which (since
+URL param splitting happens on the raw, still-encoded string) merges
+`Submit=Submit` into `id`'s own value instead of sending it as its own
+field — and since DVWA's `sqli.php` only runs the query when `Submit`
+is actually set, every one of these calls silently did nothing and
+came back as the bare empty form.
+
+The sequence: (1) first occurrence, corrected with a general
+explanation ("use a literal `&` ... only %-encode characters inside a
+param's value"); (2) it "fixed" this by swapping to *entirely*
+unescaped characters instead (raw space, raw quote) — over-generalizing
+the correction into unescaping everything, which curl's own URL parser
+then rejected outright (`curl: (3) URL rejected`), the same
+malformed-URL failure mode from earlier in the night; (3) given the
+exact literal corrected URL verbatim, it worked — real data came back
+each time this happened; (4) the *next* new query (table enumeration)
+reintroduced the identical `%26` mistake from scratch, despite the
+correct encoding being visible in its own immediately preceding,
+successful tool call. A second precise explanation naming the specific
+character and why (distinguishing "part of the SQL payload" from "the
+HTTP field boundary") fixed that occurrence. (5) The turn after that,
+asked to move on to querying `information_schema.columns` for the
+`users` table, it instead re-sent the *already-completed*
+`information_schema.tables` query byte-for-byte — again with the `%26`
+bug reintroduced — rather than advancing, even though the table names
+it had already found were sitting directly above in its own context.
+
+This is the clearest reliability signal from tonight's run: not a
+one-off slip, but a specific mistake that recurred after being directly
+corrected twice, interleaved with reverting to a stale, already-answered
+step rather than progressing. General prose corrections ("use a literal
+`&`", then a more detailed explanation of *why*) did not generalize to
+the model's own next, structurally-identical query — only handing it
+the exact literal string to use verbatim reliably worked, every time it
+was tried. Matches the pattern this project's own
+`docs/slm-comparison-ornith-vs-cybersec-orchestrator.md` flagged in a
+different model earlier this week ("a genuine inability to update
+behavior from direct feedback... not a tooling gap, a planning/memory
+gap") — this is the same failure shape in Gemma 4 E4B, not unique to
+that other model.
+
+Not a code fix tonight — this is a live-session finding about the
+*model's* reliability, not the harness. Relevant context for whoever
+next revisits #26's open question ("force verification before acting"):
+the same mechanism that would force a verification step before trusting
+a narration's success claim would plausibly also help here, since both
+failures are the same root shape — acting on a stale/wrong belief about
+what was already established, rather than checking current reality
+(the actual next unanswered question, or the actual response body)
+before generating the next action.
