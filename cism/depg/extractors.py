@@ -515,6 +515,13 @@ class LlamaCppExtractionBackend:
         # hit this. Every tool result silently fell back to
         # GenericExtractor's opaque hash node instead of a real
         # structured finding for the whole run.
+        # 2026-10-18/19, live: with no temperature set, the server default
+        # sampling made this call wildly non-deterministic for a classification
+        # task -- replaying the exact same confirmed-SQLi curl output 5 times
+        # produced 3 runs that missed the finding entirely, 1 that got it
+        # half right, and only 1 fully correct. Pinned to 0.0 (confirmed
+        # live: 6/6 identical, correct runs) since extraction should read
+        # the same evidence the same way every time, not sample creatively.
         base_url = base_url.rstrip("/")
         if base_url.endswith("/v1"):
             base_url = base_url[: -len("/v1")]
@@ -531,6 +538,7 @@ class LlamaCppExtractionBackend:
                     "prompt": prompt,
                     "json_schema": ExtractedFindings.model_json_schema(),
                     "n_predict": self._n_predict,
+                    "temperature": 0.0,
                 },
                 timeout=self._timeout,
             )
