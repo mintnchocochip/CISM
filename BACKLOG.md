@@ -1501,3 +1501,163 @@ small/quantized model — it can get stuck in a persistent wrong-path rut
 for hours without external correction.**
 
 `pytest -n auto tests/` 924/924. `graphify update .` run after.
+
+## 23. A sandboxed raw-TCP tool (`nc`, netcat-openbsd) so a found backdoor can be tested, not just identified (2026-10-19)
+
+Tonight's `nmap -sV` run against Metasploitable2 (172.28.0.2) got back a
+literal `root@...:/# ` shell prompt from the ingreslock backdoor on 1524
+— nmap's own service-detection probe incidentally catching the backdoor's
+banner. Strong circumstantial evidence it's live, but the toolkit had no
+way to go further: nmap/curl/nikto/whatweb/dnsenum/sqlmap/gobuster/hydra
+are all either HTTP-shaped or credential-brute-force shaped — none can
+open a raw TCP socket and exchange bytes with a non-HTTP service.
+Confirmed live inside the running container at the time: no `nc`,
+`ncat`, `netcat`, or `socat` binary existed at all.
+
+This is the gap `catalog.yaml`'s own `wafw00f` comment already named but
+didn't solve — a full Metasploit Framework integration was considered and
+rejected there as "too heavy to wire into one sandboxed CLI call." Sound
+for `msfconsole` (interactive, stateful), but a one-shot `nc host port`
+call fits the existing "one argv list, one timeout, one captured output"
+shape just as well as every other tool already does.
+
+**Scope: Tier B** — not just "connect and read the banner" but "connect,
+send one command, read the response," the minimum needed to prove command
+execution rather than just presence.
+
+**netcat-openbsd, not `ncat`/GNU netcat**: OpenBSD's `nc` has no
+`-e`/exec-on-connect flag at all (removed upstream specifically because
+binding a shell to a socket is a backdoor primitive) — the single most
+catastrophic failure mode for a tool like this is structurally
+impossible here, not just denylisted. Pinned to `1.229-1`, the version
+`apt-cache policy` resolves to on this image's base (`cism-runner.Dockerfile`).
+
+**Design**: `cism/agent/tools/network.py`, a hand-written `@sandboxed_tool`
+(same reason as `hydra`: needs to write a scratch file — `command`'s text
+— before the process runs). `target`/`port` are a plain host string and a
+structured int, never combined into one string: `target` flows through
+`ScopeGuardStage` exactly like every other tool's target (added to
+`_TARGET_ARG_BY_TOOL` in `scope.py`), deliberately avoiding a repeat of
+#21's comma-in-a-URL scope-guard bug in a new shape. Forced `-w 10` (nc's
+own connect/idle timeout) as a second, independent timeout alongside
+`run_sandboxed`'s own.
+
+**Sandbox core change** (the one piece touching every tool, so it got the
+most scrutiny): `run_sandboxed`/`Runner`/`SubprocessRunner`/
+`BubblewrapRunner` (`cism/agent/tools/sandbox.py`) gained an optional
+`stdin: Path | None = None` parameter, defaulting to `None` everywhere —
+verified a pure addition, not a behavior change, by running the full
+suite before and after. When set, it's opened and passed as the real
+subprocess's own `stdin=` kwarg via `Popen` — a plain fd redirect, not a
+shell feature, so it doesn't touch `bwrap`'s argv construction at all.
+`sandboxed_tool`'s decorator (`base.py`) wires this in by convention: if
+the decorated function wrote `scratch / "stdin"`, that file is passed
+through automatically; a tool that doesn't (hydra, and every decorated
+tool before this one) is unaffected.
+
+**Guardrails**: `_PER_TOOL_DANGEROUS_TOKENS["nc"] = frozenset({"-l",
+"-k"})` blocks listen mode, the only way this tool could become a
+reverse-shell catcher or relay. Verified this is currently a defense-in-
+depth / future-proofing entry, not an active one: `nc`'s real schema
+exposes only `target`/`port`/`command`, no raw-flags field at all, so a
+real call can never reach a `-l`/`-k` flag in the first place — the entry
+only matters if the model hallucinates an `extra` kwarg the schema
+doesn't define, which the guard still catches cleanly instead of letting
+it fall through to a confusing `TypeError`. No exec-flag entry needed:
+OpenBSD `nc` has nothing to name. `_DECORATED_TOOL_PHASES`/
+`_DECORATED_TOOL_CAPABILITIES` (`profiles.py`) bind `nc` to
+EXPLOITATION/POST_EXPLOITATION only, same window as hydra.
+
+**Tests**: `tests/test_network.py` (argv shape, bare host/structured
+port, stdin-file materialization), `tests/test_sandbox.py` (stdin reaches
+the real subprocess through both `SubprocessRunner` and
+`BubblewrapRunner`; omitting it is byte-for-byte unchanged),
+`tests/test_dangerous_flags.py` (`-l`/`-k` blocked, a plain connect
+allowed), `tests/test_phase_profiles.py` (phase-window pin, same shape as
+hydra's). `pytest -n auto tests/` 935/935 (924 prior + 11 new); one
+`test_depg_modal` snapshot failure seen under `-n auto` reproduced as
+flaky — passed both before and after this change when run in isolation,
+not caused by it, not chased further (lightweight-testing policy).
+`graphify update .` run after.
+
+Checkpointed before starting (`git tag pre-nc-tool`, already present at
+this point). Container rebuild deliberately deferred — a second agent was
+using the running `cism-runner` container concurrently; per the user's
+instruction, the actual rebuild + in-sandbox verification (driving the
+agent's own shipped `nc` tool through bubblewrap) happens once that
+concurrent work is done, backing up the existing container first.
+
+**Mechanism pre-validated live, outside `cism-runner` entirely, same
+night**: the host shell itself isn't attached to the `cism-lab` docker
+network (`ping 172.28.0.2` from the host: 100% loss — confirmed via
+`docker network inspect cism-lab`, `Attachable: false`/`Internal: true`,
+host not in its container list). Rather than wait, spun up a disposable
+`docker run --rm --network cism-lab alpine:3.20` (netcat-openbsd
+installed fresh inside it, discarded on exit) to test the exact
+mechanism the new tool uses — `nc -w <timeout> host port` with a command
+piped into stdin — without touching the running `cism-runner` container
+at all. Result: unauthenticated root shell confirmed on the ingreslock
+backdoor, port 1524:
+
+```
+root@1240f8386034:/# id
+uid=0(root) gid=0(root) groups=0(root)
+root@1240f8386034:/# whoami
+root
+root@1240f8386034:/# hostname
+1240f8386034
+```
+
+`1240f8386034` matches the real `metasploitable2` container's own ID in
+`docker ps` — not an echo or decoy, a genuine shell inside the target.
+Direct answer to "can Metasploitable2 be cracked": yes, trivially, no
+credential guessing or injection chain needed — one connection, one line
+of input, full root.
+
+One design note surfaced by this: the backdoor is a persistent
+interactive shell, not a one-shot responder — it happily accepted several
+newline-separated commands in the same connection before idling out. The
+shipped tool deliberately sends exactly one `command` and reads the
+response (sufficient to *prove* exploitation, the Tier B goal stated
+above); chaining multiple commands in one session would be a Tier C
+extension, not something this design covers. Not acted on tonight —
+noted for if/when that's wanted.
+
+This validates the mechanism and the real target, not yet the shipped
+code path itself — that still only runs inside `cism-runner` under
+bubblewrap, pending the deferred rebuild.
+
+**Follow-up same night: does this target need any more tools than
+`nc`+`hydra`+the existing web-vector set?** Live port/banner probe of
+172.28.0.2 (same disposable-container method) found the classic
+Metasploitable2 service set — vsFTPd 2.3.4 (21), OpenSSH 4.7p1 (22),
+Postfix (25), Samba (139/445), rlogin/rsh (512-514), Java RMI (1099),
+ingreslock (1524, proven), MySQL 5.0.51a (3306), distccd (3632),
+PostgreSQL (5432), UnrealIRCd (6667), and an unexpected Ruby DRb service
+on 8787 — notably NOT port 80/8180/5900/6000/2049, which the classic VM
+normally has; this particular image (`tleemcjr/metasploitable2`) is
+narrower than the full VM.
+
+Tried extending the proven `nc`-backdoor pattern to the two other
+classic plaintext backdoors on this box — both failed, informatively:
+- **vsftpd 2.3.4 smiley backdoor** (`USER x:)` -> root shell on 6200):
+  sent three ways (plain, held-open connection, with/without CRLF);
+  port 6200 never opened.
+- **UnrealIRCd `AB;cmd;` backdoor**: got back a normal IRC protocol
+  error (`451 AB; :You have not registered`) — the server tokenized
+  `AB;` as an ordinary unknown command rather than intercepting it
+  pre-parse, the signature of the backdoor hook not being compiled in.
+
+Conclusion: this image reproduces the classic services' *version
+banners* but apparently not the two trojaned binaries themselves — only
+the deliberately-added `ingreslock` listener (a plain `/etc/inetd.conf`
+shell, not tied to any CVE'd binary) is a confirmed-working
+unauthenticated root path on this particular box. RMI (1099), Samba
+`usermap_script` (139/445), and the DRb service (8787) would each need a
+dedicated binary-protocol exploit (Java serialization / SMB framing /
+Ruby `Marshal`) to even test, not something `nc`'s plain-text one-shot
+shape can reach — not attempted, since even if real they'd be redundant
+with the already-proven root access, and building three bespoke
+protocol exploits for marginal, duplicate findings isn't worth it right
+now. Revisit only if the goal becomes "catalog every distinct RCE here,"
+not "can it be cracked" (already yes, via ingreslock).

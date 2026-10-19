@@ -597,3 +597,18 @@ def test_curl_short_flags_are_unaffected_by_the_single_dash_normalization() -> N
     for extra in ("-o /tmp/x", "-O", "-J", "-c /tmp/jar", "-K /etc/curlrc"):
         result = _stage().check(_call(name="curl", target="https://x", extra=extra))
         assert result.allowed is False, extra
+
+
+def test_nc_listen_flags_are_blocked() -> None:
+    """-l/-k are the only way nc could become a listener (reverse-shell
+    catcher or relay/pivot) — nc itself has no `extra` field in its real
+    schema, but the guard still catches a hallucinated `extra` kwarg the
+    model might attempt before it reaches a confusing TypeError."""
+    for extra in ("-l", "-k", "-lk", "-l -p 4444"):
+        result = _stage().check(_call(name="nc", target="10.0.0.5", port=1524, extra=extra))
+        assert result.allowed is False, extra
+
+
+def test_a_plain_nc_connect_and_optional_command_call_is_allowed() -> None:
+    result = _stage().check(_call(name="nc", target="10.0.0.5", port=1524))
+    assert result.allowed is True

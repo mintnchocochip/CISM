@@ -141,7 +141,18 @@ def sandboxed_tool(
             if needs_scratch:
                 with scratch_dir() as tmp:
                     argv_tail = func(scratch=tmp, **kwargs)
-                    return run_sandboxed([binary, *argv_tail], cwd=tmp, timeout=timeout)
+                    # Convention, not a new parameter on func's own return
+                    # shape: a tool that wrote scratch/"stdin" (e.g. nc's
+                    # one-shot command) gets it piped into the real
+                    # subprocess's stdin; a tool that didn't (hydra, and
+                    # every decorated tool before this one) is unaffected.
+                    stdin_file = tmp / "stdin"
+                    return run_sandboxed(
+                        [binary, *argv_tail],
+                        cwd=tmp,
+                        timeout=timeout,
+                        stdin=stdin_file if stdin_file.exists() else None,
+                    )
             argv_tail = func(**kwargs)
             return run_sandboxed([binary, *argv_tail], timeout=timeout)
 

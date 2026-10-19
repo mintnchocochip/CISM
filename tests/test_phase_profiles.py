@@ -88,6 +88,20 @@ def test_default_profiles_a_reads_tool_stays_available_through_post_exploitation
     assert "nikto" not in profiles.get(Phase.REPORTING).tool_names
 
 
+def test_default_profiles_nc_is_bound_only_during_exploitation_and_post_exploitation() -> None:
+    """Same phase window as hydra (EXPLOITATION/POST_EXPLOITATION only) —
+    a raw-TCP tool has no place in recon/enumeration/vulnerability-
+    discovery/reporting, where no exploit attempt should be happening yet."""
+    profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
+
+    assert "nc" in profiles.get(Phase.EXPLOITATION).tool_names
+    assert "nc" in profiles.get(Phase.POST_EXPLOITATION).tool_names
+    for phase in (
+        Phase.RECON, Phase.ENUMERATION, Phase.VULNERABILITY_DISCOVERY, Phase.REPORTING,
+    ):
+        assert "nc" not in profiles.get(phase).tool_names
+
+
 def test_default_profiles_reporting_phase_has_no_tools() -> None:
     profiles = default_profiles(ToolRegistry([dummy_nmap, dummy_msfconsole]))
 

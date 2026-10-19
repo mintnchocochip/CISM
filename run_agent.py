@@ -43,7 +43,7 @@ from cism.agent.guardrails import (
 )
 from cism.agent.llm import build_chat_model
 from cism.agent.logging import get_agent_logger
-from cism.agent.tools import CATALOG, ToolRegistry, build_toolkit, hydra
+from cism.agent.tools import CATALOG, ToolRegistry, build_toolkit, hydra, nc
 from cism.agent.tools.sandbox import BubblewrapRunner, set_default_runner
 from cism.depg import EXTRACTORS, ExtractorRegistry, GenericExtractor, LLMExtractor, LlamaCppExtractionBackend
 from cism.tui.app import CISMApp
@@ -190,7 +190,7 @@ def _enable_live_tools(
         scope = scope.excluding(parse_scope(exclude_spec))
 
     set_default_runner(BubblewrapRunner())
-    tools, _ = build_toolkit(CATALOG, [hydra], EXTRACTORS)
+    tools, _ = build_toolkit(CATALOG, [hydra, nc], EXTRACTORS)
     # Privacy Gateway's swap-out, if enabled, must run first — scope/
     # dangerous-flag checks need the real value a call will actually run
     # against, not a placeholder that means nothing outside the gateway.
