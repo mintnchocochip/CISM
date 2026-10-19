@@ -2056,3 +2056,24 @@ log-rendering quirk. Whatever is driving it looks closer to a
 near-compulsive "fully percent-encode the entire query string" habit
 than a reasoning error, since it survives even an explicit, literal,
 do-not-modify instruction.
+
+**Second addendum:** across 7 total occurrences (operator-counted,
+live), including two more after the exact credential-dump URL was
+handed over verbatim, the engagement settled into cycling between a
+small set of already-answered queries (`information_schema.columns`
+for `users`, then the credential dump, then back) rather than making
+forward progress — the same stuck-loop shape this file's own
+`docs/slm-comparison-ornith-vs-cybersec-orchestrator.md` documented in
+a different model. The operator independently fetched the real
+`users` table contents by running the corrected query directly against
+the container (ground truth, bypassing the agent, same verification
+method used elsewhere tonight): columns `user_id, first_name,
+last_name, user, password, avatar, last_login, failed_login`, and all
+5 credential pairs (`admin`/`5f4dcc3b...`, `gordonb`/`e99a18c4...`,
+`1337`/`8d3533d7...`, `pablo`/`0d107d09...`, `smithy`/`5f4dcc3b...`)
+— confirming the underlying SQLi chain the model built (login bypass →
+security-level bypass → column-count → UNION extraction of version,
+database name, and table names) was real and complete; only the final
+column-enumeration/credential-dump step kept failing on this one
+specific, highly reproducible encoding defect. Left running, not
+killed, for direct inspection.
