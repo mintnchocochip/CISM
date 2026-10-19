@@ -1661,3 +1661,93 @@ with the already-proven root access, and building three bespoke
 protocol exploits for marginal, duplicate findings isn't worth it right
 now. Revisit only if the goal becomes "catalog every distinct RCE here,"
 not "can it be cracked" (already yes, via ingreslock).
+
+## 24. Fixed a GenericExtractor node-identity bug causing DEPG bloat; scoped (not yet built) an edge-aware replacement for `_depg_context`'s flat cap (2026-10-19)
+
+A live unassisted run against DVWA's login flow surfaced two related but
+distinct problems in how findings reach the model's context.
+
+**Fixed: `hash_signal` wasn't actually stable against the two most common
+sources of run-to-run noise.** Neither curl nor `nc` has a dedicated
+`CauseExtractor` (same gap §15's own comment on this file already
+flagged for curl), so every call falls through to `GenericExtractor`,
+whose node identity is `hash_signal(raw tool output)`. Confirmed live:
+a dozen+ separately-fetched copies of DVWA's login page — functionally
+identical ("still logged out") — each became a *permanent, separate*
+DEPG node, because `hash_signal` didn't strip two things that vary on
+every call despite the content being the same finding: curl's own
+progress-meter preamble (byte counts and transfer speed jitter purely
+from timing) and DVWA's freshly-rotated CSRF `user_token` embedded in
+the page body. Since `_depg_context`/`_memory_context` (`nodes.py`) fold
+straight into every `think()` call's system prompt, this wasn't just
+noisy findings — it was actively consuming the compaction budget that
+should have gone to the hint/fix the operator had just given the model,
+making it look like context was being dropped too aggressively when the
+real problem was upstream junk inflating what had to fit in the first
+place.
+
+Fixed in `cism/depg/normalize.py`'s `hash_signal` (not a new per-tool
+extractor — this is the one shared choke point every content-hash-keyed
+fallback node already goes through): strip curl's progress-meter block
+via a pattern matching its two fixed header lines plus the numeric/`:`/
+`%`/unit-suffix stats that follow, and mask any hex string specifically
+inside an HTML `value='...'`/`value="..."` attribute (the generic shape
+of a hidden CSRF/nonce field) to a fixed placeholder before hashing.
+Deliberately *not* masking bare hex substrings anywhere in the text: a
+UNION-dumped password hash is real, distinguishing content displayed as
+plain page content, not a form's hidden-input value, and two different
+dumps must not collapse onto the same node just because both happen to
+be 32 hex characters. Verified both directions with real captured
+samples: two genuinely-different login-page fetches (different token,
+different curl timing) now hash identically; two genuinely-different
+plain-text password hashes still hash differently.
+
+**Scoped, not built: `_depg_context` needs to select an actual subgraph,
+not just cap a flat list.** Today it groups nodes by target, sorts
+targets by unresolved-count then size, and takes the top
+`_DEPG_CONTEXT_CAP_PER_TARGET` nodes per target — no edges considered at
+all. Confirmed by reading `Graph.prune()` (the only place in the
+codebase that *does* walk edges for a similar purpose): it only
+collapses weakly-connected all-`blocked` components, which never
+applies to GenericExtractor's orphan nodes (no edges to anything,
+`linking.py`'s `find_precondition` doesn't relate two generic
+hash-keyed nodes to each other) — so today's cap genuinely has no
+graph-structural awareness, it's a flat count-and-sort.
+
+Proposed design for the actual fix, next time this is picked up:
+- `AgentState` already carries `depg_nodes`/`depg_edges` as flat
+  collections, and `Graph.from_state(nodes, edges)` already exists to
+  seed a working `Graph` (with `_children`/`_parents`/`last_for_target`
+  built) from exactly that shape — reuse it inside `_depg_context`
+  rather than building new adjacency-tracking from scratch.
+- Per target, in priority order until the existing per-target cap is
+  filled: (1) every T1-tier node unconditionally (credential-found,
+  confirmed sql-injection — ground-truth capability unlocked, must
+  never be crowded out by recency or position), (2) a depth-bounded
+  BFS (same traversal shape as `_weakly_connected`, just not
+  state-restricted) outward from `last_for_target[target]` over
+  `_children`/`_parents` — recovers the causal neighborhood of wherever
+  the engagement's attention currently is, not just "whatever's newest
+  in insertion order", (3) only then, highest-signal *orphan* nodes
+  (no edges at all) as the lowest-priority fallback — same
+  unresolved-first tie-break as today, now correctly deprioritized
+  below anything the graph actually knows is connected to live
+  investigation.
+- Same asymptotic cost as today: one bounded BFS per target, capped at
+  the existing per-target node budget — no new indexing work, since
+  `Graph` already maintains the adjacency dicts this reads from.
+- Open question for whoever implements this: whether to also render
+  light structure (e.g. indent a child under its parent in the text
+  block) or keep the flat one-line-per-node format and let ordering
+  alone carry the "this is connected to that" signal — the latter is
+  the smaller change and should ship first; structure can follow if the
+  flat-but-ordered version still isn't legible enough live.
+
+Verification (today's fix only — #2 above is design, not code):
+`pytest -n auto tests/` 939/940 (the one failure, `test_failed_tool_entry`,
+is `test_snapshots.py`'s pre-existing order-dependent flakiness under
+`-n auto` — confirmed by re-running it alone, where it passes).
+5 new cases in `tests/test_depg_normalize.py` covering the curl-meter
+strip, the CSRF-token mask, that a real dumped hash is *not* masked, and
+the combined real-world repro (two login-page fetches differing only by
+timing + token, now hashing identically). `graphify update .` run after.

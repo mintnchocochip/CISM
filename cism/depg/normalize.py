@@ -13,6 +13,25 @@ __all__ = ["hash_signal", "normalize_target"]
 
 _SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.-]*://")
 _DURATION_RE = re.compile(r"\b\d+(\.\d+)?s\b")
+#: curl's own progress meter (two header lines plus one or more numeric
+#: stats updates as a transfer proceeds) varies run to run from timing
+#: jitter alone -- confirmed live 2026-10-19: identical repeated probes
+#: against the same URL hashed differently purely because of this,
+#: multiplying into a dozen+ permanent DEPG nodes for one real finding.
+#: No dedicated extractor exists for curl, so this is the only place that
+#: can catch it (GenericExtractor's hash_signal call).
+_CURL_METER_RE = re.compile(
+    r"%\s*Total\s+%\s*Received\s+%\s*Xferd\s+Average\s+Speed\s+Time\s+Time\s+Time\s+Current\s+"
+    r"Dload\s+Upload\s+Total\s+Spent\s+Left\s+Speed\s+"
+    r"(?:[\d.,:%-]+[kMG]?\s*)+"
+)
+#: A hidden CSRF/nonce field's value (e.g. DVWA's `user_token`) is a fresh
+#: random token on every page load -- the same root cause as the curl
+#: meter above, just in the response body instead of curl's own wrapper.
+#: Masked only inside an HTML `value='...'` attribute, never bare in page
+#: text: a UNION-dumped password hash is real, distinguishing content and
+#: must not collapse with a different dump just because both are hex.
+_HTML_TOKEN_VALUE_RE = re.compile(r"""value=(['"])[a-f0-9]{16,64}\1""", re.IGNORECASE)
 
 
 def normalize_target(raw: str) -> str:
@@ -48,4 +67,8 @@ def hash_signal(text: str) -> str:
     the same tool output dedupes onto the same node."""
     normalized = re.sub(r"\s+", " ", text.strip())
     normalized = _DURATION_RE.sub("", normalized)
+    normalized = _CURL_METER_RE.sub("", normalized)
+    normalized = _HTML_TOKEN_VALUE_RE.sub(
+        lambda m: f"value={m.group(1)}<token>{m.group(1)}", normalized
+    )
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
