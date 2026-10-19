@@ -1,0 +1,816 @@
+{
+  "run_id": "c2f49292147945b7bf39fdd6654a9f7f",
+  "generated_at": "2026-10-19T00:02:01+00:00",
+  "target": "172.28.0.3/vulnerabilities/login.php",
+  "phase_history": [
+    {
+      "timestamp": "2026-10-18T21:05:48+00:00",
+      "phase": "recon"
+    },
+    {
+      "timestamp": "2026-10-18T21:21:12+00:00",
+      "phase": "enumeration"
+    },
+    {
+      "timestamp": "2026-10-18T21:23:02+00:00",
+      "phase": "vulnerability-discovery"
+    }
+  ],
+  "findings": [
+    {
+      "id": "outdated-server-header:172.28.0.3/vulnerabilities/login.php:Apache/2.4.25 (Debian)",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.3/vulnerabilities/login.php",
+      "generality": 0.5,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "21:06:10",
+          "tool": "curl",
+          "exit_signal": "Server banner reveals Apache 2.4.25, a version with known vulnerabilities.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.4.25 (Debian)"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:1c91c0a46c08",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 3,
+      "evidence": [
+        {
+          "timestamp": "21:12:25",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "1c91c0a46c08"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:fc600c9c096d",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 2,
+      "evidence": [
+        {
+          "timestamp": "21:13:14",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "fc600c9c096d"
+    },
+    {
+      "id": "open-port:172.28.0.2:21/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "21/tcp ftp",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "21/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:22/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "22/tcp ssh",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "22/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:23/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "23/tcp telnet",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "23/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:25/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "25/tcp smtp",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "25/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:111/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "111/tcp rpcbind",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "111/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:139/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "139/tcp netbios-ssn",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "139/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:445/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "445/tcp netbios-ssn",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "445/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:512/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "512/tcp exec?",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "512/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:513/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "513/tcp login",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "513/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:514/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "514/tcp tcpwrapped",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "514/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:1099/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "1099/tcp java-rmi",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "1099/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:1524/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "1524/tcp ingreslock?",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "1524/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:2121/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "2121/tcp ftp",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "2121/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:3306/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "3306/tcp mysql",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "3306/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:5432/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "5432/tcp postgresql",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "5432/tcp"
+    },
+    {
+      "id": "open-port:172.28.0.2:6667/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.25,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "21:21:10",
+          "tool": "nmap",
+          "exit_signal": "6667/tcp irc",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "6667/tcp"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.2:Apache/2.2.8",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.2",
+      "generality": 0.5,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:23:01",
+          "tool": "curl",
+          "exit_signal": "Outdated Apache server header.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.2.8"
+    }
+  ],
+  "open_items": [
+    {
+      "id": "pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1",
+      "cause_class": "dead-region",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.75,
+      "state": "blocked",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "21:13:45",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: curl:172.28.0.3/login.php:727d3bf103e1",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "curl:172.28.0.3/login.php:727d3bf103e1"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:0e6f0cd09335",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.25,
+      "state": "contested",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:16:48",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "0e6f0cd09335"
+    },
+    {
+      "id": "pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,password FROM users--",
+      "cause_class": "dead-region",
+      "target": "172.28.0.3/vulnerabilities/sqli",
+      "generality": 0.75,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:17:52",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,password FROM users--",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:pruned:172.28.0.3/vulnerabilities/sqli:sql-injection:172.28.0.3/vulnerabilities/sqli:UNION SELECT user,password FROM users--"
+    },
+    {
+      "id": "pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:curl:172.28.0.3/vulnerabilities/login.php:727d3bf103e1",
+      "cause_class": "dead-region",
+      "target": "172.28.0.3/vulnerabilities/login.php",
+      "generality": 0.75,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "21:09:09",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:curl:172.28.0.3/vulnerabilities/login.php:727d3bf103e1",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:curl:172.28.0.3/vulnerabilities/login.php:727d3bf103e1"
+    }
+  ],
+  "edges": [
+    {
+      "parent": "outdated-server-header:172.28.0.3/vulnerabilities/login.php:Apache/2.4.25 (Debian)",
+      "child": "pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:pruned:172.28.0.3/vulnerabilities/login.php:curl:172.28.0.3/vulnerabilities/login.php:727d3bf103e1",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:1c91c0a46c08",
+      "child": "curl:172.28.0.3/login.php:fc600c9c096d",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:fc600c9c096d",
+      "child": "pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.3/login.php:curl:172.28.0.3/login.php:727d3bf103e1",
+      "child": "curl:172.28.0.3/login.php:0e6f0cd09335",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:6667/tcp",
+      "child": "outdated-server-header:172.28.0.2:Apache/2.2.8",
+      "weight": 1.0
+    }
+  ],
+  "memory_context": [
+    {
+      "id": "outdated-server-header:172.28.0.3/vulnerabilities/login.php:Apache/2.4.25 (Debian)",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 1638.813221693039,
+      "snippet": "Server banner reveals Apache 2.4.25, a version with known vulnerabilities.",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:i'll begin the dvwa authentication flow. first, let me get the login page to obtain a fresh phpsessid and user_token.",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 1638.8131980895996,
+      "snippet": "I'll begin the DVWA authentication flow. First, let me GET the login page to obtain a fresh PHPSESSID and user_token.",
+      "hits": 1
+    },
+    {
+      "id": "tool-failure:recon:blocked by action guardrail",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.0,
+      "age_s": 1460.2695801258087,
+      "snippet": "blocked by action guardrail",
+      "hits": 2
+    },
+    {
+      "id": "narration:recon:the get to login.php returned a 404, which is unexpected. let me proceed with the post to login.php directly with the dv",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 1460.2695438861847,
+      "snippet": "The GET to login.php returned a 404, which is unexpected. Let me proceed with the POST to login.php directly with the DV",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:1c91c0a46c08",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 1264.2255630493164,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:i'll start by fetching the login page to get the session and token values.",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 1264.225545167923,
+      "snippet": "I'll start by fetching the login page to get the session and token values.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:fc600c9c096d",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 1215.1133015155792,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:i'll post the credentials with the token to complete the login flow.",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 1215.1132771968842,
+      "snippet": "I'll POST the credentials with the token to complete the login flow.",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:the token rotates each fetch. let me use a cookie jar to maintain session state and keep the token valid.",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 1184.2459917068481,
+      "snippet": "The token rotates each fetch. Let me use a cookie jar to maintain session state and keep the token valid.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:0e6f0cd09335",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 1001.5083899497986,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:i'll fetch the login page with -i to see the set-cookie header and get the token.",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 1001.5083689689636,
+      "snippet": "I'll fetch the login page with -i to see the Set-Cookie header and get the token.",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:login succeeded \u2014 302 redirect to index.php confirms authentication. now dumping the users table via sql injection.",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 936.7583148479462,
+      "snippet": "Login succeeded \u2014 302 redirect to index.php confirms authentication. Now dumping the users table via SQL injection.",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:21/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933913707733,
+      "snippet": "21/tcp ftp",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:22/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933877944946,
+      "snippet": "22/tcp ssh",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:23/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933880329132,
+      "snippet": "23/tcp telnet",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:25/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933889865875,
+      "snippet": "25/tcp smtp",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:111/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933899402618,
+      "snippet": "111/tcp rpcbind",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:139/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933916091919,
+      "snippet": "139/tcp netbios-ssn",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:445/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933925628662,
+      "snippet": "445/tcp netbios-ssn",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:512/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933939933777,
+      "snippet": "512/tcp exec?",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:513/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933951854706,
+      "snippet": "513/tcp login",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:514/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933968544006,
+      "snippet": "514/tcp tcpwrapped",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:1099/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933959007263,
+      "snippet": "1099/tcp java-rmi",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:1524/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933973312378,
+      "snippet": "1524/tcp ingreslock?",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:2121/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933980464935,
+      "snippet": "2121/tcp ftp",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:3306/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3933997154236,
+      "snippet": "3306/tcp mysql",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:5432/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3934016227722,
+      "snippet": "5432/tcp postgresql",
+      "hits": 1
+    },
+    {
+      "id": "open-port:172.28.0.2:6667/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 739.3934025764465,
+      "snippet": "6667/tcp irc",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:recon:phase proposal -> enumeration (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.0,
+      "age_s": 739.3933811187744,
+      "snippet": "phase proposal -> enumeration (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "narration:enumeration:connection refused on 8080. let me fingerprint the web service on port 80 instead, which is where metasploitable2's weba",
+      "tier": "T3",
+      "phase_tag": "enumeration",
+      "salience": 0.8,
+      "age_s": 676.0984144210815,
+      "snippet": "Connection refused on 8080. Let me fingerprint the web service on port 80 instead, which is where Metasploitable2's weba",
+      "hits": 1
+    },
+    {
+      "id": "outdated-server-header:172.28.0.2:Apache/2.2.8",
+      "tier": "T3",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 628.4480443000793,
+      "snippet": "Outdated Apache server header.",
+      "hits": 1
+    },
+    {
+      "id": "tool-failure:enumeration:toolexecutionerror: curl exited 1 % total % received % xferd average speed time time time current",
+      "tier": "T3",
+      "phase_tag": "enumeration",
+      "salience": 1.0,
+      "age_s": 628.4480204582214,
+      "snippet": "ToolExecutionError: curl exited 1\n  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\n      ",
+      "hits": 1
+    },
+    {
+      "id": "narration:enumeration:you're right \u2014 i was guessing ports that aren't open. let me check the banner on 1524 directly.",
+      "tier": "T3",
+      "phase_tag": "enumeration",
+      "salience": 0.8,
+      "age_s": 628.4479932785034,
+      "snippet": "You're right \u2014 I was guessing ports that aren't open. Let me check the banner on 1524 directly.",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:enumeration:phase proposal -> vulnerability-discovery (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.0,
+      "age_s": 628.4479856491089,
+      "snippet": "phase proposal -> vulnerability-discovery (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "narration:vulnerability-discovery:i'll stop guessing ports and focus on the actual services. let me fingerprint the unrealircd service on 6667, which is w",
+      "tier": "T3",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 0.8,
+      "age_s": 532.9472002983093,
+      "snippet": "I'll stop guessing ports and focus on the actual services. Let me fingerprint the UnrealIRCd service on 6667, which is w",
+      "hits": 1
+    },
+    {
+      "id": "narration:vulnerability-discovery:i'll stop the redundant re-scans and instead confirm the specific known-vulnerable services on metasploitable2. let me f",
+      "tier": "T3",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 0.8,
+      "age_s": 246.02870345115662,
+      "snippet": "I'll stop the redundant re-scans and instead confirm the specific known-vulnerable services on Metasploitable2. Let me f",
+      "hits": 2
+    }
+  ],
+  "metrics": {
+    "ok": true,
+    "tool_calls": 0,
+    "tool_failures": 0,
+    "guardrail_blocks": 0,
+    "extraction_fallbacks": 0,
+    "tokens_total": 24294
+  }
+}

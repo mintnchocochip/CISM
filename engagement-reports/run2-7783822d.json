@@ -1,0 +1,884 @@
+{
+  "run_id": "7783822d7a244262aeca4bbfe6731b23",
+  "generated_at": "2026-10-18T20:53:19+00:00",
+  "target": "172.28.0.3",
+  "phase_history": [
+    {
+      "timestamp": "2026-10-18T20:28:03+00:00",
+      "phase": "recon"
+    },
+    {
+      "timestamp": "2026-10-18T20:28:18+00:00",
+      "phase": "enumeration"
+    },
+    {
+      "timestamp": "2026-10-18T20:28:46+00:00",
+      "phase": "vulnerability-discovery"
+    },
+    {
+      "timestamp": "2026-10-18T20:29:10+00:00",
+      "phase": "exploitation"
+    }
+  ],
+  "findings": [
+    {
+      "id": "open-port:172.28.0.3:80/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.3",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 7,
+      "evidence": [
+        {
+          "timestamp": "20:28:17",
+          "tool": "nmap",
+          "exit_signal": "80/tcp http",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "80/tcp"
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "cause_class": "web-fingerprint",
+      "target": "172.28.0.3",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:28:45",
+          "tool": "whatweb",
+          "exit_signal": "http://172.28.0.3: 302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]"
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "cause_class": "web-fingerprint",
+      "target": "172.28.0.3",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:28:45",
+          "tool": "whatweb",
+          "exit_signal": "http://172.28.0.3/login.php: 200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/config (301)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:29:09",
+          "tool": "gobuster",
+          "exit_signal": "/config (301)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/config (301)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/docs (301)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:29:09",
+          "tool": "gobuster",
+          "exit_signal": "/docs (301)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/docs (301)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/phpinfo.php (302)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:29:09",
+          "tool": "gobuster",
+          "exit_signal": "/phpinfo.php (302)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/phpinfo.php (302)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/setup.php (200)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:29:09",
+          "tool": "gobuster",
+          "exit_signal": "/setup.php (200)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/setup.php (200)"
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/robots.txt (200)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.3",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:29:09",
+          "tool": "gobuster",
+          "exit_signal": "/robots.txt (200)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/robots.txt (200)"
+    },
+    {
+      "id": "waf-absent:172.28.0.3/login.php:no-waf-detected",
+      "cause_class": "waf-absent",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 9,
+      "evidence": [
+        {
+          "timestamp": "20:29:09",
+          "tool": "wafw00f",
+          "exit_signal": "no-waf-detected",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "no-waf-detected"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:ea58e2a4a923",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.5714285714285714,
+      "state": "resolved",
+      "downstream": 8,
+      "evidence": [
+        {
+          "timestamp": "20:29:53",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "ea58e2a4a923"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:0dd72004a0e3",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.5714285714285714,
+      "state": "resolved",
+      "downstream": 7,
+      "evidence": [
+        {
+          "timestamp": "20:30:16",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "0dd72004a0e3"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:bbe043f51f2f",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.5714285714285714,
+      "state": "resolved",
+      "downstream": 6,
+      "evidence": [
+        {
+          "timestamp": "20:31:19",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "bbe043f51f2f"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:bfe9b344c207",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.5714285714285714,
+      "state": "resolved",
+      "downstream": 5,
+      "evidence": [
+        {
+          "timestamp": "20:32:09",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "bfe9b344c207"
+    },
+    {
+      "id": "curl:172.28.0.3/dashboard.php:4c33c08d5315",
+      "cause_class": "curl",
+      "target": "172.28.0.3/dashboard.php",
+      "generality": 0.5714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:37:43",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "4c33c08d5315"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:8a3277067e57",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.5714285714285714,
+      "state": "resolved",
+      "downstream": 2,
+      "evidence": [
+        {
+          "timestamp": "20:38:27",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "8a3277067e57"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:cfafa8d4ea52",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.5714285714285714,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "20:38:54",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "cfafa8d4ea52"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:7afb262a0f91",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.5714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:39:31",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "7afb262a0f91"
+    },
+    {
+      "id": "curl:172.28.0.3/index.php:3fb37f4991b4",
+      "cause_class": "curl",
+      "target": "172.28.0.3/index.php",
+      "generality": 0.5714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:40:00",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "3fb37f4991b4"
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli/?id=1&submit=submit:67f54e7ba01a",
+      "cause_class": "curl",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1&submit=submit",
+      "generality": 0.5714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:45:55",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "67f54e7ba01a"
+    }
+  ],
+  "open_items": [
+    {
+      "id": "pruned:172.28.0.3/login.php:sql-injection-attempt:172.28.0.3/login.php:no-injection-found",
+      "cause_class": "dead-region",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.42857142857142855,
+      "state": "blocked",
+      "downstream": 4,
+      "evidence": [
+        {
+          "timestamp": "20:33:11",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: sql-injection-attempt:172.28.0.3/login.php:no-injection-found",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "sql-injection-attempt:172.28.0.3/login.php:no-injection-found"
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:525bc43559c3",
+      "cause_class": "curl",
+      "target": "172.28.0.3/login.php",
+      "generality": 0.5714285714285714,
+      "state": "contested",
+      "downstream": 3,
+      "evidence": [
+        {
+          "timestamp": "20:36:46",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "525bc43559c3"
+    },
+    {
+      "id": "pruned:172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit:curl:172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit:727d3bf103e1+pruned:172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit:curl:172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit:727d3bf103e1",
+      "cause_class": "dead-region",
+      "target": "172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit",
+      "generality": 0.42857142857142855,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:51:38",
+          "tool": "prune",
+          "exit_signal": "collapsed 2 dead nodes: curl:172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit:727d3bf103e1, pruned:172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit:curl:172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit:727d3bf103e1",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "curl:172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit:727d3bf103e1+pruned:172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit:curl:172.28.0.3/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users-- -&submit=submit:727d3bf103e1"
+    },
+    {
+      "id": "pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:dnsenum:dvwa.cism-lab:727d3bf103e1",
+      "cause_class": "dead-region",
+      "target": "dvwa.cism-lab",
+      "generality": 0.42857142857142855,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:28:45",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:dnsenum:dvwa.cism-lab:727d3bf103e1",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:pruned:dvwa.cism-lab:dnsenum:dvwa.cism-lab:727d3bf103e1"
+    }
+  ],
+  "edges": [
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "web-fingerprint:172.28.0.3:302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "web-fingerprint:172.28.0.3:200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "exposed-path:172.28.0.3:/config (301)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "exposed-path:172.28.0.3:/docs (301)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "exposed-path:172.28.0.3:/phpinfo.php (302)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "exposed-path:172.28.0.3:/setup.php (200)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.3:80/tcp",
+      "child": "exposed-path:172.28.0.3:/robots.txt (200)",
+      "weight": 1.0
+    },
+    {
+      "parent": "waf-absent:172.28.0.3/login.php:no-waf-detected",
+      "child": "curl:172.28.0.3/login.php:ea58e2a4a923",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:ea58e2a4a923",
+      "child": "curl:172.28.0.3/login.php:0dd72004a0e3",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:0dd72004a0e3",
+      "child": "curl:172.28.0.3/login.php:bbe043f51f2f",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:bbe043f51f2f",
+      "child": "curl:172.28.0.3/login.php:bfe9b344c207",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:bfe9b344c207",
+      "child": "pruned:172.28.0.3/login.php:sql-injection-attempt:172.28.0.3/login.php:no-injection-found",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.3/login.php:sql-injection-attempt:172.28.0.3/login.php:no-injection-found",
+      "child": "curl:172.28.0.3/login.php:525bc43559c3",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:525bc43559c3",
+      "child": "curl:172.28.0.3/login.php:8a3277067e57",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:8a3277067e57",
+      "child": "curl:172.28.0.3/login.php:cfafa8d4ea52",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.3/login.php:cfafa8d4ea52",
+      "child": "curl:172.28.0.3/login.php:7afb262a0f91",
+      "weight": 1.0
+    }
+  ],
+  "memory_context": [
+    {
+      "id": "open-port:172.28.0.3:80/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 1401.5649900436401,
+      "snippet": "80/tcp http",
+      "hits": 1
+    },
+    {
+      "id": "narration:recon:i'll begin the ptes engagement with reconnaissance. let me start by mapping the dvwa host (172.28.0.3) with nmap.",
+      "tier": "T3",
+      "phase_tag": "recon",
+      "salience": 0.8,
+      "age_s": 1401.564898967743,
+      "snippet": "I'll begin the PTES engagement with reconnaissance. Let me start by mapping the DVWA host (172.28.0.3) with nmap.",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:recon:phase proposal -> enumeration (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.0,
+      "age_s": 1401.5648958683014,
+      "snippet": "phase proposal -> enumeration (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 1373.7417278289795,
+      "snippet": "http://172.28.0.3: 302 Found: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], RedirectLocation[login.php]",
+      "hits": 1
+    },
+    {
+      "id": "web-fingerprint:172.28.0.3:200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 1373.7417259216309,
+      "snippet": "http://172.28.0.3/login.php: 200 OK: Apache[2.4.25], Cookies[PHPSESSID,security], Country[RESERVED][ZZ], DVWA, HTTPServer[Debian Linux][Apache/2.4.25 (Debian)], IP[172.28.0.3], PasswordField[password], Title[Login :: Damn Vulnerable Web Application (DVWA) v1.10 *Development*]",
+      "hits": 1
+    },
+    {
+      "id": "tool-failure:enumeration:blocked by action guardrail",
+      "tier": "T3",
+      "phase_tag": "enumeration",
+      "salience": 1.0,
+      "age_s": 1373.7417187690735,
+      "snippet": "blocked by action guardrail",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:enumeration:phase proposal -> vulnerability-discovery (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.0,
+      "age_s": 1373.7417047023773,
+      "snippet": "phase proposal -> vulnerability-discovery (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/config (301)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 1349.3971276283264,
+      "snippet": "/config (301)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/docs (301)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 1349.397120475769,
+      "snippet": "/docs (301)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/phpinfo.php (302)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 1349.397120475769,
+      "snippet": "/phpinfo.php (302)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/setup.php (200)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 1349.3971214294434,
+      "snippet": "/setup.php (200)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.3:/robots.txt (200)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 1349.397121667862,
+      "snippet": "/robots.txt (200)",
+      "hits": 1
+    },
+    {
+      "id": "waf-absent:172.28.0.3/login.php:no-waf-detected",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 1349.3971235752106,
+      "snippet": "no-waf-detected",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:vulnerability-discovery:phase proposal -> exploitation (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.0,
+      "age_s": 1349.3970823287964,
+      "snippet": "phase proposal -> exploitation (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:ea58e2a4a923",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1305.5196175575256,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll stop the checkpoint pattern and make real progress. let me try the default dvwa credentials on the login form.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 1305.519596338272,
+      "snippet": "I'll stop the checkpoint pattern and make real progress. Let me try the default DVWA credentials on the login form.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:0dd72004a0e3",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1282.7159495353699,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll continue the engagement. let me try the classic dvwa default credentials (admin/admin).",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 1282.7159321308136,
+      "snippet": "I'll continue the engagement. Let me try the classic DVWA default credentials (admin/admin).",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:bbe043f51f2f",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1219.0055496692657,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll follow the proper dvwa authentication flow. first, let me get the login page to capture the session cookie and csrf",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 1219.0055298805237,
+      "snippet": "I'll follow the proper DVWA authentication flow. First, let me GET the login page to capture the session cookie and CSRF",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:bfe9b344c207",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1169.0944843292236,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll stop the checkpoint pattern and make real progress. let me test sql injection on the login form to bypass authentic",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 1169.0944578647614,
+      "snippet": "I'll stop the checkpoint pattern and make real progress. Let me test SQL injection on the login form to bypass authentic",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll stop the checkpoint pattern and make real progress. let me use sqlmap against the login form to definitively confir",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 1107.2821452617645,
+      "snippet": "I'll stop the checkpoint pattern and make real progress. Let me use sqlmap against the login form to definitively confir",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:525bc43559c3",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 892.3888285160065,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll stop the checkpoint pattern and make real progress. let me test the sql injection with a definitive boolean-based p",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 892.388808965683,
+      "snippet": "I'll stop the checkpoint pattern and make real progress. Let me test the SQL injection with a definitive boolean-based p",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/dashboard.php:4c33c08d5315",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 835.301272392273,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll stop the checkpoint pattern and make real progress. let me verify authentication by accessing the dvwa dashboard di",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 835.3012444972992,
+      "snippet": "I'll stop the checkpoint pattern and make real progress. Let me verify authentication by accessing the DVWA dashboard di",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:8a3277067e57",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 791.8579590320587,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll stop the checkpoint pattern and make real progress. let me test the sql injection bypass payload on the login form,",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 791.8579249382019,
+      "snippet": "I'll stop the checkpoint pattern and make real progress. Let me test the SQL injection bypass payload on the login form,",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:cfafa8d4ea52",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 764.474705696106,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll follow the dvwa authentication flow properly. first, let me get login.php to capture a fresh session cookie and csr",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 764.474672794342,
+      "snippet": "I'll follow the DVWA authentication flow properly. First, let me GET login.php to capture a fresh session cookie and CSR",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/login.php:7afb262a0f91",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 727.1791577339172,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll stop the checkpoint pattern and make real progress. let me immediately submit the login with the fresh session and",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 727.1790499687195,
+      "snippet": "I'll stop the checkpoint pattern and make real progress. Let me immediately submit the login with the fresh session and ",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/index.php:3fb37f4991b4",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 698.8993308544159,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll verify authenticated access by requesting the dashboard/index page with the authenticated session.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 698.899308681488,
+      "snippet": "I'll verify authenticated access by requesting the dashboard/index page with the authenticated session.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.3/vulnerabilities/sqli/?id=1&submit=submit:67f54e7ba01a",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 343.77176451683044,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "narration:exploitation:i'll make the call and report what actually comes back.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 343.7717447280884,
+      "snippet": "I'll make the call and report what actually comes back.",
+      "hits": 1
+    },
+    {
+      "id": "tool-failure:exploitation:blocked by action guardrail",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.0,
+      "age_s": 175.00116777420044,
+      "snippet": "blocked by action guardrail",
+      "hits": 2
+    },
+    {
+      "id": "narration:exploitation:i'll run the call now.",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 0.8,
+      "age_s": 175.00115537643433,
+      "snippet": "I'll run the call now.",
+      "hits": 2
+    }
+  ],
+  "metrics": {
+    "ok": true,
+    "tool_calls": 0,
+    "tool_failures": 0,
+    "guardrail_blocks": 0,
+    "extraction_fallbacks": 14,
+    "tokens_total": 22620
+  }
+}
