@@ -2039,3 +2039,20 @@ failures are the same root shape — acting on a stale/wrong belief about
 what was already established, rather than checking current reality
 (the actual next unanswered question, or the actual response body)
 before generating the next action.
+
+**Addendum, same night, stronger evidence:** given the exact literal
+corrected URL again (a sixth occurrence, this time progressing to a
+genuinely new query rather than a repeat — `information_schema.columns`
+for the `users` table), with the operator's instruction explicitly
+reading *"don't modify any character of it"*, the model still
+re-introduced the identical `%26` substitution on the one `&` the
+instruction most directly addressed. This rules out the alternative
+explanation this file's §19/§21 entries raised for a superficially
+similar case (the `&amp;` pattern that turned out to be a
+display/logging artifact, not what curl actually received) — this is a
+real, reproducible generation behavior, confirmed by the resulting HTTP
+response actually coming back empty each time it happens, not just a
+log-rendering quirk. Whatever is driving it looks closer to a
+near-compulsive "fully percent-encode the entire query string" habit
+than a reasoning error, since it survives even an explicit, literal,
+do-not-modify instruction.
