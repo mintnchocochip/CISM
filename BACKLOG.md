@@ -1439,3 +1439,65 @@ nothing-to-report case to confirm it doesn't suppress real findings.
 Fixed by pinning `temperature: 0.0` on the request. Commit `7c69808`.
 
 `pytest -n auto tests/` 923/923. `graphify update .` run after.
+
+## 22. Live verification of #21's fixes, a token-budget probe-failure gap, and a 3-hour unassisted loose-prompt test (2026-10-19)
+
+Rebuilt `cism-runner` with #21's two fixes baked in and re-ran the exact
+same DVWA login + UNION SQLi dump by hand against the fixed image: the
+`sql-injection` finding now appears correctly as `[resolved] ... [T1]` in
+the real `/report` output (`engagement-reports/run5-verify-d7a3f96e.md`)
+— confirming both fixes work end-to-end, not just in unit tests.
+
+**A second, deeper determinism gap, found live while re-replaying the same
+extraction prompt during a concurrent engagement run.** Temperature=0
+alone gave 6/6 identical results in isolation, but under real concurrent
+server load (`total_slots: 4`, long streaming generations in flight,
+plus this model's IQ3_S quantization — 3.66 bits/weight, razor-thin
+numeric margins) the *same* prompt still produced a stable-but-wrong
+result repeatedly. This is model/infra-level residual variance (floating
+-point non-associativity under concurrent batched compute on an
+extremely quantized model), not something fixable from `cism`'s request
+parameters — noted here, not fixed further, since temperature=0 is still
+a strict improvement over the pre-#21 baseline (which failed outright
+3/5 times with no determinism at all).
+
+**A real, separate robustness gap found chasing that investigation:** a
+genuine `openai.APIError: Context size has been exceeded` crash hit
+mid-engagement during the loose-prompt test (below), ~90 minutes in,
+under the same heavy concurrent load. Root-caused to
+`_verify_real_token_budget` (`cism/agent/nodes.py`): its real-tokenizer
+probe (`count_tokens_llamacpp`, a 5s-timeout `/tokenize` call) timed out
+under load, and the old contract treated "probe failed" exactly like "no
+counter configured at all" — a no-op, passing the already-known-
+unreliable chars/N estimate through with zero safety margin, at exactly
+the moment concurrent load makes that estimate least trustworthy. Not a
+crash loop (the auto-pilot's existing continue-nudge recovered the run
+immediately), but confirmed it would recur under the same load pattern.
+Fixed by applying a defensive 85%-of-window recompaction when the probe
+itself fails, instead of trusting the raw estimate unchanged. Commit
+`761440d`.
+
+**The loose-prompt experiment itself** (the user's standing question:
+can a terse prompt like *"Find vulnerabilities - go with option 1"*,
+with no detailed instructions, still drive a complete engagement):
+a single such prompt, with no further operator input, ran for 3 hours
+against DVWA, PTES phase-advancing on its own (126 agent runs, 110
+resolved findings — nikto issues, exposed paths, missing headers,
+insecure PHP config, full port/service enumeration;
+`engagement-reports/run6-loose-prompt-b9949a48.md`). Breadth of generic
+recon/enumeration held up fine fully unassisted. The deeper multi-step
+exploit chain did not: the model got stuck guessing a wrong URL prefix
+(`/dvwa/vulnerabilities/sqli/...` — this DVWA install's real path has no
+`/dvwa/` segment) for most of the run and never self-corrected back to
+the *correct* path it had already found during its own earlier recon in
+the same session. Every SQLi attempt against the wrong path was
+correctly classified `sql-injection-attempt`/`no-injection-found` — DEPG
+extraction held up correctly throughout; the gap is in the agent's own
+path-correction behavior, not DEPG quality. Earlier tonight, one explicit
+chat message naming the exact correct URL unstuck the identical mistake
+immediately (§20/§21). **Conclusion: a bleak/terse prompt is sufficient
+for broad recon but not reliable for the deeper exploit chain with this
+small/quantized model — it can get stuck in a persistent wrong-path rut
+for hours without external correction.**
+
+`pytest -n auto tests/` 924/924. `graphify update .` run after.
