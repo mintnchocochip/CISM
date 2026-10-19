@@ -168,19 +168,53 @@ def _truncate_old_tool_output(content: str) -> str:
     return f"{head}\n...[{omitted} chars truncated — already summarized in the findings above]...\n{tail}"
 
 
-def _shrink_old_tool_output(messages: list) -> list:
-    """Truncates ToolMessage.content for every turn before the most recent
-    HumanMessage -- the turn in progress keeps its own tool results in
-    full, since the model may still need exact detail from them to decide
-    its next move. No HumanMessage found at all (shouldn't happen in
-    practice) means nothing is eligible: show more, not less, when the
-    boundary is unclear."""
+#: 2026-10-19, live (Q&A-driven engagement): a human operator sending one
+#: short message per exchange ("try X", "what does Y show") makes *every*
+#: exchange its own "turn" under the old since-the-last-HumanMessage
+#: boundary -- a tool result from literally one exchange ago (the exact
+#: session cookie/CSRF token the model had just extracted) was already
+#: "old" and eligible for Tier 2 stubbing the very next turn, under real
+#: context pressure on a small model's 16k window. The model then had no
+#: way to re-check its own extracted values and wrongly concluded it had
+#: fabricated them. DEPG/memory context doesn't cover this gap -- session
+#: artifacts (cookies, CSRF tokens) aren't findings, so extraction never
+#: carries them forward the way it does a vulnerability. Counting the
+#: boundary in tool-call round-trips instead of HumanMessages keeps the
+#: last few exchanges' real detail available regardless of how many short
+#: human turns land in between, while leaving autonomous/single-shot runs
+#: (one HumanMessage, many round-trips in a loop) effectively unchanged --
+#: there, the whole loop is usually well within this window already.
+_RECENT_TOOL_TURNS_KEPT_FULL = 3
+
+
+def _old_tool_output_boundary(messages: list) -> int:
+    """Index before which a ToolMessage is "old" and eligible for
+    shrink/stub. Walks backward counting contiguous ToolMessage groups
+    (one tool-call round-trip each) rather than stopping at the most
+    recent HumanMessage. Fewer than _RECENT_TOOL_TURNS_KEPT_FULL round
+    trips in the whole history (including none at all) means nothing is
+    eligible yet: show more, not less, when there's no real pressure to
+    justify losing detail."""
+    tool_turns_seen = 0
+    in_group = False
     for index in range(len(messages) - 1, -1, -1):
-        if isinstance(messages[index], HumanMessage):
-            boundary = index
-            break
-    else:
-        return messages
+        if isinstance(messages[index], ToolMessage):
+            if not in_group:
+                tool_turns_seen += 1
+                in_group = True
+        else:
+            in_group = False
+        if tool_turns_seen > _RECENT_TOOL_TURNS_KEPT_FULL:
+            return index + 1
+    return 0
+
+
+def _shrink_old_tool_output(messages: list) -> list:
+    """Truncates ToolMessage.content for every round-trip before the most
+    recent _RECENT_TOOL_TURNS_KEPT_FULL -- those keep their tool results in
+    full, since the model may still need exact detail from them to decide
+    its next move."""
+    boundary = _old_tool_output_boundary(messages)
     return [
         message.model_copy(update={"content": _truncate_old_tool_output(str(message.content))})
         if index < boundary and isinstance(message, ToolMessage)
@@ -204,12 +238,7 @@ def _stub_old_tool_output(messages: list) -> list:
     """Same turn boundary as _shrink_old_tool_output; replaces old
     ToolMessage content with a fixed, near-free stub instead of a
     350/100-char shrink."""
-    for index in range(len(messages) - 1, -1, -1):
-        if isinstance(messages[index], HumanMessage):
-            boundary = index
-            break
-    else:
-        return messages
+    boundary = _old_tool_output_boundary(messages)
     return [
         message.model_copy(update={"content": _OLD_TOOL_OUTPUT_STUB})
         if index < boundary and isinstance(message, ToolMessage)

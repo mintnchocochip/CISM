@@ -1343,7 +1343,11 @@ async def test_think_keeps_exactly_one_leading_system_message_when_turns_are_dro
 async def test_think_passes_token_counter_through_to_the_real_budget_check() -> None:
     """End-to-end wiring check: make_think_node's token_counter reaches
     _verify_real_token_budget and can trigger a corrective recompaction
-    even when the chars/N estimate alone would have left history whole."""
+    even when the chars/N estimate alone would have left history whole.
+
+    2026-10-19, live: three extra, small round-trips keep old_tool's own
+    round-trip outside the always-kept-full window (see
+    _old_tool_output_boundary) so it's actually eligible to shrink here."""
     llm = _RecordingMessagesChatModel(seen=[])
     calls: list[str] = []
 
@@ -1357,6 +1361,15 @@ async def test_think_passes_token_counter_through_to_the_real_budget_check() -> 
         HumanMessage(content="scan it"),
         AIMessage(content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {}}]),
         old_tool,
+        HumanMessage(content="scan it 2"),
+        AIMessage(content="", tool_calls=[{"id": "c2", "name": "nmap", "args": {}}]),
+        ToolMessage(content="ok2", tool_call_id="c2", name="nmap"),
+        HumanMessage(content="scan it 3"),
+        AIMessage(content="", tool_calls=[{"id": "c3", "name": "nmap", "args": {}}]),
+        ToolMessage(content="ok3", tool_call_id="c3", name="nmap"),
+        HumanMessage(content="scan it 4"),
+        AIMessage(content="", tool_calls=[{"id": "c4", "name": "nmap", "args": {}}]),
+        ToolMessage(content="ok4", tool_call_id="c4", name="nmap"),
         HumanMessage(content="scan again"),
     ])
     state["context_window"] = 5000
@@ -1418,27 +1431,44 @@ def test_compact_history_truncates_old_tool_output_only_under_real_pressure() ->
     all (2026-10-18, live: shrank a 777-char hydra result the instant a new
     chat turn started, and a mid-word cut on that shrink inverted the
     finding — see test_truncate_old_tool_output_never_bisects_a_word) — so
-    this budget is picked tight enough that shrinking is actually needed
-    (1403 raw tokens > budget), not just "any old turn exists". The current
-    turn's own tool result must stay untouched either way."""
-    old_tool = ToolMessage(content="A" * 2000, tool_call_id="c1", name="nmap")
-    new_tool = ToolMessage(content="B" * 2000, tool_call_id="c2", name="nmap")
+    this budget is picked tight enough that shrinking is actually needed,
+    not just "any old turn exists".
+
+    2026-10-19, live (Q&A-driven engagement): the boundary for "old" moved
+    from "before the most recent HumanMessage" to "before the last
+    _RECENT_TOOL_TURNS_KEPT_FULL tool-call round-trips" — see
+    _old_tool_output_boundary. Four round-trips here so exactly one
+    (the oldest) falls outside that window; the three most recent must
+    stay untouched regardless of pressure, same as the current turn
+    always did."""
+    older_tool = ToolMessage(content="A" * 2000, tool_call_id="c0", name="nmap")
+    mid_tool = ToolMessage(content="A" * 2000, tool_call_id="c1", name="nmap")
+    recent_tool = ToolMessage(content="A" * 2000, tool_call_id="c2", name="nmap")
+    new_tool = ToolMessage(content="B" * 2000, tool_call_id="c_now", name="nmap")
     messages = [
-        HumanMessage(content="scan it"),
+        HumanMessage(content="scan it 0"),
+        AIMessage(content="", tool_calls=[{"id": "c0", "name": "nmap", "args": {}}]),
+        older_tool,
+        HumanMessage(content="scan it 1"),
         AIMessage(content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {}}]),
-        old_tool,
-        HumanMessage(content="scan again"),
+        mid_tool,
+        HumanMessage(content="scan it 2"),
         AIMessage(content="", tool_calls=[{"id": "c2", "name": "nmap", "args": {}}]),
+        recent_tool,
+        HumanMessage(content="scan it now"),
+        AIMessage(content="", tool_calls=[{"id": "c_now", "name": "nmap", "args": {}}]),
         new_tool,
     ]
 
-    kept, dropped = _compact_history(messages, "sys", 1900)
+    kept, dropped = _compact_history(messages, "sys", 3713)
 
     assert dropped == 0
-    old_kept = kept[2]
-    assert len(old_kept.content) < 2000
-    assert "truncated" in old_kept.content
-    assert kept[-1].content == "B" * 2000
+    oldest_kept = kept[2]
+    assert len(oldest_kept.content) < 2000
+    assert "truncated" in oldest_kept.content
+    assert kept[5].content == "A" * 2000  # one round-trip back, still untouched
+    assert kept[8].content == "A" * 2000  # two round-trips back, still untouched
+    assert kept[-1].content == "B" * 2000  # the current turn, as always
 
 
 def test_compact_history_leaves_old_tool_output_untouched_when_it_already_fits() -> None:
@@ -1456,6 +1486,41 @@ def test_compact_history_leaves_old_tool_output_untouched_when_it_already_fits()
 
     assert dropped == 0
     assert kept[2].content == "A" * 2000
+
+
+def test_stub_old_tool_output_keeps_the_last_three_round_trips_across_short_human_turns() -> None:
+    """2026-10-19, live (Q&A-driven engagement): a human operator sending
+    one short message per exchange ("try this", "what does that show")
+    makes every exchange its own "turn" -- under the old since-the-last-
+    HumanMessage boundary, a tool result from literally the previous
+    exchange (the exact session cookie/CSRF token the model had just
+    extracted) was already "old" and got stubbed out the very next turn.
+    DEPG/memory context doesn't cover that gap -- session artifacts
+    aren't findings, so extraction never carries them forward. The
+    boundary must track tool-call round-trips, not HumanMessage count, so
+    the last few exchanges survive regardless of how many short human
+    turns land in between."""
+    from cism.agent.nodes import _OLD_TOOL_OUTPUT_STUB, _stub_old_tool_output
+
+    def turn(i: int) -> list:
+        return [
+            HumanMessage(content=f"try this {i}"),
+            AIMessage(content="", tool_calls=[{"id": f"c{i}", "name": "curl", "args": {}}]),
+            ToolMessage(content=f"real response body {i}", tool_call_id=f"c{i}", name="curl"),
+        ]
+
+    messages = [m for i in range(4) for m in turn(i)]
+
+    stubbed = _stub_old_tool_output(messages)
+
+    # The last three round-trips each had their own short HumanMessage in
+    # between, yet their tool results must survive byte-for-byte.
+    for i in (1, 2, 3):
+        tool_msg = next(m for m in stubbed if getattr(m, "tool_call_id", None) == f"c{i}")
+        assert tool_msg.content == f"real response body {i}"
+    # Only the one round-trip beyond that window is eligible to be stubbed.
+    oldest = next(m for m in stubbed if getattr(m, "tool_call_id", None) == "c0")
+    assert oldest.content == _OLD_TOOL_OUTPUT_STUB
 
 
 def test_truncate_old_tool_output_never_bisects_a_word() -> None:
@@ -1502,37 +1567,46 @@ def test_snap_tail_never_cuts_mid_word() -> None:
 
 def test_compact_history_stubs_old_tool_output_harder_once_shrinking_alone_is_not_enough() -> None:
     """Tier 2: Tier 1's 350/100-char shrink alone still can't fit this
-    budget (4 old turns' worth of shrunk-but-nonzero nmap dumps), so old
-    ToolMessage content gets stubbed to near-nothing instead, letting more
-    of the old turns survive as bare shape rather than being dropped
-    outright. At this exact budget, shrink-only compaction keeps only the
-    current turn (drops 11 of 15 messages); the stub tier keeps 3 of the 4
-    old turns too (drops 3 — one turn's worth of HumanMessage+AIMessage+
-    ToolMessage, still needed to clear the budget), each with its
-    ToolMessage content replaced by the fixed stub, not dropped outright."""
+    budget, so old ToolMessage content gets stubbed to near-nothing
+    instead, letting more of the old turns survive as bare shape rather
+    than being dropped outright.
 
-    def old_turn(i: int) -> list:
+    2026-10-19, live (Q&A-driven engagement): with the boundary now set by
+    tool-call round-trips rather than HumanMessage count (see
+    _old_tool_output_boundary), this needs five round-trips so two of them
+    fall outside the three-most-recent window and can actually exercise
+    Tier 2 -- the three most recent (and the current turn) must never be
+    stubbed, no matter how tight the budget."""
+
+    def old_turn(i) -> list:
         return [
             HumanMessage(content=f"scan it {i}"),
             AIMessage(content="", tool_calls=[{"id": f"c{i}", "name": "nmap", "args": {}}]),
             ToolMessage(content="A" * 2000, tool_call_id=f"c{i}", name="nmap"),
         ]
 
-    messages = [m for i in range(4) for m in old_turn(i)] + [
-        HumanMessage(content="scan it now"),
-        AIMessage(content="", tool_calls=[{"id": "c_now", "name": "nmap", "args": {}}]),
-        ToolMessage(content="B" * 2000, tool_call_id="c_now", name="nmap"),
-    ]
+    messages = (
+        old_turn(-1) + old_turn(0) + old_turn(1) + old_turn(2)
+        + [
+            HumanMessage(content="scan it now"),
+            AIMessage(content="", tool_calls=[{"id": "c_now", "name": "nmap", "args": {}}]),
+            ToolMessage(content="B" * 2000, tool_call_id="c_now", name="nmap"),
+        ]
+    )
 
-    kept, dropped = _compact_history(messages, "sys", 1413)
+    kept, dropped = _compact_history(messages, "sys", 2713)
 
-    assert dropped == 3
+    assert dropped == 2
     stubbed = [
         m for m in kept
         if isinstance(m, ToolMessage) and "omitted under context pressure" in str(m.content)
     ]
-    assert len(stubbed) == 3
-    # The current turn's own tool result is never touched by either tier.
+    assert len(stubbed) == 2  # the two round-trips beyond the kept-full window
+    # The three most recent round-trips (including the current turn) are
+    # never touched by either tier, regardless of pressure.
+    untouched = [m for m in kept if isinstance(m, ToolMessage) and m not in stubbed]
+    assert len(untouched) == 3
+    assert all(len(str(m.content)) == 2000 for m in untouched)
     assert kept[-1].content == "B" * 2000
 
 
@@ -1611,18 +1685,28 @@ async def test_verify_real_token_budget_applies_a_safety_margin_when_the_probe_f
     concurrent server load -- the old contract passed the already-known-
     unreliable chars/N estimate through with zero margin exactly when
     load makes that estimate least trustworthy. A failed probe must now
-    shrink defensively, not no-op."""
+    shrink defensively, not no-op.
+
+    2026-10-19, live (separately): two extra, small round-trips keep
+    old_tool's own round-trip outside the always-kept-full window (see
+    _old_tool_output_boundary) so it's actually eligible to shrink here."""
     old_tool = ToolMessage(content="A" * 2000, tool_call_id="c1", name="nmap")
-    new_tool = ToolMessage(content="B" * 2000, tool_call_id="c2", name="nmap")
+    new_tool = ToolMessage(content="B" * 2000, tool_call_id="c4", name="nmap")
     messages = [
         HumanMessage(content="scan it"),
         AIMessage(content="", tool_calls=[{"id": "c1", "name": "nmap", "args": {}}]),
         old_tool,
-        HumanMessage(content="scan again"),
+        HumanMessage(content="scan it 2"),
         AIMessage(content="", tool_calls=[{"id": "c2", "name": "nmap", "args": {}}]),
+        ToolMessage(content="ok2", tool_call_id="c2", name="nmap"),
+        HumanMessage(content="scan it 3"),
+        AIMessage(content="", tool_calls=[{"id": "c3", "name": "nmap", "args": {}}]),
+        ToolMessage(content="ok3", tool_call_id="c3", name="nmap"),
+        HumanMessage(content="scan again"),
+        AIMessage(content="", tool_calls=[{"id": "c4", "name": "nmap", "args": {}}]),
         new_tool,
     ]
-    context_window = 2400  # chars/3 estimate fits with no pressure at all
+    context_window = 2600  # chars/3 estimate fits with no pressure at all
     first_kept, first_dropped = _compact_history(messages, "sys", context_window)
     assert first_dropped == 0
     assert first_kept[2].content == "A" * 2000  # nothing shrunk at this estimate
