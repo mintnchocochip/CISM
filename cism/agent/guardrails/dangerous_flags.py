@@ -44,6 +44,14 @@ _PER_TOOL_DANGEROUS_TOKENS: dict[str, frozenset[str]] = {
         "-c", "--config", "--tamper",
     }),
     "gobuster": frozenset({"-o", "--output"}),
+    # nc (cism/agent/tools/network.py) has no `extra`/raw-flags field at
+    # all, so a real call can never reach this guard with a flag in the
+    # first place -- this only matters if the model hallucinates an
+    # `extra` kwarg the schema doesn't define, which the guard still
+    # catches before the resulting TypeError. -l/-k are the only way this
+    # tool could become a listener (reverse-shell catcher / relay). No
+    # entry for an exec flag: OpenBSD nc has no -e at all to block.
+    "nc": frozenset({"-l", "-k"}),
 }
 
 

@@ -52,6 +52,25 @@ def test_shell_metacharacters_in_an_argument_are_never_interpreted() -> None:
     assert output.strip() == malicious
 
 
+def test_stdin_file_content_reaches_the_subprocesss_real_stdin(tmp_path) -> None:
+    stdin_file = tmp_path / "stdin"
+    stdin_file.write_text("hello from stdin\n")
+
+    output = run_sandboxed(
+        [sys.executable, "-c", "import sys; print(sys.stdin.read().strip())"],
+        stdin=stdin_file,
+    )
+
+    assert output.strip() == "hello from stdin"
+
+
+def test_omitting_stdin_behaves_exactly_as_before_the_parameter_existed() -> None:
+    """A call with no stdin= at all must produce byte-for-byte the same
+    output as the existing, unparameterized call shape — pure addition,
+    no behavior change for any of the callers that predate this parameter."""
+    assert run_sandboxed([sys.executable, "-c", "print('hello')"]) == "hello\n"
+
+
 def test_a_missing_binary_raises_a_clean_error_not_a_stack_trace() -> None:
     with pytest.raises(ToolNotInstalledError):
         run_sandboxed(["definitely-not-a-real-binary-xyz123"])
@@ -172,9 +191,19 @@ def test_scratch_dir_is_removed_even_if_the_block_raises() -> None:
 class _FakeRunner:
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
+        self.stdins: list[Path | None] = []
 
-    def run(self, argv: list[str], *, timeout: float, cwd, max_output: int = 20_000) -> str:
+    def run(
+        self,
+        argv: list[str],
+        *,
+        timeout: float,
+        cwd,
+        max_output: int = 20_000,
+        stdin: Path | None = None,
+    ) -> str:
         self.calls.append(argv)
+        self.stdins.append(stdin)
         return "fake-output"
 
 
@@ -369,10 +398,12 @@ class _FakeCompletedPopen:
     canned output, never actually runs anything."""
 
     captured_argv: list[str] | None = None
+    last_kwargs: dict[str, object] = {}
     returncode = 0
 
     def __init__(self, argv, **kwargs) -> None:
         type(self).captured_argv = argv
+        type(self).last_kwargs = kwargs
         self._kwargs = kwargs
         self.stdout = io.BytesIO(b"fake bwrap output")
 
@@ -485,6 +516,41 @@ def test_bubblewrap_runner_binds_cwd_as_work_and_chdirs_into_it(monkeypatch) -> 
     bind_idx = argv.index("--bind")
     assert argv[bind_idx + 1 : bind_idx + 3] == ["/tmp/my-scratch", "/work"]
     assert argv[argv.index("--chdir") + 1] == "/work"
+
+
+def test_bubblewrap_runner_passes_a_stdin_file_as_the_real_subprocess_stdin(
+    monkeypatch, tmp_path
+) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(sandbox_module, "_dynamic_etc_binds", lambda binary: frozenset())
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", _FakeCompletedPopen)
+
+    stdin_file = tmp_path / "stdin"
+    stdin_file.write_text("id\n")
+
+    BubblewrapRunner().run(
+        ["nc", "10.0.0.2", "1524"], timeout=5.0, cwd=tmp_path, stdin=stdin_file
+    )
+
+    passed_stdin = _FakeCompletedPopen.last_kwargs["stdin"]
+    assert passed_stdin.name == str(stdin_file)
+    passed_stdin.close()
+
+
+def test_bubblewrap_runner_passes_no_stdin_kwarg_when_omitted(monkeypatch) -> None:
+    from cism.agent.tools import sandbox as sandbox_module
+    from cism.agent.tools.sandbox import BubblewrapRunner
+
+    monkeypatch.setattr(sandbox_module.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(sandbox_module, "_dynamic_etc_binds", lambda binary: frozenset())
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", _FakeCompletedPopen)
+
+    BubblewrapRunner().run(["nmap", "10.0.0.5"], timeout=5.0, cwd=Path("/tmp/scratch"))
+
+    assert "stdin" not in _FakeCompletedPopen.last_kwargs
 
 
 def test_bubblewrap_runner_appends_the_real_argv_last(monkeypatch) -> None:

@@ -65,9 +65,11 @@ _PROMPTS: dict[Phase, str] = {
     ),
     Phase.EXPLOITATION: (
         "You are attempting to exploit a confirmed vulnerability or weak "
-        "credential. Use hydra for a credential attack, or sqlmap against a "
-        "confirmed injection point. Stop once you have a credential or a "
-        "confirmed exploit — or have good evidence the attempt doesn't work."
+        "credential. Use hydra for a credential attack, sqlmap against a "
+        "confirmed injection point, or nc to prove a non-HTTP service (e.g. "
+        "a suspected backdoor) actually executes a command, not just that "
+        "it's listening. Stop once you have a credential or a confirmed "
+        "exploit — or have good evidence the attempt doesn't work."
     ),
     Phase.POST_EXPLOITATION: (
         "You have a foothold; document access and look for further pivots within scope."
@@ -79,6 +81,7 @@ _PROMPTS: dict[Phase, str] = {
 #: cover them — filled in by hand here instead.
 _DECORATED_TOOL_PHASES: dict[str, frozenset[Phase]] = {
     "hydra": frozenset({Phase.EXPLOITATION, Phase.POST_EXPLOITATION}),
+    "nc": frozenset({Phase.EXPLOITATION, Phase.POST_EXPLOITATION}),
     "dummy_nmap": frozenset({Phase.RECON}),
     "dummy_msfconsole": frozenset({Phase.ENUMERATION}),
 }
@@ -86,6 +89,7 @@ _DECORATED_TOOL_PHASES: dict[str, frozenset[Phase]] = {
 #: Same gap as _DECORATED_TOOL_PHASES, for capability instead of phase.
 _DECORATED_TOOL_CAPABILITIES: dict[str, str] = {
     "hydra": "executes",
+    "nc": "executes",
     "dummy_nmap": "reads",
     "dummy_msfconsole": "executes",
 }

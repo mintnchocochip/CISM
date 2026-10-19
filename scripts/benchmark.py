@@ -45,7 +45,7 @@ from cism.agent.guardrails import (
 )
 from cism.agent.llm import build_chat_model
 from cism.agent.logging import get_agent_logger
-from cism.agent.tools import CATALOG, build_toolkit, hydra
+from cism.agent.tools import CATALOG, build_toolkit, hydra, nc
 from cism.agent.tools.sandbox import BubblewrapRunner, set_default_runner
 from cism.depg import EXTRACTORS, ExtractorRegistry, LlamaCppExtractionBackend, LLMExtractor
 from cism.tui.events import DEPGUpdated, PhaseChanged, RunFinished, drain
@@ -89,7 +89,7 @@ async def _run(args: argparse.Namespace) -> dict:
 
     scope = parse_scope(args.scope)
     set_default_runner(BubblewrapRunner())
-    tools, _ = build_toolkit(CATALOG, [hydra], EXTRACTORS)
+    tools, _ = build_toolkit(CATALOG, [hydra, nc], EXTRACTORS)
     guardrails = GuardrailSeam(
         input=GuardrailChain([InputGuardStage()]),
         action=GuardrailChain([ScopeGuardStage(scope), DangerousFlagGuardStage()]),

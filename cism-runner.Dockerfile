@@ -4,15 +4,19 @@ FROM python:3.12-slim
 # as of 2026-09-23 (`apt-cache policy`), so a build next month can't
 # silently pull a different tool version. A version bump is a deliberate
 # edit here, not something that just happens on rebuild.
+# 2026-10-19: curl bumped to +deb13u7 -- a Debian security update moved
+# trixie-security's curl/libcurl4t64 forward together, and the old pin
+# could no longer resolve against the libcurl4t64 version it depends on.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap=7.95+dfsg-3 \
-    curl=8.14.1-2+deb13u5 \
+    curl=8.14.1-2+deb13u7 \
     whatweb=0.5.5-1 \
     dnsenum=1.3.2-1 \
     hydra=9.5-3 \
     sqlmap=1.9.6-1 \
     gobuster=3.6.0-1+b10 \
     wafw00f=2.3.1-1 \
+    netcat-openbsd=1.229-1 \
     graphviz=2.42.4-3 \
     bubblewrap=0.12.0-1~deb13u1 \
     git=1:2.47.3-0+deb13u1 \
