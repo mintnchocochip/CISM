@@ -445,7 +445,7 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--accent); }
 </section>
 
 <!-- 05 -->
-<section class="slide s-dia s-loop" id="loop" data-layout="diagram-rail" data-claims="C7 C14 C9 C24" data-transition="iris">
+<section class="slide s-dia s-loop" id="loop" data-layout="diagram-rail" data-claims="C7 C14 C9 C24 C83" data-transition="iris">
   <p class="kicker">The agent loop</p>
   <h2 data-anim="lines">Six nodes, one loop, one budget check.</h2>
   <svg viewBox="0 0 1240 680" data-anim="draw">
@@ -475,7 +475,7 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--accent); }
   <div class="rail" data-anim="fade" data-delay="0.6">
     <div data-detail="default"><h3>Click any node.</h3><p>The agent is a LangGraph state machine with six nodes: think, act, extract, route, remember and respond.</p><p>State persists across submissions within one process through a checkpointer.</p></div>
     <div data-detail="think" hidden><h3>think</h3><p>The only node that talks to the model. History is compacted against the context budget here, before the call is made.</p><p>The findings summary injected alongside it is rebuilt fresh every <code>think()</code> call from graph state rather than chat history.</p></div>
-    <div data-detail="act" hidden><h3>act</h3><p>Each proposed call runs the action guardrail chain first. The tool executes only if every stage allows it.</p><p>At most 4 model turns run per user turn.</p></div>
+    <div data-detail="act" hidden><h3>act</h3><p>Each proposed call runs the action guardrail chain first. The tool executes only if every stage allows it.</p><p>At most 2 model turns run per user turn.</p></div>
     <div data-detail="depg" hidden><h3>depg_update</h3><p>Successful tool results become graph nodes and edges through a per tool extractor, each carrying the quoted output that justifies it.</p></div>
     <div data-detail="phase" hidden><h3>phase_router</h3><p>Proposes the next phase. The state machine accepts it only if the transition table allows it.</p></div>
     <div data-detail="memory" hidden><h3>memory_update</h3><p>This step's findings, failures, narration and phase changes upsert into the tiered memory store.</p></div>
@@ -529,7 +529,7 @@ def _compact_history(messages, system_prompt, context_window):
 </section>
 
 <!-- 07 -->
-<section class="slide s-tier" id="tiers" data-layout="split-7-5" data-claims="C20 C18 C21">
+<section class="slide s-tier" id="tiers" data-layout="split-7-5" data-claims="C20 C18 C21 C83">
   <p class="kicker">The cascade</p>
   <h2 data-anim="lines">Three tiers, cheapest sufficient wins.</h2>
   <div class="bars">
@@ -558,7 +558,7 @@ def _compact_history(messages, system_prompt, context_window):
     <span><i class="k3"></i>tool output</span>
     <span><i class="k4"></i>dropped</span>
   </div>
-  <p class="foot" data-anim="fade" data-delay="1.8">Each tier engages only once the one before it still could not fit the budget.</p>
+  <p class="foot" data-anim="fade" data-delay="1.8">A tier engages when the one before it could not fit the budget, or when usage is already past 0.75 of it.</p>
   <span class="folio" data-deco>cism / 07</span>
   <aside class="notes"><p>Watch the bars collapse. The first tier shrinks tool output, the second stubs it, and only then are whole turns dropped. The hydra story on the right is why the cut snaps back to whitespace.</p></aside>
 </section>
@@ -894,12 +894,12 @@ def _compact_history(messages, system_prompt, context_window):
 </section>
 
 <!-- 22 -->
-<section class="slide s-close" id="close" data-layout="statement" data-claims="C6 C44 C66 C41 C25" data-transition="iris" data-fx="flowfield">
+<section class="slide s-close" id="close" data-layout="statement" data-claims="C6 C44 C66 C41 C25 C84" data-transition="iris" data-fx="flowfield">
   <h2 data-anim="chars">The architecture carries the model.</h2>
   <div class="three" data-anim="stagger" data-delay="0.8">
     <div><b>0 to 8</b>findings from one engagement after three extraction defects were corrected, with no change to the model.</div>
     <div><b>786</b>automated tests, plus a headless harness repeatable to a tenth of a second.</div>
-    <div><b>9</b>real tools behind one sandboxed, argv only seam and a guardrail chain that runs first.</div>
+    <div><b>10</b>real tools behind one sandboxed, argv only seam and a guardrail chain that runs first.</div>
   </div>
   <span class="folio" data-deco>cism / 22</span>
   <aside class="notes"><p>Close on the thesis. A locally hosted small model can drive an engagement end to end. Memory, grounding, phase discipline and policy have to come from the system around it. Then take questions.</p></aside>

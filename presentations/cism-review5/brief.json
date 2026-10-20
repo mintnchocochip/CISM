@@ -53,6 +53,11 @@
       "id": "U",
       "ref": "user, chat 2026-10-20",
       "kind": "user"
+    },
+    {
+      "id": "S9",
+      "ref": "../../run_agent.py",
+      "kind": "code"
     }
   ],
   "claims": [
@@ -163,10 +168,10 @@
     },
     {
       "id": "C14",
-      "text": "The agent caps AI turns at 4 per user turn",
+      "text": "The agent caps AI turns at 2 per user turn",
       "source": "S3",
-      "locator": "nodes.py:50",
-      "quote": "MAX_AI_TURNS = 4"
+      "locator": "nodes.py:59",
+      "quote": "MAX_AI_TURNS = 2"
     },
     {
       "id": "C15",
@@ -205,10 +210,10 @@
     },
     {
       "id": "C20",
-      "text": "Three tiers, cheapest sufficient wins, each engaging only once the one before it could not fit the budget",
+      "text": "Three tiers, cheapest sufficient wins, each engaging once the one before it could not fit the budget or left usage above the proactive threshold",
       "source": "S3",
       "locator": "nodes.py:196 _compact_history",
-      "quote": "Three tiers, cheapest-sufficient wins, each only engaging once the one\n    before it still couldn't fit the budget"
+      "quote": "Three tiers, cheapest-sufficient wins, each engaging once the one\n    before it either couldn't fit the budget or left usage above\n    _PROACTIVE_COMPACTION_THRESHOLD"
     },
     {
       "id": "C21",
@@ -233,10 +238,10 @@
     },
     {
       "id": "C24",
-      "text": "The per target findings summary is rebuilt fresh every think() call from DEPG state rather than chat history",
+      "text": "DEPG and memory context is rebuilt fresh from state every think() call, not from the compacted history",
       "source": "S3",
-      "locator": "nodes.py:295 _depg_context",
-      "quote": "Per-target findings summary, rebuilt fresh every think() call from\n    DEPG state rather than chat history"
+      "locator": "nodes.py, _compact_history docstring",
+      "quote": "rebuilt fresh from state every think() call, not from this history."
     },
     {
       "id": "C25",
@@ -643,6 +648,20 @@
       "source": "S4",
       "locator": "AUDIT.md B1",
       "quote": "advances one phase per *any* successful tool call, so the agent reaches REPORTING in ~5 calls"
+    },
+    {
+      "id": "C83",
+      "text": "Compaction engages proactively once usage passes 0.75 of the budget",
+      "source": "S3",
+      "locator": "nodes.py:274",
+      "quote": "_PROACTIVE_COMPACTION_THRESHOLD = 0.75"
+    },
+    {
+      "id": "C84",
+      "text": "build_toolkit assembles 10 real tools: the 8 declared in catalog.yaml plus hydra and netcat",
+      "source": "S9",
+      "locator": "run_agent.py:193",
+      "quote": "build_toolkit(CATALOG, [hydra, nc], EXTRACTORS)"
     }
   ],
   "slides": [
