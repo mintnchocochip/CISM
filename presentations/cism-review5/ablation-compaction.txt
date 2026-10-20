@@ -1,0 +1,13 @@
+recording            : demo-recording/gemma-dvwa-run.jsonl
+reconstructed turns  : 127
+uncompacted prompt   : 62837 tokens
+observed window      : 98304
+
+turns lost, by context window and by which tiers are enabled
+   window     uncompacted   drop only   + shrink   + stub
+     8192   over by 54645         118        110      101
+    16384   over by 46453         109        109       45
+    32768   over by 30069          77          0        0
+    49152   over by 13685          44          0        0
+    65536            fits           0          0        0
+    98304            fits           0          0        0
