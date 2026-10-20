@@ -270,6 +270,24 @@ body .kx-ui .kx-hud:hover { opacity: 1; transform: none; }
 .s-tier .legend .k3 { background: #2C2A27; }
 .s-tier .legend .k4 { background: repeating-linear-gradient(135deg, #141312 0 5px, #0E0D0C 5px 10px); }
 
+/* ===== ablation ===== */
+.s-abl .kicker { position: absolute; left: var(--m); top: 78px; margin: 0; }
+.s-abl h2 { position: absolute; left: var(--m); top: 116px; width: 1150px; font-size: 60px; line-height: 1.04; }
+.s-abl svg { position: absolute; left: var(--m); top: 316px; width: 1120px; height: 500px; overflow: visible; }
+.s-abl .axis line { stroke: var(--rule); stroke-width: 1.5; }
+.s-abl .axis text { font-family: var(--font-mono); font-size: 19px; fill: var(--muted); }
+.s-abl .mark { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 7 6; opacity: 0.55; }
+.s-abl .ser { fill: none; stroke-width: 3.5; }
+.s-abl .s-none { stroke: var(--dead); }
+.s-abl .s-shrink { stroke: var(--warn); }
+.s-abl .s-stub { stroke: var(--accent); }
+.s-abl .slab { font-family: var(--font-mono); font-size: 21px; }
+.s-abl .margin { position: absolute; right: var(--m); top: 316px; width: 420px; border-top: 2px solid var(--accent); padding-top: 26px; }
+.s-abl .margin h3 { font-size: 30px; line-height: 1.15; color: var(--accent); margin-bottom: 18px; }
+.s-abl .margin p { font-size: 24px; line-height: 1.45; color: #BDB9B3; }
+.s-abl .margin p + p { margin-top: 18px; }
+.s-abl .foot { position: absolute; left: var(--m); bottom: 52px; width: 1120px; font-size: 22px; color: var(--muted); }
+
 /* ===== 08 phase ===== */
 .s-phase svg { left: 86px; top: 330px; width: 1250px; height: 420px; }
 .s-phase .back { fill: none; stroke: #332F2C; stroke-width: 2; stroke-dasharray: 7 7; }
@@ -665,6 +683,51 @@ def _compact_history(messages, system_prompt, context_window):
 </section>
 
 <!-- 08 -->
+<!-- ablation -->
+<section class="slide s-abl" id="ablation" data-layout="chart-margin" data-claims="A0 A0b A1 A2 A3 A4 A5 A6">
+  <p class="kicker">Ablation</p>
+  <h2 data-anim="lines">Turn off one tier and a third of the engagement disappears.</h2>
+  <svg viewBox="0 0 1120 480">
+    <g class="axis" data-deco>
+      <line x1="60" y1="420" x2="1060" y2="420"/>
+      <line x1="60" y1="30" x2="60" y2="420"/>
+      <text x="36" y="46" text-anchor="end">120</text>
+      <text x="36" y="236" text-anchor="end">60</text>
+      <text x="36" y="426" text-anchor="end">0</text>
+      <text x="60" y="456">8k</text><text x="260" y="456">16k</text><text x="460" y="456">32k</text>
+      <text x="660" y="456">48k</text><text x="860" y="456">64k</text><text x="1040" y="456">96k</text>
+    </g>
+    <line class="mark" x1="460" y1="30" x2="460" y2="420"/>
+    <path class="ser s-none" data-anim="draw" d="M60 46 L260 75 L460 176 L660 281 L860 420 L1060 420"/>
+    <path class="ser s-shrink" data-anim="draw" d="M60 72 L260 76 L460 416 L660 416 L860 416 L1060 416"/>
+    <path class="ser s-stub" data-anim="draw" d="M60 100 L260 278 L460 412 L660 412 L860 412 L1060 412"/>
+    <g data-anim="pop" data-delay="1.4">
+      <circle cx="460" cy="176" r="9" fill="#E5484D"/>
+      <circle cx="460" cy="416" r="9" fill="#FFB454"/>
+    </g>
+    <text class="slab" x="476" y="170" fill="#E5484D">77 turns lost</text>
+    <text class="slab" x="476" y="400" fill="#FFB454">0 lost, same window</text>
+    <text class="slab" x="72" y="28" fill="var(--muted)">turns lost</text>
+    <g data-anim="fade" data-delay="1.0">
+      <line x1="700" y1="54" x2="748" y2="54" stroke="#E5484D" stroke-width="4"/>
+      <text class="slab" x="760" y="60" fill="#E5484D">drop old turns only</text>
+      <line x1="700" y1="94" x2="748" y2="94" stroke="#FFB454" stroke-width="4"/>
+      <text class="slab" x="760" y="100" fill="#FFB454">+ tier 1 shrink</text>
+      <line x1="700" y1="134" x2="748" y2="134" stroke="#7CFF6B" stroke-width="4"/>
+      <text class="slab" x="760" y="140" fill="#7CFF6B">+ tier 2 stub, shipped</text>
+    </g>
+  </svg>
+  <div class="margin" data-anim="fade" data-delay="0.8">
+    <h3>The cascade earns its place at 32768.</h3>
+    <p>Dropping whole turns, which is what every naive context manager does, loses 77 of 127 turns at a 32768 window.</p>
+    <p>Shrinking old tool output first loses none at that window. At 16384 the stub tier still cuts the loss from 109 turns to 45.</p>
+    <p>Above 65536 nothing is lost either way. The tiers buy the smaller cards, which are the ones this project targets.</p>
+  </div>
+  <p class="foot" data-anim="fade" data-delay="1.6">Shipped <code>_compact_history</code> replayed over 127 turns of real recorded engagement content. Reproduce with <code>python scripts/ablate_compaction.py</code>.</p>
+  <span class="folio" data-deco>cism / 07</span>
+  <aside class="notes"><p>This is the with and without. The red line is a context manager that only drops old turns. The green is what ships. At 32768, the window most local models actually give you, the difference is 77 turns of the engagement. Say that it runs offline from the recording, so anyone can reproduce it from the repo without the lab.</p></aside>
+</section>
+
 <section class="slide s-dia s-phase" id="phase" data-layout="diagram-rail" data-claims="C10 C11 C12 C13 C82">
   <p class="kicker">Phase lock</p>
   <h2 data-anim="lines">An illegal phase jump is not reachable.</h2>
@@ -699,7 +762,7 @@ def _compact_history(messages, system_prompt, context_window):
     <div data-detail="p6" hidden><h3>reporting</h3><p>Reporting is terminal. Its only legal next phase is itself.</p></div>
   </div>
   <p class="foot" data-anim="fade" data-delay="1.2">The audit found the router advancing one phase per successful tool call, reaching reporting in about 5 calls. The table is what made that visible.</p>
-  <span class="folio" data-deco>cism / 07</span>
+  <span class="folio" data-deco>cism / 08</span>
   <aside class="notes"><p>Phase lock narrows the tool surface as the engagement progresses. Click vuln-disc to show where sqlmap becomes legal. The dashed arcs are the realistic pivots back, so this is not a strict pipeline.</p></aside>
 </section>
 
@@ -715,7 +778,7 @@ def _compact_history(messages, system_prompt, context_window):
     <li><b data-deco>05</b><span class="name">OutputRedactionStage</span><span class="d">Redacts credentials and secrets from the final answer the operator sees and exports.</span></li>
   </ol>
   <p class="fail" data-anim="fade" data-delay="1.4">The catalog fails closed. A tool that writes, executes or destroys is registered but unreachable in every phase until someone adds an explicit phases key.</p>
-  <span class="folio" data-deco>cism / 08</span>
+  <span class="folio" data-deco>cism / 09</span>
   <aside class="notes"><p>This is the ethics and safety answer. The chain runs before any process exists. Say plainly that these are heuristic safety nets rather than formal guarantees. The fail closed catalog default is the part we are most confident in.</p></aside>
 </section>
 
@@ -749,7 +812,7 @@ def _compact_history(messages, system_prompt, context_window):
       <div>512<span>processes</span></div>
     </div>
   </div>
-  <span class="folio" data-deco>cism / 09</span>
+  <span class="folio" data-deco>cism / 10</span>
   <aside class="notes"><p>Defence in depth. The guardrails decide whether a call happens. This seam decides what a call can touch once it does. The key arrives as a read only mounted file, never as an environment variable.</p></aside>
 </section>
 
@@ -758,7 +821,7 @@ def _compact_history(messages, system_prompt, context_window):
   <span class="num" data-deco>02</span>
   <h2 data-anim="chars">Memory</h2>
   <p data-anim="lines" data-delay="0.6">A claim the model cannot ground against real tool text is demoted instead of reported.</p>
-  <span class="folio" data-deco>cism / 10</span>
+  <span class="folio" data-deco>cism / 11</span>
   <aside class="notes"><p>Section break into the contribution. This sentence is the design rule the next two slides implement.</p></aside>
 </section>
 
@@ -804,7 +867,7 @@ def _compact_history(messages, system_prompt, context_window):
     <code>r = s&#8320; &#183; (1 &#8722; &#8719;(1 &#8722; w&#183;r&#7525;))</code>
     <span class="k"><b>&#8805; 0.6</b> resolved<br><b>&#8804; 0.15</b> blocked</span>
   </div>
-  <span class="folio" data-deco>cism / 11</span>
+  <span class="folio" data-deco>cism / 12</span>
   <aside class="notes"><p>The core contribution. Click exposed-dir to explain the 0.85 discount, then ssh-service for the edge weight, then weak-creds for the dead term. The formula at the bottom is the noisy OR. A node needs any live precondition. A weak one only gets it part of the way there.</p></aside>
 </section>
 
@@ -836,7 +899,7 @@ def _compact_history(messages, system_prompt, context_window):
     <p>Tier weight sets the starting height. The hit bonus is what lifts a row back up.</p>
   </div>
   <div class="eq" data-anim="fade" data-delay="1.5"><code>S = w_tier &#183; s&#8320; &#183; e^(&#8722;&#955;&#183;age) + &#946;&#183;hits</code></div>
-  <span class="folio" data-deco>cism / 12</span>
+  <span class="folio" data-deco>cism / 13</span>
   <aside class="notes"><p>The equation is live in the terminal memory view, with the current term values substituted per row. Point at the T1 curve and say that an exploited finding stays retrievable far longer than a routine banner.</p></aside>
 </section>
 
@@ -845,7 +908,7 @@ def _compact_history(messages, system_prompt, context_window):
   <span class="num" data-deco>03</span>
   <h2 data-anim="chars">Results</h2>
   <p data-anim="lines" data-delay="0.6">Measured against a containerized Damn Vulnerable Web Application on an isolated bridge network, with its database initialized.</p>
-  <span class="folio" data-deco>cism / 13</span>
+  <span class="folio" data-deco>cism / 14</span>
   <aside class="notes"><p>Section break. Name the target before any number appears.</p></aside>
 </section>
 
@@ -860,7 +923,7 @@ def _compact_history(messages, system_prompt, context_window):
     <div class="tile"><h3>Instructions</h3><p>Three scripted submits covering reconnaissance, enumeration and injection testing.</p></div>
     <div class="tile"><h3>Ceilings</h3><span class="v">2 GB</span><p>memory and swap, 2 processors, 512 processes.</p></div>
   </div>
-  <span class="folio" data-deco>cism / 14</span>
+  <span class="folio" data-deco>cism / 15</span>
   <aside class="notes"><p>Nothing here is a replay or a stub. The same hardened container that ships is the one that ran, against two live targets, with scope limited to those addresses.</p></aside>
 </section>
 
@@ -885,7 +948,7 @@ def _compact_history(messages, system_prompt, context_window):
     <p>Domain knowledge belongs in the agent's tools, not in the weights. That finding is what the rest of this project is built on.</p>
   </div>
   <p class="foot">18 case types, 5 repeats, 90 calls per model at temperature 0.2. Correct tool, correct argument types, and correctly declining when no tool applies.</p>
-  <span class="folio" data-deco>cism / 15</span>
+  <span class="folio" data-deco>cism / 16</span>
   <aside class="notes"><p>This is the slide that justifies the whole architecture. The intuitive move is to reach for a cybersecurity model. We tested seven of them. One survived, and it still lost to a general 4B model. Point at Cyber-Ornith and say it is the same base, 25 points worse.</p></aside>
 </section>
 
@@ -920,7 +983,7 @@ def _compact_history(messages, system_prompt, context_window):
     <p>98304 tokens costs 5.23 GB and leaves about 900 MB of headroom.</p>
     <p>131072 was measured and rejected. It leaves roughly 350 MB, which is not enough to survive anything else touching the card.</p>
   </div>
-  <span class="folio" data-deco>cism / 16</span>
+  <span class="folio" data-deco>cism / 17</span>
   <aside class="notes"><p>This is a measured curve, not a spec sheet. The red point is the one worth mentioning: we could run 128k and chose not to, because the headroom disappears. The window on slide 2 is this decision.</p></aside>
 </section>
 
@@ -939,7 +1002,7 @@ def _compact_history(messages, system_prompt, context_window):
     </table>
   </div>
   <p class="why" data-anim="fade" data-delay="1.6">All three defects were invisible to a test suite written against clean sample output. All three were visible at once against real output from a real target.</p>
-  <span class="folio" data-deco>cism / 17</span>
+  <span class="folio" data-deco>cism / 18</span>
   <aside class="notes"><p>The headline result, and be precise about what it is. The tools executed correctly in both runs and the target never changed. What changed is that eight genuine observations stopped being discarded. The methodological point at the bottom is the one worth defending in the viva.</p></aside>
 </section>
 
@@ -957,7 +1020,7 @@ def _compact_history(messages, system_prompt, context_window):
     <p>The shipped strategy measures 1.4 microseconds at 4000 tokens and 1.1 at 8000. The naive strategy climbs from 58 to 99 over the same range, which is quadratic in entry length.</p>
   </div>
   <p class="axis" data-anim="fade" data-delay="1.3">per token cost / lower is better / bench/stream_bench.py</p>
-  <span class="folio" data-deco>cism / 18</span>
+  <span class="folio" data-deco>cism / 19</span>
   <aside class="notes"><p>A design decision we measured instead of asserting. The append only log widget was rejected because it cannot edit its own last line, which also made the expandable tool output impossible.</p></aside>
 </section>
 
@@ -982,7 +1045,7 @@ def _compact_history(messages, system_prompt, context_window):
     </div>
     <div class="tile"><span class="big">10</span><p>snapshot tests pinning the terminal appearance</p></div>
   </div>
-  <span class="folio" data-deco>cism / 19</span>
+  <span class="folio" data-deco>cism / 20</span>
   <aside class="notes"><p>Two runs against an unchanged codebase produced identical finding counts. First finding times landed within a tenth of a second of each other. That precision is what makes the ablation comparisons meaningful.</p></aside>
 </section>
 
@@ -1008,7 +1071,7 @@ def _compact_history(messages, system_prompt, context_window):
     </li>
   </ol>
   <p class="foot" data-anim="fade" data-delay="1.5">Neither model found or exploited an actual SQL injection in its observed window. We are reporting that, because it is the result.</p>
-  <span class="folio" data-deco>cism / 20</span>
+  <span class="folio" data-deco>cism / 21</span>
   <aside class="notes"><p>Hover each row. Do not soften these. Say it plainly. The model asserts things its own evidence disproves. That is why a finding here is quoted tool output, never model prose. The architecture exists because the model cannot be trusted to narrate.</p></aside>
 </section>
 
@@ -1036,7 +1099,7 @@ def _compact_history(messages, system_prompt, context_window):
       </ul>
     </div>
   </div>
-  <span class="folio" data-deco>cism / 21</span>
+  <span class="folio" data-deco>cism / 22</span>
   <aside class="notes"><p>Put each limit beside its fix. Say the second line without flinching. A panel that hears it from us trusts the rest of the numbers more.</p></aside>
 </section>
 
@@ -1071,7 +1134,7 @@ def _compact_history(messages, system_prompt, context_window):
     <div><b>0 to 8</b><p>findings from one engagement once extraction was corrected, same model and target.</p></div>
     <div><b>76014</b><p>peak context used of 98304, inside a 6 GB card.</p></div>
   </div>
-  <span class="folio" data-deco>cism / 22</span>
+  <span class="folio" data-deco>cism / 23</span>
   <aside class="notes"><p>This is the payoff slide. Lead with the token number: two and a half million tokens of someone's live network, in one engagement, that never left the room. Then the ladder. The point is not that we are cheap, it is that the privacy requirement forces this hardware and we made the hardware work. The three numbers at the bottom are the receipts. The card price is a real Amazon India listing for that exact SKU, so quote the SKU name if anyone pushes back. The wattage is external.</p></aside>
 </section>
 
@@ -1082,7 +1145,7 @@ def _compact_history(messages, system_prompt, context_window):
     <div><b>786</b>automated tests, plus a headless harness repeatable to a tenth of a second.</div>
     <div><b>10</b>real tools behind one sandboxed, argv only seam and a guardrail chain that runs first.</div>
   </div>
-  <span class="folio" data-deco>cism / 23</span>
+  <span class="folio" data-deco>cism / 24</span>
   <aside class="notes"><p>Close on the thesis. A locally hosted small model can drive an engagement end to end. Memory, grounding, phase discipline and policy have to come from the system around it. Then take questions.</p></aside>
 </section>
 

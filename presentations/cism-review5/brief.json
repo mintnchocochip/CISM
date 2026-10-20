@@ -103,6 +103,11 @@
       "id": "S18",
       "ref": "Amazon India listing, screenshot supplied by user 2026-10-20",
       "kind": "user"
+    },
+    {
+      "id": "S19",
+      "ref": "ablation-compaction.txt",
+      "kind": "data"
     }
   ],
   "claims": [
@@ -966,6 +971,62 @@
       "source": "S17",
       "locator": "K4 / K1, 575 divided by 95",
       "quote": "RTX 5090, about 575 W total graphics power"
+    },
+    {
+      "id": "A0",
+      "text": "The ablation reconstructs 127 turns from the recorded engagement",
+      "source": "S19",
+      "locator": "header",
+      "quote": "reconstructed turns  : 127"
+    },
+    {
+      "id": "A0b",
+      "text": "The uncompacted prompt is 62837 tokens",
+      "source": "S19",
+      "locator": "header",
+      "quote": "uncompacted prompt   : 62837 tokens"
+    },
+    {
+      "id": "A1",
+      "text": "At an 8192 window the prompt is over by 54645 tokens and 118, 110 or 101 turns are lost",
+      "source": "S19",
+      "locator": "sweep row",
+      "quote": "8192   over by 54645         118        110      101"
+    },
+    {
+      "id": "A2",
+      "text": "At a 16384 window 109 turns are lost with dropping alone and 45 with the full cascade",
+      "source": "S19",
+      "locator": "sweep row",
+      "quote": "16384   over by 46453         109        109       45"
+    },
+    {
+      "id": "A3",
+      "text": "At a 32768 window 77 turns are lost with dropping alone and 0 once tier 1 shrinking is enabled",
+      "source": "S19",
+      "locator": "sweep row",
+      "quote": "32768   over by 30069          77          0        0"
+    },
+    {
+      "id": "A4",
+      "text": "At a 49152 window 44 turns are lost with dropping alone and 0 with the cascade",
+      "source": "S19",
+      "locator": "sweep row",
+      "quote": "49152   over by 13685          44          0        0"
+    },
+    {
+      "id": "A5",
+      "text": "At 65536 and above the history fits and nothing is lost",
+      "source": "S19",
+      "locator": "sweep rows",
+      "quote": "65536            fits           0          0        0"
+    },
+    {
+      "id": "A6",
+      "text": "Tier 1 shrinks old tool output and tier 2 stubs it out entirely",
+      "source": "S3",
+      "locator": "nodes.py, _compact_history docstring",
+      "quote": "Tier 2 stubs\n    old ToolMessage content out entirely (_stub_old_tool_output)"
     }
   ],
   "slides": [
