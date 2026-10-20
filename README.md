@@ -411,6 +411,21 @@ memory_update ── this step's findings, failures, narration and phase changes
   └──▶ think (loop)
 ```
 
+The turn cap is `MAX_AI_TURNS = 2` (`cism/agent/nodes.py:59`): `route_after_think`
+counts AI messages back to the last `HumanMessage` and stops routing into `act`
+once that many have accumulated (`nodes.py:901`). It was lowered from 4 because a
+reasoning model runs each chained turn out to its full `max_tokens` cap, so a
+longer chain could spend ~10 minutes before the step-limit checkpoint handed
+control back. `think` also shapes what it sends rather than only what it says:
+`_compact_history` drops the oldest messages that don't fit the budget, and under
+pressure first shrinks and then stubs out old tool output so fewer have to be
+dropped at all. Pressure means either something already didn't fit or estimated
+usage is above `_PROACTIVE_COMPACTION_THRESHOLD = 0.75` of the budget
+(`nodes.py:274`, `nodes.py:323`) — proactive, not only once a request would
+actually fail to fit, since the chars-per-token estimate swings by thousands of
+tokens turn to turn on markdown-heavy output. Full history stays in state; only
+what is sent to the model is trimmed.
+
 State — messages, DEPG nodes/edges, memory items, phase — persists across
 `submit()` calls within one process: `LangGraphAgent.__init__` builds a
 `MemorySaver()` checkpointer and every `build_graph()` call in the class is
@@ -530,22 +545,32 @@ survive a process restart.
 The real catalog is small and deliberately data-driven. Eight tools are
 declared in `cism/agent/tools/catalog.yaml` (binary, capability, target flag,
 timeout, allowed phases): **nikto**, **whatweb**, **dnsenum**, **nmap**,
-**curl**, **sqlmap**, **gobuster**, **wafw00f**. A ninth, **hydra**, doesn't
-fit that flat shape — it needs a scratch directory pre-populated with
-credential files before the process starts — so it's hand-written in
-`cism/agent/tools/credentials.py` instead.
-`build_toolkit(CATALOG, [hydra], EXTRACTORS)` (`run_agent.py`) assembles all
-nine plus a synthetic `tool_help` tool into one `ToolRegistry`. Extending the
-catalog with another flag-and-target-shaped tool is a `catalog.yaml` row, not
-a new Python function; a tool with hydra's shape needs its own hand-written
-function next to `credentials.py`.
+**curl**, **sqlmap**, **gobuster**, **wafw00f**. Two more don't fit that flat
+shape and are hand-written instead. **hydra** needs a scratch directory
+pre-populated with credential files before the process starts
+(`cism/agent/tools/credentials.py`). **nc** opens a bare TCP socket to a
+non-HTTP service — the gap nmap and curl leave: confirming a backdoor shell
+found listening on an unusual port actually answers a command, not just that
+something is listening (`cism/agent/tools/network.py:1-11`) — and its
+optional `command` argument is written into the per-call scratch directory as
+nc's stdin before the process starts (`network.py:40-41`), which no flat
+`catalog.yaml` row can express. netcat-openbsd specifically, not ncat or GNU
+netcat: OpenBSD's `nc` has no `-e`/exec-on-connect flag at all, so the worst
+failure mode for a tool like this is structurally impossible rather than
+denylisted (`network.py:7-11`).
+`build_toolkit(CATALOG, [hydra, nc], EXTRACTORS)` (`run_agent.py:193`)
+assembles all ten plus a synthetic `tool_help` tool into one `ToolRegistry`.
+Extending the catalog with another flag-and-target-shaped tool is a
+`catalog.yaml` row, not a new Python function; a tool with hydra's or nc's
+shape needs its own hand-written function next to
+`credentials.py`/`network.py`.
 
 `--live-tools` also hard-requires `bwrap` (bubblewrap), the sandboxing
 seam every real tool call runs through. On Debian/Ubuntu/Kali:
 
 ```bash
 sudo apt update && sudo apt install -y nmap curl nikto whatweb dnsenum hydra \
-    sqlmap gobuster wafw00f bubblewrap
+    sqlmap gobuster wafw00f netcat-openbsd bubblewrap
 ```
 
 `hydra`'s `userlist`/`passwordlist` arguments only ever select one of two
@@ -562,7 +587,7 @@ sudo $EDITOR /usr/share/wordlists/common-passwords.txt
 ```
 
 What isn't here yet: a real model by default (still `DummyChatModel` unless
-`--base-url`/`--model` is passed), a bigger tool catalog beyond the nine
+`--base-url`/`--model` is passed), a bigger tool catalog beyond the ten
 above, graded propagation validated against a real run (`GradedSupport` is
 opt-in via `--graded-propagation`; `BinarySupport` stays the default), LLM
 reconciliation of near-duplicate DEPG nodes, and IP/hostname alias merging.
@@ -664,7 +689,7 @@ For the full suite, `pytest -n auto` (via `pytest-xdist`) parallelizes across
 CPU cores — roughly 2x faster, same pass/fail result. Stick to plain `pytest`
 when debugging a single test with `-s`/`-vv`, since worker output interleaves.
 
-799 tests: the event contract and its serialisation, the replayer, transcript
+936 tests: the event contract and its serialisation, the replayer, transcript
 and composer behaviour, every keybinding, status-line elision at ten widths,
 credential masking end to end, both modals, and ten SVG snapshots pinning the
 look — plus, for the agent core, the phase state machine's legal and illegal
@@ -737,9 +762,10 @@ cism/agent/            the LangGraph-backed core — see "The agent core"
     catalog.py             ToolSpec/Flag — the data-driven tool schema
     catalog.yaml           the 8 declared tools: nikto, whatweb, dnsenum, nmap, curl, sqlmap, gobuster, wafw00f
     credentials.py         hydra — hand-written, doesn't fit catalog.yaml's flat shape
+    network.py             nc (netcat-openbsd) — hand-written, raw TCP + stdin into the scratch dir
     sandbox.py             run_sandboxed() — the shared execution seam for real tools
     registry.py            ToolRegistry — the hard allowlist
-    base.py                build_catalog/build_toolkit — assembles catalog.yaml + hydra + tool_help
+    base.py                build_catalog/build_toolkit — assembles catalog.yaml + hydra/nc + tool_help
   guardrails/            GuardrailChain, GuardrailSeam — input/output still pass-through
     scope.py               ScopeGuardStage — target vs. EngagementScope
     dangerous_flags.py     DangerousFlagGuardStage — denylist on free-form flags
