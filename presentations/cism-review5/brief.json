@@ -1217,6 +1217,11 @@
     }
   ],
   "motion": {
-    "concept": "Cinematic by default. The agent loop, the phase machine and the DEPG draw themselves and carry packets along their edges, so structure arrives as movement rather than as a static picture. The compaction cascade is a bespoke hook: three lanes of the same conversation collapsing one tier harder, which is the only way to show that compaction is a choice between tiers and not a single cut. Bars grow, the headline numbers count, and canvas fields run on the three section openers and the close only. Everything else is quiet, so the diagrams and the two numbers that matter get the attention."
+    "concept": "Cinematic by default. The agent loop, the phase machine and the DEPG draw themselves and carry packets along their edges, so structure arrives as movement rather than as a static picture. The compaction cascade is a bespoke hook: three lanes of the same conversation collapsing one tier harder, which is the only way to show that compaction is a choice between tiers and not a single cut. Bars grow, the headline numbers count, and canvas fields run on the three section openers and the close only. Everything else is quiet, so the diagrams and the two numbers that matter get the attention.",
+    "levels": [
+      0,
+      2,
+      3
+    ]
   }
 }

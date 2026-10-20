@@ -524,7 +524,7 @@ body .kx-ui .kx-hud:hover { opacity: 1; transform: none; }
 .s-close .folio { color: #15381D; }
 </style>
 </head>
-<body data-motion="3">
+<body data-levels="0 2 3" data-motion="3">
 <div class="kx-viewport"><div class="kx-stage">
 
 <!-- 01 -->
@@ -647,7 +647,7 @@ body .kx-ui .kx-hud:hover { opacity: 1; transform: none; }
     <div data-detail="respond" hidden><h3>respond</h3><p>The output guardrail runs on the final text, then the run ends.</p></div>
   </div>
   <span class="folio" data-deco>cism / 04</span>
-  <aside class="notes"><p>The hero slide. It walks the loop on its own, so let it run one full cycle while you set up the six nodes. Clicking any node stops the walk and hands you control for the rest of the slide. Click think and say that compaction lives inside it. Then follow the packets around the loop: act, extract, route, remember, back to think. The branch to respond fires when the model proposes no tool calls.</p></aside>
+  <aside class="notes"><p>The hero slide. Click think first and say that compaction lives inside it. Then follow the packets around the loop: act, extract, route, remember, back to think. The branch to respond fires when the model proposes no tool calls.</p></aside>
 </section>
 
 <!-- 06 -->
@@ -690,7 +690,7 @@ def _compact_history(messages, system_prompt, context_window):
     </div>
   </div>
   <span class="folio" data-deco>cism / 05</span>
-  <aside class="notes"><p>This is the answer to where compaction triggers. Click three times. Verbatim code from nodes.py. The important line is the last one: nothing is deleted from state, only from the prompt.</p></aside>
+  <aside class="notes"><p>This is the answer to where compaction triggers. The three builds arrive on their own, so talk over them. Any key or click stops the build and hands you the clicker. Verbatim code from nodes.py. The important line is the last one: nothing is deleted from state, only from the prompt.</p></aside>
 </section>
 
 <!-- 07 -->
@@ -1123,45 +1123,47 @@ def _compact_history(messages, system_prompt, context_window):
 window.KX_ENTER = window.KX_ENTER || {};
 
 // Tier cascade: each lane is the same conversation, compacted one tier harder.
-// The agent loop walks itself. The engine already does focus/dim/edge-lighting
-// and the rail swap on a click of a [data-node], so drive that rather than
-// reimplementing it: dispatch a bubbling click and let engine.js do the work.
-// A real click from the presenter (isTrusted) stops the walk for good, so
-// taking manual control during the viva is one click, not a fight.
-window.KX_ENTER['loop'] = (slide, level, gsap) => {
+// The compaction walk builds itself. The three highlights are ordinary
+// data-step builds, so drive the engine's own next() the way the presenter
+// window already does (engine.js dispatches KeyboardEvent to itself) rather
+// than un-hiding the steps directly: that keeps the engine's step counter in
+// sync, so pressing Right afterwards leaves the slide instead of replaying
+// builds that are already on screen.
+// Bounded by the step count, so it can never run past the last build.
+window.KX_ENTER['compaction'] = (slide, level, gsap) => {
   if (level < 2) return;                        // Still and Minimal stay still
-  const order = ['think', 'act', 'depg', 'phase', 'memory'];
-  const nodes = order
-    .map(id => slide.querySelector('[data-node="' + id + '"]'))
-    .filter(Boolean);
-  if (nodes.length < 2) return;
+  const steps = [...new Set([...slide.querySelectorAll('[data-step]')]
+    .map(e => +e.dataset.step))].filter(n => n > 0);
+  if (!steps.length) return;
 
-  const beat = level >= 3 ? 2400 : 3000;
-  let i = 0, timer = null, started = null, stopped = false;
+  let left = steps.length, timer = null, started = null, stopped = false;
 
   const stop = () => {
     if (stopped) return;
     stopped = true;
     clearTimeout(started);
     clearInterval(timer);
+    removeEventListener('keydown', onKey, true);
     slide.removeEventListener('click', onClick, true);
   };
+  function onKey(e) { if (e.isTrusted) stop(); }
   function onClick(e) { if (e.isTrusted) stop(); }
+  addEventListener('keydown', onKey, true);
   slide.addEventListener('click', onClick, true);
 
+  const beat = level >= 3 ? 3200 : 3800;        // each build carries a sentence to read
   const step = () => {
-    if (stopped || !slide.isConnected) return stop();
-    nodes[i % nodes.length].dispatchEvent(
-      new MouseEvent('click', { bubbles: true, cancelable: true })
-    );
-    i++;
+    if (stopped) return;
+    if (left <= 0) return stop();
+    left--;
+    dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
   };
 
-  started = setTimeout(() => {                  // let the diagram draw first
+  started = setTimeout(() => {
     if (stopped) return;
     step();
     timer = setInterval(step, beat);
-  }, level >= 3 ? 2000 : 1400);
+  }, level >= 3 ? 2200 : 1600);
 
   return stop;                                  // engine calls this on navigation
 };
