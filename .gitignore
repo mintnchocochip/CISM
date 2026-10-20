@@ -226,3 +226,6 @@ snapshot_report.html
 # graphify — regenerate with `graphify update .`
 /graphify-out/
 /cism/graphify-out/
+
+# stagecraft deck audit output (regenerable)
+presentations/*/snapshots/

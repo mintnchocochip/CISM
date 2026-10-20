@@ -1,0 +1,955 @@
+{
+  "title": "Memory optimization for small-language-model-driven security agents",
+  "audience": "Final review panel: internal faculty examiner and an industry examiner. Know security and software engineering, have not read this codebase.",
+  "goal": "Convince the panel the work is complete, measured, honest about its limits, and technically contributed by all three students.",
+  "source_policy": "strict",
+  "register": "technical and exact; short declarative sentences; identifiers and tool names in mono",
+  "format": "html",
+  "duration": "15 minutes plus viva",
+  "motion_default": 3,
+  "direction": "Terminal Noir, phosphor accent #7CFF6B on near-black, Geist display and JetBrains Mono labels",
+  "sources": [
+    {
+      "id": "S1",
+      "ref": "../../README.md",
+      "kind": "doc"
+    },
+    {
+      "id": "S2",
+      "ref": "report-extract.txt",
+      "kind": "doc"
+    },
+    {
+      "id": "S3",
+      "ref": "../../cism/agent/nodes.py",
+      "kind": "code"
+    },
+    {
+      "id": "S4",
+      "ref": "../../AUDIT.md",
+      "kind": "doc"
+    },
+    {
+      "id": "S5",
+      "ref": "../../cism/agent/state.py",
+      "kind": "code"
+    },
+    {
+      "id": "S6",
+      "ref": "../../cism/tui/events.py",
+      "kind": "code"
+    },
+    {
+      "id": "S7",
+      "ref": "../../cism/agent/tools/catalog.yaml",
+      "kind": "code"
+    },
+    {
+      "id": "S8",
+      "ref": "source-notes.md",
+      "kind": "user"
+    },
+    {
+      "id": "U",
+      "ref": "user, chat 2026-10-20",
+      "kind": "user"
+    }
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "text": "Project title: Memory optimization for small-language-model-driven security agents",
+      "source": "S2",
+      "locator": "cover page",
+      "quote": "MEMORY OPTIMIZATION FOR SMALL-LANGUAGE-MODEL-DRIVEN SECURITY AGENTS"
+    },
+    {
+      "id": "C2",
+      "text": "Madhan T B 23BCE1087, Manikandan S 23BCE1476, Sushindh A 23BCE1513",
+      "source": "S2",
+      "locator": "cover page",
+      "quote": "MADHAN T B (23BCE1087)"
+    },
+    {
+      "id": "C2b",
+      "text": "Manikandan S 23BCE1476 and Sushindh A 23BCE1513",
+      "source": "S2",
+      "locator": "cover page",
+      "quote": "MANIKANDAN S (23BCE1476)"
+    },
+    {
+      "id": "C2c",
+      "text": "Sushindh A 23BCE1513",
+      "source": "S2",
+      "locator": "cover page",
+      "quote": "SUSHINDH A (23BCE1513)"
+    },
+    {
+      "id": "C3",
+      "text": "Hosted models strong enough for the job need target names, banners, credentials and raw tool output sent to a third party",
+      "source": "S2",
+      "locator": "Abstract",
+      "quote": "the hosted models strong enough to do the job need target names, banners, credentials and raw tool output sent to a third party, and an engagement contract usually forbids that data from leaving the client"
+    },
+    {
+      "id": "C4",
+      "text": "What stays human is the judgement that sequences the tools",
+      "source": "S2",
+      "locator": "Abstract",
+      "quote": "What stays human is the judgement that sequences them, reads what a result means and keeps track of what has already been ruled out."
+    },
+    {
+      "id": "C5",
+      "text": "A real request overflowed a 16384 token context window by about 1300 tokens",
+      "source": "S3",
+      "locator": "nodes.py:52",
+      "quote": "a real request still overflowed\n#: the server's actual context window (\"17245 tokens... n_ctx: 16384\") by\n#: ~1300 tokens despite fitting this budget"
+    },
+    {
+      "id": "C6",
+      "text": "The model can supply direction only when memory, grounding, phase discipline and pre-execution policy come from the system around it",
+      "source": "S2",
+      "locator": "Section 6.1",
+      "quote": "The model can supply direction, but only when memory, grounding, phase discipline and pre-execution policy come from the system around it instead of from the model itself."
+    },
+    {
+      "id": "C7",
+      "text": "The agent is a LangGraph state machine with six nodes: think, act, extract, route, remember and respond",
+      "source": "S2",
+      "locator": "Abstract",
+      "quote": "The agent is a LangGraph state machine with six nodes: think, act, extract, route, remember and respond."
+    },
+    {
+      "id": "C8",
+      "text": "AgentEvent is the union alias over 15 event types",
+      "source": "S1",
+      "locator": "README, The events",
+      "quote": "`AgentEvent` is the union alias over those fifteen types."
+    },
+    {
+      "id": "C9",
+      "text": "State persists across submit() calls within one process via a MemorySaver checkpointer",
+      "source": "S1",
+      "locator": "README, The agent core",
+      "quote": "State — messages, DEPG nodes/edges, memory items, phase — persists across\n`submit()` calls within one process"
+    },
+    {
+      "id": "C10",
+      "text": "Six PTES phases: recon, enumeration, vulnerability discovery, exploitation, post exploitation, reporting",
+      "source": "S5",
+      "locator": "state.py:26",
+      "quote": "class Phase(Enum):\n    RECON = 1\n    ENUMERATION = 2\n    VULNERABILITY_DISCOVERY = 3\n    EXPLOITATION = 4\n    POST_EXPLOITATION = 5\n    REPORTING = 6"
+    },
+    {
+      "id": "C11",
+      "text": "Recon may only move to recon or enumeration",
+      "source": "S5",
+      "locator": "state.py:43",
+      "quote": "Phase.RECON: frozenset({Phase.RECON, Phase.ENUMERATION})"
+    },
+    {
+      "id": "C12",
+      "text": "Reporting is terminal",
+      "source": "S5",
+      "locator": "state.py:56",
+      "quote": "Phase.REPORTING: frozenset({Phase.REPORTING})"
+    },
+    {
+      "id": "C13",
+      "text": "transition() is the single choke point every phase change goes through",
+      "source": "S1",
+      "locator": "README, Phase",
+      "quote": "`PhaseStateMachine`'s\n  `transition()` is the single choke point every phase change goes through."
+    },
+    {
+      "id": "C14",
+      "text": "The agent caps AI turns at 4 per user turn",
+      "source": "S3",
+      "locator": "nodes.py:50",
+      "quote": "MAX_AI_TURNS = 4"
+    },
+    {
+      "id": "C15",
+      "text": "The token estimate uses 3 characters per token",
+      "source": "S3",
+      "locator": "nodes.py:62",
+      "quote": "_CHARS_PER_TOKEN = 3"
+    },
+    {
+      "id": "C16",
+      "text": "512 tokens are reserved for the response",
+      "source": "S3",
+      "locator": "nodes.py:63",
+      "quote": "_RESPONSE_RESERVE_TOKENS = 512"
+    },
+    {
+      "id": "C17",
+      "text": "The default context window is 32768 tokens",
+      "source": "S3",
+      "locator": "nodes.py:64",
+      "quote": "DEFAULT_CONTEXT_WINDOW = 32_768"
+    },
+    {
+      "id": "C18",
+      "text": "Tier 1 shrinks old tool output to a 350 character head and a 100 character tail",
+      "source": "S3",
+      "locator": "nodes.py:104",
+      "quote": "_OLD_TOOL_OUTPUT_HEAD_CHARS = 350\n_OLD_TOOL_OUTPUT_TAIL_CHARS = 100"
+    },
+    {
+      "id": "C19",
+      "text": "Flat per message overhead is 4 tokens",
+      "source": "S3",
+      "locator": "nodes.py:69",
+      "quote": "_PER_MESSAGE_OVERHEAD_TOKENS = 4"
+    },
+    {
+      "id": "C20",
+      "text": "Three tiers, cheapest sufficient wins, each engaging only once the one before it could not fit the budget",
+      "source": "S3",
+      "locator": "nodes.py:196 _compact_history",
+      "quote": "Three tiers, cheapest-sufficient wins, each only engaging once the one\n    before it still couldn't fit the budget"
+    },
+    {
+      "id": "C21",
+      "text": "A plain character cut landed inside the word valid in a hydra run and inverted a negative result",
+      "source": "S3",
+      "locator": "nodes.py:113",
+      "quote": "a plain char-count cut landed inside the word \"valid\"\n#: in a failed hydra run's own \"0 valid password found\" line, leaving a\n#: tail of \"d password found\" — read by the model as a positive hit,\n#: inverting a negative result."
+    },
+    {
+      "id": "C22",
+      "text": "Full history stays in state; compaction only shapes what is sent to the model",
+      "source": "S3",
+      "locator": "nodes.py:198",
+      "quote": "Full history stays in state — this only shapes what's sent to the model."
+    },
+    {
+      "id": "C23",
+      "text": "One real token counter call catches an overshoot before the prompt is sent",
+      "source": "S3",
+      "locator": "nodes.py:252",
+      "quote": "One real token_counter call (when\n#: available) catches an overshoot before this turn's prompt is sent,\n#: not after."
+    },
+    {
+      "id": "C24",
+      "text": "The per target findings summary is rebuilt fresh every think() call from DEPG state rather than chat history",
+      "source": "S3",
+      "locator": "nodes.py:295 _depg_context",
+      "quote": "Per-target findings summary, rebuilt fresh every think() call from\n    DEPG state rather than chat history"
+    },
+    {
+      "id": "C25",
+      "text": "9 real tools execute only through one sandboxed, argv only seam behind a hard allowlist",
+      "source": "S2",
+      "locator": "Abstract",
+      "quote": "Nine real tools execute only through one sandboxed, argv-only seam behind a hard allowlist"
+    },
+    {
+      "id": "C26",
+      "text": "The eight declared tools are nikto, whatweb, dnsenum, nmap, curl, sqlmap, gobuster and wafw00f",
+      "source": "S1",
+      "locator": "README, Tool catalog",
+      "quote": "the 8 declared tools: nikto, whatweb, dnsenum, nmap, curl, sqlmap, gobuster, wafw00f"
+    },
+    {
+      "id": "C27",
+      "text": "A destructive tool is registered but unreachable in every phase until an explicit phases key is added",
+      "source": "S7",
+      "locator": "catalog.yaml:9",
+      "quote": "writes / executes / destructive -> NONE — registered but unreachable in\n#                                      every phase until you add an explicit\n#                                      `phases:` key."
+    },
+    {
+      "id": "C28",
+      "text": "A guardrail chain blocks out of scope targets, dangerous arguments and phase illegal tools before any process is spawned",
+      "source": "S2",
+      "locator": "Abstract",
+      "quote": "a guardrail chain blocks out-of-scope targets, dangerous arguments and phase-illegal tools before any process is spawned"
+    },
+    {
+      "id": "C29",
+      "text": "Every real tool runs with argv only execution, a per call scratch directory and a timeout that kills the whole process tree",
+      "source": "S1",
+      "locator": "README, Tools",
+      "quote": "argv-only execution\n  (never `shell=True`), a per-call scratch directory that no longer exists\n  once the call returns, and a hard timeout that kills the whole process\n  tree, not just the leaf"
+    },
+    {
+      "id": "C30",
+      "text": "hydra's wordlist arguments only ever select one of two fixed, named wordlists, never an arbitrary path",
+      "source": "S1",
+      "locator": "README, Tool catalog",
+      "quote": "only ever select one of two fixed, named wordlists"
+    },
+    {
+      "id": "C31",
+      "text": "Container ceilings: 2 GB memory, 2 GB swap, 2 processors, 512 processes",
+      "source": "S2",
+      "locator": "Table 5.1",
+      "quote": "2 GB memory, 2 GB swap, 2 processors, 512 processes"
+    },
+    {
+      "id": "C32",
+      "text": "The inference key arrives as a read only mounted file and not an environment variable",
+      "source": "S2",
+      "locator": "Section 4.15",
+      "quote": "The inference key arrives as a read-only mounted file and not an environment variable, because an environment variable is visible at the container layer."
+    },
+    {
+      "id": "C33",
+      "text": "A claim the model cannot ground against real tool text is demoted instead of reported",
+      "source": "S2",
+      "locator": "Abstract",
+      "quote": "so a claim the model cannot ground against real tool text is demoted instead of reported"
+    },
+    {
+      "id": "C34",
+      "text": "Graph merges nodes and edges, resolves each dirty node's state via reduce_state, and prunes fully dead regions",
+      "source": "S1",
+      "locator": "README, DEPG domain model",
+      "quote": "is the container that merges nodes/edges as they're\n  proposed, resolves each dirty node's `state` via `reduce_state`\n  (`depg/reducer.py`), and prunes fully-dead regions."
+    },
+    {
+      "id": "C35",
+      "text": "normalize_target collapses 10.0.0.5, ssh://10.0.0.5:22 and 10.0.0.5. onto one node family",
+      "source": "S1",
+      "locator": "README, DEPG domain model",
+      "quote": "so\n  `10.0.0.5`/`ssh://10.0.0.5:22`/`10.0.0.5.` collapse onto one node family\n  instead of fragmenting."
+    },
+    {
+      "id": "C36",
+      "text": "generality is the share of this run's targets that already produced this cause class, and downstream is the descendant count",
+      "source": "S1",
+      "locator": "README, DEPG domain model",
+      "quote": "`generality` (cross-target transfer: what share of this run's targets already produced this\n  cause_class) and `downstream` (descendant count)"
+    },
+    {
+      "id": "C37",
+      "text": "Graded propagation uses a noisy OR over parents and is opt in",
+      "source": "S4",
+      "locator": "AUDIT.md A3",
+      "quote": "Noisy-OR over parents (a node needs *any* live precondition)"
+    },
+    {
+      "id": "C38",
+      "text": "The memory salience score is S = w_tier times s0 times e to the minus lambda age, plus beta times hits",
+      "source": "S6",
+      "locator": "events.py:174",
+      "quote": "f\"S = w_tier · s₀ · e^(−λ·age) + β·hits\""
+    },
+    {
+      "id": "C39",
+      "text": "Each MemoryItem carries a tier T1, T2 or T3, the phase it was seen in, a snippet and a salience score",
+      "source": "S1",
+      "locator": "README, Memory",
+      "quote": "Each `MemoryItem` carries a tier\n  (T1/T2/T3), the phase it was seen in, a snippet, and a salience score"
+    },
+    {
+      "id": "C40",
+      "text": "A recurring narration or tool failure collapses onto one row and increments hits",
+      "source": "S1",
+      "locator": "README, Memory",
+      "quote": "so a recurring one collapses onto one row (`hits` increments)\n    instead of spamming the memory view"
+    },
+    {
+      "id": "C41",
+      "text": "786 automated tests cover the implementation",
+      "source": "S2",
+      "locator": "Section 6.1",
+      "quote": "The implementation is covered by 786 automated tests."
+    },
+    {
+      "id": "C42",
+      "text": "The suite contains 786 tests across 53 modules",
+      "source": "S2",
+      "locator": "Section 5.3",
+      "quote": "The suite contains 786 tests across 53 modules, mirroring the source tree roughly one-to-one."
+    },
+    {
+      "id": "C43",
+      "text": "10 terminal snapshot tests pin the rendered appearance",
+      "source": "S2",
+      "locator": "Section 5.3",
+      "quote": "Ten terminal snapshot tests pin the rendered appearance."
+    },
+    {
+      "id": "C44",
+      "text": "Correcting three extractor defects took one engagement from 0 to 8 evidence backed findings",
+      "source": "S2",
+      "locator": "Section 5.5",
+      "quote": "Correcting them took one engagement from zero to eight evidence-backed findings across the affected tools."
+    },
+    {
+      "id": "C45",
+      "text": "gobuster went from 0 to 5 findings because progress indicator escape sequences defeated the pattern",
+      "source": "S2",
+      "locator": "Table 5.3",
+      "quote": "Progress-indicator escape sequences defeated the pattern; five real hits including an exposed installation script were being discarded"
+    },
+    {
+      "id": "C46",
+      "text": "whatweb went from 0 to 2 findings because no extractor existed",
+      "source": "S2",
+      "locator": "Table 5.3",
+      "quote": "No extractor existed; results degraded to an opaque hash signal"
+    },
+    {
+      "id": "C47",
+      "text": "wafw00f went from 0 to 1 finding because it defaulted to a secure scheme against a plaintext only target",
+      "source": "S2",
+      "locator": "Table 5.3",
+      "quote": "Defaulted to a secure scheme and failed against a plaintext-only target"
+    },
+    {
+      "id": "C48",
+      "text": "All three defects were invisible to a test suite written against clean sample output and visible at once against real output",
+      "source": "S2",
+      "locator": "Section 5.5",
+      "quote": "All three defects were invisible to a test suite written against clean sample output, and all three were visible at once against real output from a real target."
+    },
+    {
+      "id": "C49",
+      "text": "Buffered static costs 8.9 ms to append, 1.1 microseconds per token and 0.8 ms to render",
+      "source": "S2",
+      "locator": "Table 5.2",
+      "quote": "Buffered static (shipped)\n8.9 ms\n1.1 µs\n0.8 ms"
+    },
+    {
+      "id": "C50",
+      "text": "Log widget rewrite costs 364.2 ms to append and 45.5 microseconds per token",
+      "source": "S2",
+      "locator": "Table 5.2",
+      "quote": "Log-widget rewrite\n364.2 ms\n45.5 µs\n0.4 ms"
+    },
+    {
+      "id": "C51",
+      "text": "Naive static costs 793.3 ms to append and 99.2 microseconds per token",
+      "source": "S2",
+      "locator": "Table 5.2",
+      "quote": "Naive static\n793.3 ms\n99.2 µs\n0.4 ms"
+    },
+    {
+      "id": "C52",
+      "text": "The benchmark streams 8000 tokens into one wrapping paragraph in a terminal 100 columns by 30 rows",
+      "source": "S2",
+      "locator": "Section 5.4",
+      "quote": "The benchmark streams eight thousand tokens into one wrapping paragraph in a terminal of one hundred columns by thirty rows, under three strategies."
+    },
+    {
+      "id": "C53",
+      "text": "The shipped strategy measures 1.4 microseconds at 4000 tokens and 1.1 microseconds at 8000, while the naive strategy climbs from 58 to 99 microseconds",
+      "source": "S2",
+      "locator": "Section 5.4",
+      "quote": "measuring 1.4 microseconds at four thousand tokens and 1.1 microseconds at eight thousand, while the naive strategy climbs from 58 to 99 microseconds over the same range, which is quadratic in entry length"
+    },
+    {
+      "id": "C54",
+      "text": "Two headless runs produced 1 finding each, with first finding times of 2.9 s and 3.0 s",
+      "source": "S2",
+      "locator": "Table 5.4",
+      "quote": "Run\nFindings\nTime to first finding\n1\n1\n2.9 s\n2\n1\n3.0 s"
+    },
+    {
+      "id": "C55",
+      "text": "Identical finding counts and first finding times within a tenth of a second put the measurement inside the range needed to detect a change of consequence",
+      "source": "S2",
+      "locator": "Section 5.6",
+      "quote": "Two runs against an unchanged codebase produced identical finding counts and first-finding times within a tenth of a second of each other, which puts the measurement well inside the range needed to detect a change of consequence."
+    },
+    {
+      "id": "C56",
+      "text": "The audit scope was the full cism package of about 6500 lines of code",
+      "source": "S4",
+      "locator": "AUDIT.md header",
+      "quote": "full `cism/` package (~6,500 LOC)"
+    },
+    {
+      "id": "C57",
+      "text": "Only CISM runs without sending engagement data off the machine",
+      "source": "S2",
+      "locator": "Table 5.5",
+      "quote": "Runs without sending engagement data off the machine\nNo\nNo\nYes"
+    },
+    {
+      "id": "C58",
+      "text": "Only CISM carries the tool output that justifies each finding",
+      "source": "S2",
+      "locator": "Table 5.5",
+      "quote": "Findings carry the tool output that justifies them\nNo\nNo\nYes"
+    },
+    {
+      "id": "C59",
+      "text": "Only CISM invalidates dependents when a precondition is disproved",
+      "source": "S2",
+      "locator": "Table 5.5",
+      "quote": "A disproved precondition invalidates its dependents\nNo\nNo\nYes"
+    },
+    {
+      "id": "C60",
+      "text": "Only CISM enforces scope before the process is created",
+      "source": "S2",
+      "locator": "Table 5.5",
+      "quote": "Scope enforced before the process is created\nNot applicable\nNo\nYes"
+    },
+    {
+      "id": "C61",
+      "text": "A system that cannot run without a hosted endpoint is unavailable for engagements whose contracts forbid data egress",
+      "source": "S2",
+      "locator": "Section 5.7",
+      "quote": "A system that cannot run without a hosted endpoint is unavailable for engagements whose contracts forbid data egress, however well it performs elsewhere."
+    },
+    {
+      "id": "C62",
+      "text": "The model intermittently answers a tool offering turn by asking for information it already has",
+      "source": "S2",
+      "locator": "Section 5.8.1",
+      "quote": "The model intermittently answers a turn that offers tools by asking for information it already has, for example requesting the target address when that address sits in both the instruction and the system prompt."
+    },
+    {
+      "id": "C63",
+      "text": "A bounded retry was implemented and then reverted because a discarded attempt's text leaked into narration; six tests caught it",
+      "source": "S2",
+      "locator": "Section 5.8.1",
+      "quote": "Six tests that assert exactly one narration and token sequence per turn caught it."
+    },
+    {
+      "id": "C64",
+      "text": "The model invoked the port scanner with the literal placeholder token as the target argument",
+      "source": "S2",
+      "locator": "Section 5.8.2",
+      "quote": "The same model separately invoked the port scanner with the literal placeholder token as the target argument instead of the address, producing a real tool call that failed at name resolution."
+    },
+    {
+      "id": "C65",
+      "text": "When an early tool call produces no finding the phase never advances past reconnaissance and the operator gets no signal",
+      "source": "S2",
+      "locator": "Section 5.8.3",
+      "quote": "When an early turn's tool call produces no usable finding, through either of the failures above, the phase never advances past reconnaissance."
+    },
+    {
+      "id": "C66",
+      "text": "Offline validation against clean sample output is insufficient for this class of system",
+      "source": "S2",
+      "locator": "Section 5.9",
+      "quote": "The most practical conclusion is that offline validation against clean sample output is insufficient for this class of system."
+    },
+    {
+      "id": "C67",
+      "text": "Evaluation used a single target application and a single model family",
+      "source": "S2",
+      "locator": "Section 5.10",
+      "quote": "Evaluation used a single target application and a single model family, so the results should not be generalized to other targets or models without repetition."
+    },
+    {
+      "id": "C68",
+      "text": "Checkpointed state does not survive a process restart",
+      "source": "S2",
+      "locator": "Section 5.10",
+      "quote": "Checkpointed state does not survive a process restart."
+    },
+    {
+      "id": "C69",
+      "text": "Future work: make a discarded model attempt invisible to the event stream",
+      "source": "S2",
+      "locator": "Section 6.2",
+      "quote": "Make a discarded model attempt invisible to the event stream, so a bounded retry on a turn with no tool calls becomes safe to ship."
+    },
+    {
+      "id": "C70",
+      "text": "Future work: add an argument validation guardrail stage that rejects placeholder shaped arguments",
+      "source": "S2",
+      "locator": "Section 6.2",
+      "quote": "Add an argument-validation guardrail stage that rejects placeholder-shaped and templated arguments before execution"
+    },
+    {
+      "id": "C71",
+      "text": "Future work: implement network egress control for the sandbox",
+      "source": "S2",
+      "locator": "Section 6.2",
+      "quote": "Implement network egress control for the sandbox, so a tool cannot reach anything beyond the declared scope"
+    },
+    {
+      "id": "C72",
+      "text": "Future work: replace the dangerous argument denylist with an allowlist grammar per tool",
+      "source": "S2",
+      "locator": "Section 6.2",
+      "quote": "Replace the dangerous-argument denylist with an allowlist grammar per tool"
+    },
+    {
+      "id": "C73",
+      "text": "The target is a containerized Damn Vulnerable Web Application on an isolated bridge network with scope limited to the target address alone",
+      "source": "S2",
+      "locator": "Section 5.2",
+      "quote": "The target is a containerized Damn Vulnerable Web Application instance on an isolated bridge network, with its database initialized and its security level left at the image default."
+    },
+    {
+      "id": "C74",
+      "text": "Three scripted instructions drive each engagement and each configuration is run twice",
+      "source": "S2",
+      "locator": "Section 5.2",
+      "quote": "Three scripted instructions drive each engagement, covering reconnaissance, enumeration and injection testing, and each configuration is run twice."
+    },
+    {
+      "id": "C75",
+      "text": "Inference comes from a local llama.cpp server hosting a quantized small model over its OpenAI compatible endpoint",
+      "source": "S2",
+      "locator": "Section 5.2",
+      "quote": "Inference comes from a local llama.cpp server hosting a quantized small model, reached over its OpenAI-compatible endpoint."
+    },
+    {
+      "id": "C76",
+      "text": "Manikandan owns the TUI, tool integration, deterministic extractors, sandboxing, guardrails, deployment, tests and CI",
+      "source": "S8",
+      "locator": "line 2",
+      "quote": "Manikandan: TUI, tool integration (nmap, hydra, gobuster, whatweb and wafw00f plus the offline dummy tools), deterministic extractors, sandboxing (Bubblewrap), guardrails implementation,"
+    },
+    {
+      "id": "C77",
+      "text": "Madhan owns SLM inferencing, the think act loop, DEPG maths, phase locking, LLM extractor backends and inference benchmarking",
+      "source": "S8",
+      "locator": "line 5",
+      "quote": "Madhane: SLM inferencing (llama.cpp or an OpenAI-compatible server, quantisation, context window), think-act loop (LangGraph), DEPG maths and implementation (reducer, SupportPolicy, settle()/prune()),"
+    },
+    {
+      "id": "C78",
+      "text": "Sushindh owns model testing, accuracy benchmarking, the ablation study, prompt QC, guardrail red teaming and the literature survey",
+      "source": "S8",
+      "locator": "line 8",
+      "quote": "Sushindh: model testing (tool-call and text-fallback reliability across SLMs), accuracy benchmarking (recall and precision on Juice Shop),"
+    },
+    {
+      "id": "C79",
+      "text": "The TUI is a pure consumer: nothing under cism/tui calls into LangGraph, llama.cpp or the scorer",
+      "source": "S1",
+      "locator": "README, The event contract",
+      "quote": "Nothing under\n`cism/tui/` calls into LangGraph, llama.cpp, or the cross-encoder scorer, and\nno widget ever calls the agent."
+    },
+    {
+      "id": "C80",
+      "text": "SessionState never carries a key; it carries the name of the environment variable and whether it is set",
+      "source": "S1",
+      "locator": "README, The events",
+      "quote": "It carries the *name* of the\nenvironment variable and a boolean saying whether it is set."
+    },
+    {
+      "id": "C81",
+      "text": "A false positive costs one retype, a false negative leaks a key into a deliverable",
+      "source": "S1",
+      "locator": "README, Keys",
+      "quote": "a false positive costs one retype, a false\nnegative leaks a key into a deliverable."
+    },
+    {
+      "id": "C82",
+      "text": "Phase progression advanced one phase per any successful tool call, reaching reporting in about 5 calls",
+      "source": "S4",
+      "locator": "AUDIT.md B1",
+      "quote": "advances one phase per *any* successful tool call, so the agent reaches REPORTING in ~5 calls"
+    }
+  ],
+  "slides": [
+    {
+      "id": "cover",
+      "role": "cover",
+      "title": "Memory optimization for small-language-model-driven security agents",
+      "claims": [
+        "C1",
+        "C2",
+        "C2b",
+        "C2c"
+      ],
+      "layout": "poster",
+      "visual": "huge title, blinking caret, team meta rail",
+      "notes": "Open with the title and the team."
+    },
+    {
+      "id": "problem",
+      "role": "point",
+      "title": "The model that keeps your data cannot keep your context",
+      "claims": [
+        "C3",
+        "C5",
+        "C4"
+      ],
+      "layout": "giant-number",
+      "visual": "17245 against 16384, the overflow in accent",
+      "notes": "The constraint and the cost of honouring it."
+    },
+    {
+      "id": "motivation",
+      "role": "compare",
+      "title": "A hosted endpoint is unavailable under a no egress contract",
+      "claims": [
+        "C61",
+        "C57",
+        "C58",
+        "C59",
+        "C60"
+      ],
+      "layout": "compare-toggle",
+      "visual": "property matrix across three system classes",
+      "notes": "Why not GPT-4 class models."
+    },
+    {
+      "id": "sec-arch",
+      "role": "section",
+      "title": "Architecture",
+      "claims": [
+        "C6"
+      ],
+      "layout": "statement",
+      "visual": "accent ground, flowfield",
+      "notes": "Transition."
+    },
+    {
+      "id": "loop",
+      "role": "mechanism",
+      "title": "Six nodes, one loop, one budget check",
+      "claims": [
+        "C7",
+        "C14",
+        "C9",
+        "C24"
+      ],
+      "layout": "diagram-rail",
+      "visual": "clickable agent loop with compaction marked hot and packets flowing",
+      "notes": "The hero slide. Click think."
+    },
+    {
+      "id": "compaction",
+      "role": "mechanism",
+      "title": "Compaction runs inside think, before the model is called",
+      "claims": [
+        "C15",
+        "C16",
+        "C17",
+        "C19",
+        "C22"
+      ],
+      "layout": "code-walk",
+      "visual": "verbatim budget code with step highlights",
+      "notes": "Answer the where question with code."
+    },
+    {
+      "id": "tiers",
+      "role": "mechanism",
+      "title": "Three tiers, cheapest sufficient wins",
+      "claims": [
+        "C20",
+        "C18",
+        "C21"
+      ],
+      "layout": "split-7-5",
+      "visual": "bespoke context bar collapsing through three tiers",
+      "notes": "The hydra mid word cut is the story."
+    },
+    {
+      "id": "phase",
+      "role": "mechanism",
+      "title": "The phase lock makes an illegal jump impossible",
+      "claims": [
+        "C10",
+        "C11",
+        "C12",
+        "C13",
+        "C82"
+      ],
+      "layout": "diagram-rail",
+      "visual": "six node phase graph with legal transitions drawn",
+      "notes": "Phase lock narrows the tool surface."
+    },
+    {
+      "id": "guardrails",
+      "role": "mechanism",
+      "title": "Nothing spawns before three checks pass",
+      "claims": [
+        "C28",
+        "C27",
+        "C25",
+        "C26"
+      ],
+      "layout": "index",
+      "visual": "guardrail chain rows, fail closed catalog default",
+      "notes": "Ethics and safety live here."
+    },
+    {
+      "id": "sandbox",
+      "role": "mechanism",
+      "title": "One argv only seam carries every real tool call",
+      "claims": [
+        "C29",
+        "C30",
+        "C31",
+        "C32"
+      ],
+      "layout": "split-7-5",
+      "visual": "execution path with containment ceilings",
+      "notes": "Defence in depth."
+    },
+    {
+      "id": "sec-method",
+      "role": "section",
+      "title": "Memory",
+      "claims": [
+        "C33"
+      ],
+      "layout": "statement",
+      "visual": "accent ground, constellation",
+      "notes": "Transition to the contribution."
+    },
+    {
+      "id": "depg",
+      "role": "mechanism",
+      "title": "Every finding carries the output that proves it",
+      "claims": [
+        "C33",
+        "C34",
+        "C35",
+        "C36",
+        "C37"
+      ],
+      "layout": "diagram-rail",
+      "visual": "DEPG with evidence, settle and prune, clickable",
+      "notes": "The core contribution."
+    },
+    {
+      "id": "memory",
+      "role": "mechanism",
+      "title": "Memory decays unless the run keeps hitting it",
+      "claims": [
+        "C38",
+        "C39",
+        "C40"
+      ],
+      "layout": "chart-margin",
+      "visual": "salience decay curves per tier with the live equation",
+      "notes": "Tiered memory and the salience equation."
+    },
+    {
+      "id": "sec-results",
+      "role": "section",
+      "title": "Results",
+      "claims": [
+        "C73"
+      ],
+      "layout": "statement",
+      "visual": "accent ground, grain",
+      "notes": "Transition."
+    },
+    {
+      "id": "setup",
+      "role": "evidence",
+      "title": "Real target, real tools, real local inference",
+      "claims": [
+        "C73",
+        "C74",
+        "C75",
+        "C31"
+      ],
+      "layout": "mosaic",
+      "visual": "experimental configuration tiles",
+      "notes": "State the setup before the numbers."
+    },
+    {
+      "id": "findings",
+      "role": "evidence",
+      "title": "Zero to eight findings, same model and same target",
+      "claims": [
+        "C44",
+        "C45",
+        "C46",
+        "C47",
+        "C48"
+      ],
+      "layout": "giant-number",
+      "visual": "0 to 8 with the per tool table",
+      "notes": "The headline result."
+    },
+    {
+      "id": "bench",
+      "role": "evidence",
+      "title": "The shipped transcript stays flat as the entry grows",
+      "claims": [
+        "C49",
+        "C50",
+        "C51",
+        "C52",
+        "C53"
+      ],
+      "layout": "chart-margin",
+      "visual": "per token cost bars with the shipped bar in accent",
+      "notes": "The design decision we measured."
+    },
+    {
+      "id": "repro",
+      "role": "evidence",
+      "title": "786 tests and a harness repeatable to a tenth of a second",
+      "claims": [
+        "C41",
+        "C42",
+        "C43",
+        "C54",
+        "C55",
+        "C56"
+      ],
+      "layout": "mosaic",
+      "visual": "four metric tiles, one dominant",
+      "notes": "Validation breadth."
+    },
+    {
+      "id": "failures",
+      "role": "story",
+      "title": "Three failure modes we are reporting, not hiding",
+      "claims": [
+        "C62",
+        "C63",
+        "C64",
+        "C65",
+        "C66"
+      ],
+      "layout": "index",
+      "visual": "three hover rows with the remedy per row",
+      "notes": "Honesty is the point here."
+    },
+    {
+      "id": "limits",
+      "role": "point",
+      "title": "What the work does not yet claim",
+      "claims": [
+        "C67",
+        "C68",
+        "C69",
+        "C70",
+        "C71",
+        "C72"
+      ],
+      "layout": "broadsheet",
+      "visual": "limits column against future work column",
+      "notes": "Limits beside the seam each one extends into."
+    },
+    {
+      "id": "team",
+      "role": "evidence",
+      "title": "Three owners, three separable bodies of work",
+      "claims": [
+        "C76",
+        "C77",
+        "C78"
+      ],
+      "layout": "index",
+      "visual": "named ownership rows",
+      "notes": "Individual contribution for the rubric."
+    },
+    {
+      "id": "close",
+      "role": "close",
+      "title": "The architecture carries the model",
+      "claims": [
+        "C6",
+        "C44",
+        "C66"
+      ],
+      "layout": "statement",
+      "visual": "accent ground statement with the three results",
+      "notes": "Close on the thesis."
+    }
+  ]
+}
