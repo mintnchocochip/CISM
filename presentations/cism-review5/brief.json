@@ -2,7 +2,7 @@
   "title": "Memory optimization for small-language-model-driven security agents",
   "audience": "Final review panel: internal faculty examiner and an industry examiner. Know security and software engineering, have not read this codebase.",
   "goal": "Convince the panel the work is complete, measured, honest about its limits, and technically contributed by all three students.",
-  "source_policy": "strict",
+  "source_policy": "augment",
   "register": "technical and exact; short declarative sentences; identifiers and tool names in mono",
   "format": "html",
   "duration": "15 minutes plus viva",
@@ -93,6 +93,16 @@
       "id": "S16",
       "ref": "../../cism/agent/tools/sandbox.py",
       "kind": "code"
+    },
+    {
+      "id": "S17",
+      "ref": "model knowledge, 2026-10-20, flagged for verification",
+      "kind": "model"
+    },
+    {
+      "id": "S18",
+      "ref": "Amazon India listing, screenshot supplied by user 2026-10-20",
+      "kind": "user"
     }
   ],
   "claims": [
@@ -907,6 +917,55 @@
       "source": "S12",
       "locator": "G5 applied to the illustrative graph, with G1 tier weights and the G2 discount",
       "quote": "r(node) = s0(node) * (1 - prod_over_parents(1 - weight * r(parent)))"
+    },
+    {
+      "id": "N1",
+      "text": "2,534,035 tokens of engagement data would have been sent to a third party in one engagement",
+      "source": "S11",
+      "locator": "sum of ctx_used across 80 sampled turns plus TokenDelta total: 2501667 + 32368",
+      "quote": "\"ctx_used\": 76014"
+    },
+    {
+      "id": "N2",
+      "text": "The engagement generated 32,368 tokens",
+      "source": "S11",
+      "locator": "TokenDelta total",
+      "quote": "\"ctx_used\": 76014"
+    },
+    {
+      "id": "K1",
+      "text": "The RTX 3050 6 GB laptop GPU draws about 95 W",
+      "source": "S17",
+      "locator": "NVIDIA RTX 3050 laptop max graphics power",
+      "quote": "RTX 3050 laptop GPU, roughly 95 W max graphics power"
+    },
+    {
+      "id": "K2",
+      "text": "The laptop the agent runs on costs about 70,000 rupees",
+      "source": "S17",
+      "locator": "consumer laptop with an RTX 3050",
+      "quote": "RTX 3050 laptop, about 70,000 rupees in India"
+    },
+    {
+      "id": "K3",
+      "text": "The ASUS ROG Matrix Platinum RTX 5090 32GB is listed at 20,53,496 rupees on Amazon India",
+      "source": "S18",
+      "locator": "Amazon India product listing",
+      "quote": "ASUS ROG Matrix Platinum GeForce RTX 5090 OC 30th-Anniversary Edition Gaming Graphics Card, 32GB GDDR7 — ₹20,53,496"
+    },
+    {
+      "id": "K4",
+      "text": "The RTX 5090 draws about 575 W",
+      "source": "S17",
+      "locator": "RTX 5090 total graphics power",
+      "quote": "RTX 5090, about 575 W total graphics power"
+    },
+    {
+      "id": "K5",
+      "text": "The flagship card draws about 6 times the power of the laptop GPU",
+      "source": "S17",
+      "locator": "K4 / K1, 575 divided by 95",
+      "quote": "RTX 5090, about 575 W total graphics power"
     }
   ],
   "slides": [

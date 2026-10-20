@@ -66,6 +66,41 @@ body .kx-ui .kx-hud:hover { opacity: 1; transform: none; }
 .s-mot2 li.turn { border-left: 3px solid var(--warn); padding-left: 26px; }
 .s-mot2 li.turn b { color: var(--warn); }
 
+/* ===== impact ===== */
+.s-imp .kicker { position: absolute; left: var(--m); top: 78px; margin: 0; }
+.s-imp h2 { position: absolute; left: var(--m); top: 116px; width: 1000px; font-size: 58px; line-height: 1.04; }
+.s-imp .hero { position: absolute; left: var(--m); top: 300px; width: 880px; }
+.s-imp .hero .n { font-family: var(--font-display); font-size: 150px; line-height: 0.9; font-weight: 600;
+  letter-spacing: -0.045em; color: var(--accent); font-variant-numeric: tabular-nums; }
+.s-imp .hero .c { margin-top: 26px; font-size: 27px; line-height: 1.42; color: #BDB9B3; width: 800px; }
+.s-imp .hero .why { margin-top: 40px; border-top: 2px solid var(--accent); padding-top: 24px; width: 800px; }
+.s-imp .hero .why p { font-size: 25px; line-height: 1.45; color: #BDB9B3; }
+.s-imp .hero .why p + p { margin-top: 16px; }
+.s-imp .ladder { position: absolute; right: var(--m); top: 286px; width: 740px; }
+.s-imp .ladder h3 { font-family: var(--font-mono); font-size: 18px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--muted); font-weight: 500; margin-bottom: 24px; }
+.s-imp .lrow { display: grid; grid-template-columns: 1fr 160px; align-items: center; gap: 18px;
+  border-top: 1px solid var(--rule); padding: 20px 0; }
+.s-imp .lrow .cell { display: block; }
+.s-imp .lrow:last-of-type { border-bottom: 1px solid var(--rule); }
+.s-imp .lrow .nm { font-family: var(--font-mono); font-size: 20px; color: #BDB9B3; display: block; margin-bottom: 10px; }
+.s-imp .lrow .bar { display: block; height: 28px; background: #3A3835; width: calc(var(--v) * 100%); min-width: 4px; }
+.s-imp .lrow.us .bar { background: var(--accent); }
+.s-imp .lrow.dc .bar { background: #6E2F31; }
+.s-imp .lrow .v { font-family: var(--font-mono); font-size: 25px; text-align: right; }
+.s-imp .lrow.us .v { color: var(--accent); }
+.s-imp .lrow.dc .v { color: #C77B7E; }
+.s-imp .pwr { position: absolute; right: var(--m); top: 648px; width: 740px; border-top: 2px solid var(--warn);
+  padding-top: 22px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+.s-imp .pwr div { font-family: var(--font-mono); font-size: 30px; color: var(--warn); }
+.s-imp .pwr span { display: block; font-family: var(--font-body); font-size: 19px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+.s-imp .strip { position: absolute; left: var(--m); right: var(--m); bottom: 52px; display: grid;
+  grid-template-columns: repeat(3, 1fr); gap: 40px; border-top: 1px solid var(--rule); padding-top: 26px; }
+.s-imp .strip b { display: block; font-family: var(--font-display); font-size: 48px; font-weight: 600;
+  letter-spacing: -0.03em; color: var(--fg); margin-bottom: 8px; }
+.s-imp .strip p { font-size: 22px; line-height: 1.4; color: var(--muted); }
+
 /* ===== 16 shootout ===== */
 .s-shoot h2 { position: absolute; left: var(--m); top: 116px; width: 1200px; font-size: 62px; line-height: 1.04; }
 .s-shoot .kicker { position: absolute; left: var(--m); top: 78px; margin: 0; }
@@ -1009,6 +1044,37 @@ def _compact_history(messages, system_prompt, context_window):
 
 
 <!-- 22 -->
+<!-- impact -->
+<section class="slide s-imp" id="impact" data-layout="giant-number" data-claims="N1 K1 K2 K3 K4 K5 M3 C44 R1 R2" data-transition="wipe">
+  <p class="kicker">Impact</p>
+  <h2 data-anim="lines">Two and a half million tokens stayed on the laptop.</h2>
+  <div class="hero">
+    <div class="n" data-anim="count"><span data-count="2534035">2,534,035</span></div>
+    <p class="c" data-anim="fade" data-delay="0.7">Banners, credentials, raw tool output and every intermediate hypothesis. That is one engagement. Under a hosted model all of it is a third party's log.</p>
+    <div class="why" data-anim="fade" data-delay="1.0">
+      <p>The driver is a 4 bit model served from the operator's own machine, so the count above is not a bill. It is traffic that was never generated.</p>
+      <p>The contract that forbids that traffic is what forces the hardware on the right. Everything else in this deck exists to make the cheaper one enough.</p>
+    </div>
+  </div>
+  <div class="ladder" data-anim="stagger" data-delay="0.5">
+    <h3>What the driver has to run on</h3>
+    <div class="lrow us"><div class="cell"><span class="nm">RTX 3050 laptop, what the agent runs on</span><span class="bar" style="--v:0.034" data-anim="grow" data-axis="x" data-tip="about 70,000 rupees"></span></div><span class="v">&#8377;70,000</span></div>
+    <div class="lrow dc"><div class="cell"><span class="nm">RTX 5090 32GB, ROG Matrix Platinum</span><span class="bar" style="--v:1" data-anim="grow" data-axis="x" data-tip="listed on Amazon India"></span></div><span class="v">&#8377;20,53,496</span></div>
+  </div>
+  <div class="pwr" data-anim="stagger" data-delay="1.1">
+    <div>95 W<span>our card</span></div>
+    <div>575 W<span>the 5090</span></div>
+    <div>6x<span>less power</span></div>
+  </div>
+  <div class="strip" data-anim="stagger" data-delay="1.4">
+    <div><b>100%</b><p>tool calling accuracy on the 90 call stress test, on the card above.</p></div>
+    <div><b>0 to 8</b><p>findings from one engagement once extraction was corrected, same model and target.</p></div>
+    <div><b>76014</b><p>peak context used of 98304, inside a 6 GB card.</p></div>
+  </div>
+  <span class="folio" data-deco>cism / 22</span>
+  <aside class="notes"><p>This is the payoff slide. Lead with the token number: two and a half million tokens of someone's live network, in one engagement, that never left the room. Then the ladder. The point is not that we are cheap, it is that the privacy requirement forces this hardware and we made the hardware work. The three numbers at the bottom are the receipts. The card price is a real Amazon India listing for that exact SKU, so quote the SKU name if anyone pushes back. The wattage is external.</p></aside>
+</section>
+
 <section class="slide s-close" id="close" data-layout="statement" data-claims="C6 C44 C66 C41 C25 C84" data-transition="iris" data-fx="flowfield">
   <h2 data-anim="chars">The architecture carries the model.</h2>
   <div class="three" data-anim="stagger" data-delay="0.8">
@@ -1016,7 +1082,7 @@ def _compact_history(messages, system_prompt, context_window):
     <div><b>786</b>automated tests, plus a headless harness repeatable to a tenth of a second.</div>
     <div><b>10</b>real tools behind one sandboxed, argv only seam and a guardrail chain that runs first.</div>
   </div>
-  <span class="folio" data-deco>cism / 22</span>
+  <span class="folio" data-deco>cism / 23</span>
   <aside class="notes"><p>Close on the thesis. A locally hosted small model can drive an engagement end to end. Memory, grounding, phase discipline and policy have to come from the system around it. Then take questions.</p></aside>
 </section>
 
