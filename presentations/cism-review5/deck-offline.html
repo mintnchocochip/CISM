@@ -62,7 +62,10 @@ body[data-level="0"] [data-hover] .kx-on-hover { transition: none; }
 .kx-hud button.is-on b { background: var(--accent, #fff); }
 .kx-hud span { font-size: 9px; opacity: 0; transition: opacity 0.2s; }
 .kx-hud button.is-cur span, .kx-hud button:hover span { opacity: 0.85; }
-.kx-ui.is-awake .kx-hud, .kx-ui.is-awake .kx-count { opacity: 1; transform: none; }
+.kx-ui.is-awake .kx-count { opacity: 1; }
+.kx-hud:hover, .kx-hud:focus-within, .kx-hud.is-peek { opacity: 1; transform: none; }
+.kx-hud::before { content: ''; position: absolute; inset: -40px -18px -14px -60px; }
+.kx-one-level .kx-hud { display: none; }
 .kx-chrome-off .kx-progress, .kx-chrome-off .kx-count, .kx-print-static .kx-ui { display: none; }
 .kx-toast { position: fixed; left: 50%; top: 22px; z-index: 95; transform: translate(-50%, -10px); padding: 10px 16px; background: rgba(0,0,0,0.7); color: #fff; opacity: 0; transition: 0.3s; pointer-events: none; }
 .kx-toast.is-on { opacity: 1; transform: translate(-50%, 0); }
@@ -644,7 +647,7 @@ body .kx-ui .kx-hud:hover { opacity: 1; transform: none; }
     <div data-detail="respond" hidden><h3>respond</h3><p>The output guardrail runs on the final text, then the run ends.</p></div>
   </div>
   <span class="folio" data-deco>cism / 04</span>
-  <aside class="notes"><p>The hero slide. Click think first and say that compaction lives inside it. Then follow the packets around the loop: act, extract, route, remember, back to think. The branch to respond fires when the model proposes no tool calls.</p></aside>
+  <aside class="notes"><p>The hero slide. It walks the loop on its own, so let it run one full cycle while you set up the six nodes. Clicking any node stops the walk and hands you control for the rest of the slide. Click think and say that compaction lives inside it. Then follow the packets around the loop: act, extract, route, remember, back to think. The branch to respond fires when the model proposes no tool calls.</p></aside>
 </section>
 
 <!-- 06 -->
@@ -1120,6 +1123,49 @@ def _compact_history(messages, system_prompt, context_window):
 window.KX_ENTER = window.KX_ENTER || {};
 
 // Tier cascade: each lane is the same conversation, compacted one tier harder.
+// The agent loop walks itself. The engine already does focus/dim/edge-lighting
+// and the rail swap on a click of a [data-node], so drive that rather than
+// reimplementing it: dispatch a bubbling click and let engine.js do the work.
+// A real click from the presenter (isTrusted) stops the walk for good, so
+// taking manual control during the viva is one click, not a fight.
+window.KX_ENTER['loop'] = (slide, level, gsap) => {
+  if (level < 2) return;                        // Still and Minimal stay still
+  const order = ['think', 'act', 'depg', 'phase', 'memory'];
+  const nodes = order
+    .map(id => slide.querySelector('[data-node="' + id + '"]'))
+    .filter(Boolean);
+  if (nodes.length < 2) return;
+
+  const beat = level >= 3 ? 2400 : 3000;
+  let i = 0, timer = null, started = null, stopped = false;
+
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    clearTimeout(started);
+    clearInterval(timer);
+    slide.removeEventListener('click', onClick, true);
+  };
+  function onClick(e) { if (e.isTrusted) stop(); }
+  slide.addEventListener('click', onClick, true);
+
+  const step = () => {
+    if (stopped || !slide.isConnected) return stop();
+    nodes[i % nodes.length].dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true })
+    );
+    i++;
+  };
+
+  started = setTimeout(() => {                  // let the diagram draw first
+    if (stopped) return;
+    step();
+    timer = setInterval(step, beat);
+  }, level >= 3 ? 2000 : 1400);
+
+  return stop;                                  // engine calls this on navigation
+};
+
 window.KX_ENTER['tiers'] = (slide, level, gsap) => {
   // Mirrors _compact_history/_fit: walk the history from the NEWEST message
   // backwards, keep what fits, drop the oldest. So the lane runs oldest on the
@@ -1234,13 +1280,21 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
   // ---------- motion level ----------
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // The deck offers only the levels chosen at creation (body data-levels="0 2 4"); all five when unset.
+  // Still (0) stays reachable for audit, ?static, PDF and reduced motion even when it is not offered.
+  const ALLOWED = (() => {
+    const v = [...new Set((document.body.dataset.levels || '').split(/[\s,]+/).filter(Boolean).map(Number))]
+      .filter(n => n >= 0 && n <= 4).sort((a, b) => a - b);
+    return v.length ? v : [0, 1, 2, 3, 4];
+  })();
+  const snap = v => ALLOWED.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
   let level = (() => {
     if (AUDIT) return 0;
-    if (qs.has('motion')) return clamp(+qs.get('motion') || 0, 0, 4);
+    if (qs.has('motion')) { const q = clamp(+qs.get('motion') || 0, 0, 4); return q === 0 ? 0 : snap(q); }
     const saved = store.get('kx-motion');
-    if (saved !== null) return clamp(+saved, 0, 4);
-    const def = clamp(+(document.body.dataset.motion ?? 2), 0, 4);
-    return reduced ? Math.min(def, 1) : def;
+    if (saved !== null && ALLOWED.includes(+saved)) return +saved;
+    const def = snap(clamp(+(document.body.dataset.motion ?? 2), 0, 4));
+    return reduced ? (ALLOWED.find(n => n <= 1) ?? 0) : def;
   })();
   const effLevel = () => (G ? level : Math.min(level, 1));
 
@@ -1799,7 +1853,10 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
     else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(k)) { e.preventDefault(); prev(); }
     else if (k === 'Home') go(0);
     else if (k === 'End') go(slides.length - 1);
-    else if (k === 'm' || k === 'M') setLevel((level + (e.shiftKey ? 4 : 1)) % 5);
+    else if ((k === 'm' || k === 'M') && ALLOWED.length > 1) {
+      const i = ALLOWED.indexOf(level), n = ALLOWED.length;
+      setLevel(ALLOWED[((i < 0 ? 0 : i) + (e.shiftKey ? n - 1 : 1)) % n]);
+    }
     else if (k === 'f' || k === 'F') (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.());
     else if (k === 'o' || k === 'O') toggleOverlay('overview');
     else if (k === 'n' || k === 'N') toggleOverlay('notes');
@@ -1907,19 +1964,22 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
     <div class="kx-count"></div>
     <div class="kx-hud" role="group" aria-label="Motion level">
       <span class="kx-hud-label">Motion</span>
-      ${LEVELS.map((n, i) => `<button type="button" data-level="${i}" title="${n} (M to cycle)"><b></b><span>${n}</span></button>`).join('')}
+      ${ALLOWED.map(i => `<button type="button" data-level="${i}" title="${LEVELS[i]} (M to cycle)"><b></b><span>${LEVELS[i]}</span></button>`).join('')}
     </div>
     <div class="kx-toast"></div>
     <div class="kx-overlay" data-overlay="overview"><div class="kx-ov-grid"></div></div>
     <div class="kx-overlay" data-overlay="notes"><div class="kx-notes"></div></div>`;
   document.body.appendChild(ui);
   if (document.body.dataset.chrome === 'off') ui.classList.add('kx-chrome-off');
+  if (ALLOWED.length < 2) ui.classList.add('kx-one-level');
   const $ = s => ui.querySelector(s);
   $('.kx-hud').addEventListener('click', e => { const b = e.target.closest('[data-level]'); if (b) setLevel(+b.dataset.level); });
   $('.kx-ov-grid').innerHTML = slides.map((s, i) => `<button type="button" data-go="${i}"><em>${String(i + 1).padStart(2, '0')}</em>${titleOf(s, i)}</button>`).join('');
   $('.kx-ov-grid').addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) { closeOverlays(); go(+b.dataset.go); } });
 
   let hudT = 0;
+  // The motion HUD shows only while hovered (CSS), plus a short peek after M changes the level.
+  function peekHud() { const h = $('.kx-hud'); h.classList.add('is-peek'); clearTimeout(h._t); h._t = setTimeout(() => h.classList.remove('is-peek'), 1600); }
   function hudWake() { ui.classList.add('is-awake'); clearTimeout(hudT); hudT = setTimeout(() => ui.classList.remove('is-awake'), 2200); }
   function toast(msg) { const t = $('.kx-toast'); t.textContent = msg; t.classList.add('is-on'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('is-on'), 1400); }
 
@@ -1951,7 +2011,8 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
   function closeOverlays() { ui.querySelectorAll('.kx-overlay').forEach(o => o.classList.remove('is-on')); }
 
   function setLevel(L) {
-    level = clamp(L, 0, 4); store.set('kx-motion', level);
+    level = snap(clamp(L, 0, 4)); store.set('kx-motion', level);
+    peekHud();
     document.body.dataset.level = level;
     toast(`Motion · ${LEVELS[level]}${!G && level > 1 ? ' (GSAP not loaded, capped at Minimal)' : ''}`);
     chrome(); replay();

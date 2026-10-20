@@ -644,7 +644,7 @@ body .kx-ui .kx-hud:hover { opacity: 1; transform: none; }
     <div data-detail="respond" hidden><h3>respond</h3><p>The output guardrail runs on the final text, then the run ends.</p></div>
   </div>
   <span class="folio" data-deco>cism / 04</span>
-  <aside class="notes"><p>The hero slide. Click think first and say that compaction lives inside it. Then follow the packets around the loop: act, extract, route, remember, back to think. The branch to respond fires when the model proposes no tool calls.</p></aside>
+  <aside class="notes"><p>The hero slide. It walks the loop on its own, so let it run one full cycle while you set up the six nodes. Clicking any node stops the walk and hands you control for the rest of the slide. Click think and say that compaction lives inside it. Then follow the packets around the loop: act, extract, route, remember, back to think. The branch to respond fires when the model proposes no tool calls.</p></aside>
 </section>
 
 <!-- 06 -->
@@ -1120,6 +1120,49 @@ def _compact_history(messages, system_prompt, context_window):
 window.KX_ENTER = window.KX_ENTER || {};
 
 // Tier cascade: each lane is the same conversation, compacted one tier harder.
+// The agent loop walks itself. The engine already does focus/dim/edge-lighting
+// and the rail swap on a click of a [data-node], so drive that rather than
+// reimplementing it: dispatch a bubbling click and let engine.js do the work.
+// A real click from the presenter (isTrusted) stops the walk for good, so
+// taking manual control during the viva is one click, not a fight.
+window.KX_ENTER['loop'] = (slide, level, gsap) => {
+  if (level < 2) return;                        // Still and Minimal stay still
+  const order = ['think', 'act', 'depg', 'phase', 'memory'];
+  const nodes = order
+    .map(id => slide.querySelector('[data-node="' + id + '"]'))
+    .filter(Boolean);
+  if (nodes.length < 2) return;
+
+  const beat = level >= 3 ? 2400 : 3000;
+  let i = 0, timer = null, started = null, stopped = false;
+
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    clearTimeout(started);
+    clearInterval(timer);
+    slide.removeEventListener('click', onClick, true);
+  };
+  function onClick(e) { if (e.isTrusted) stop(); }
+  slide.addEventListener('click', onClick, true);
+
+  const step = () => {
+    if (stopped || !slide.isConnected) return stop();
+    nodes[i % nodes.length].dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true })
+    );
+    i++;
+  };
+
+  started = setTimeout(() => {                  // let the diagram draw first
+    if (stopped) return;
+    step();
+    timer = setInterval(step, beat);
+  }, level >= 3 ? 2000 : 1400);
+
+  return stop;                                  // engine calls this on navigation
+};
+
 window.KX_ENTER['tiers'] = (slide, level, gsap) => {
   // Mirrors _compact_history/_fit: walk the history from the NEWEST message
   // backwards, keep what fits, drop the oldest. So the lane runs oldest on the
