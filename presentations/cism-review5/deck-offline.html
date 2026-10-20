@@ -138,6 +138,66 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--accent); }
 .lede { font-size: 29px; line-height: 1.45; color: #BDB9B3; max-width: 760px; }
 .src { font-family: var(--font-mono); font-size: 16px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 
+/* ===== motion selector: direct hover only ===== */
+body .kx-ui.is-awake .kx-hud { opacity: 0; transform: translateY(6px); }
+body .kx-ui .kx-hud:hover { opacity: 1; transform: none; }
+
+/* ===== 03 motivation ===== */
+.s-mot2 h2 { position: absolute; left: var(--m); top: 118px; width: 900px; font-size: 68px; line-height: 1.02; }
+.s-mot2 .kicker { position: absolute; left: var(--m); top: 80px; margin: 0; }
+.s-mot2 .lede { position: absolute; left: var(--m); top: 420px; width: 760px; font-size: 27px; line-height: 1.45; color: #BDB9B3; }
+.s-mot2 .hw { position: absolute; left: var(--m); bottom: 60px; width: 760px; border-top: 2px solid var(--accent); padding-top: 24px;
+  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+.s-mot2 .hw div { font-family: var(--font-mono); font-size: 27px; color: var(--accent); }
+.s-mot2 .hw span { display: block; font-family: var(--font-body); font-size: 19px; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+.s-mot2 ol { position: absolute; right: var(--m); top: 150px; width: 740px; margin: 0; padding: 0; list-style: none; }
+.s-mot2 li { border-top: 1px solid var(--rule); padding: 26px 0 28px; }
+.s-mot2 li:last-child { border-bottom: 1px solid var(--rule); }
+.s-mot2 li b { display: block; font-family: var(--font-mono); font-size: 18px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 12px; font-weight: 500; }
+.s-mot2 li .h { font-size: 33px; line-height: 1.2; font-weight: 500; margin-bottom: 12px; display: block; }
+.s-mot2 li .d { font-size: 23px; line-height: 1.45; color: var(--muted); }
+.s-mot2 li.turn { border-left: 3px solid var(--warn); padding-left: 26px; }
+.s-mot2 li.turn b { color: var(--warn); }
+
+/* ===== 16 shootout ===== */
+.s-shoot h2 { position: absolute; left: var(--m); top: 116px; width: 1200px; font-size: 62px; line-height: 1.04; }
+.s-shoot .kicker { position: absolute; left: var(--m); top: 78px; margin: 0; }
+.s-shoot .chart { position: absolute; left: var(--m); top: 300px; width: 1150px; }
+.s-shoot .row { display: grid; grid-template-columns: 420px 1fr 120px; align-items: center;
+  height: 84px; border-top: 1px solid var(--rule); }
+.s-shoot .row:last-child { border-bottom: 1px solid var(--rule); }
+.s-shoot .lab { font-family: var(--font-mono); font-size: 21px; }
+.s-shoot .track { height: 36px; position: relative; }
+.s-shoot .fill { height: 100%; width: calc(var(--v) * 100%); background: #3A3835; }
+.s-shoot .row.win .fill { background: var(--accent); }
+.s-shoot .row.win .lab, .s-shoot .row.win .val { color: var(--accent); }
+.s-shoot .row.bad .fill { background: #6E2F31; }
+.s-shoot .row.bad .lab, .s-shoot .row.bad .val { color: #C77B7E; }
+.s-shoot .val { font-family: var(--font-mono); font-size: 27px; text-align: right; font-variant-numeric: tabular-nums; }
+.s-shoot .margin { position: absolute; right: var(--m); top: 300px; width: 440px; border-top: 2px solid var(--warn); padding-top: 26px; }
+.s-shoot .margin h3 { font-size: 30px; color: var(--warn); margin-bottom: 18px; line-height: 1.15; }
+.s-shoot .margin p { font-size: 24px; line-height: 1.45; color: #BDB9B3; }
+.s-shoot .margin p + p { margin-top: 18px; }
+.s-shoot .foot { position: absolute; left: var(--m); bottom: 54px; width: 1150px; font-size: 23px; color: var(--muted); }
+
+/* ===== 17 vram ===== */
+.s-vram h2 { position: absolute; left: var(--m); top: 116px; width: 1150px; font-size: 62px; line-height: 1.04; }
+.s-vram .kicker { position: absolute; left: var(--m); top: 78px; margin: 0; }
+.s-vram svg { position: absolute; left: var(--m); top: 310px; width: 1120px; height: 520px; overflow: visible; }
+.s-vram .axis line { stroke: var(--rule); stroke-width: 1.5; }
+.s-vram .axis text { font-family: var(--font-mono); font-size: 19px; fill: var(--muted); }
+.s-vram .ceil { stroke: var(--dead); stroke-width: 2; stroke-dasharray: 8 6; }
+.s-vram .ceil-lab { font-family: var(--font-mono); font-size: 20px; fill: var(--dead); }
+.s-vram .curve { fill: none; stroke: var(--accent); stroke-width: 3.5; }
+.s-vram .pt { fill: var(--accent); }
+.s-vram .pt.rej { fill: var(--dead); }
+.s-vram .plab { font-family: var(--font-mono); font-size: 20px; fill: var(--fg); }
+.s-vram .margin { position: absolute; right: var(--m); top: 310px; width: 420px; border-top: 2px solid var(--accent); padding-top: 26px; }
+.s-vram .margin p { font-size: 24px; line-height: 1.45; color: #BDB9B3; }
+.s-vram .margin p + p { margin-top: 18px; }
+
 /* ===== 01 cover ===== */
 .s-cover { background: radial-gradient(1200px 760px at 22% 42%, #141613 0%, var(--bg) 62%); }
 .s-cover .meta { position: absolute; left: var(--m); right: var(--m); top: 60px; display: flex;
@@ -314,6 +374,14 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--accent); }
 .s-depg .node.dead text { fill: #8A6560; }
 .s-depg .edge.dead { stroke: var(--dead); stroke-dasharray: 6 6; }
 .s-depg .tier { font-family: var(--font-mono); font-size: 19px; fill: var(--accent); }
+.s-depg .w { font-family: var(--font-mono); font-size: 20px; fill: var(--warn); letter-spacing: 0.04em; }
+.s-depg .r { font-family: var(--font-mono); font-size: 20px; fill: var(--accent); }
+.s-depg .node.dead .r { fill: #C77B7E; }
+.s-depg .eq { position: absolute; left: var(--m); bottom: 52px; display: flex; align-items: center; gap: 34px; }
+.s-depg .eq code { background: var(--dim); border: 1px solid var(--rule); border-left: 3px solid var(--accent);
+  padding: 18px 26px; font: 500 25px/1.4 var(--font-mono); color: var(--accent); }
+.s-depg .eq .k { font-family: var(--font-mono); font-size: 20px; color: var(--muted); line-height: 1.8; }
+.s-depg .eq .k b { color: var(--fg); font-weight: 500; }
 .s-depg .foot { position: absolute; left: var(--m); bottom: 56px; width: 1180px; font-size: 25px;
   line-height: 1.4; color: #BDB9B3; border-left: 3px solid var(--dead); padding-left: 24px; }
 
@@ -480,54 +548,52 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--accent); }
 </section>
 
 <!-- 02 -->
-<section class="slide s-prob" id="problem" data-layout="giant-number" data-claims="C3 C5 C4" data-transition="wipe">
+<section class="slide s-prob" id="problem" data-layout="giant-number" data-claims="R1 R2 C83 M13" data-transition="wipe">
   <div class="giant" data-bleed data-depth="0.35" data-anim="mask" data-from="left">
-    <span class="over" data-anim="count"><span data-count="17245">17245</span></span>
-    <span class="win">16384</span>
-    <small>tokens sent against the window</small>
+    <span class="over" data-anim="count"><span data-count="76014">76014</span></span>
+    <span class="win">98304</span>
+    <small>context used against the window</small>
   </div>
   <div class="rail">
     <p class="kicker" data-anim="fade">The problem</p>
-    <h2 data-anim="lines">The model that keeps your data cannot keep your context.</h2>
-    <p class="lede" data-anim="fade" data-delay="0.7">A hosted model strong enough for this job needs target names, banners, credentials and raw tool output sent to a third party. An engagement contract usually forbids that.</p>
-    <p class="lede" data-anim="fade" data-step="1">A local model keeps the data. It also runs out of room. One real request overflowed the server's own window by about 1300 tokens while still fitting the agent's estimate.</p>
-    <p class="src" data-anim="fade" data-delay="1.4" data-deco>nodes.py line 52, live round 12</p>
+    <h2 data-anim="lines">A 96k window still fills inside one engagement.</h2>
+    <p class="lede" data-anim="fade" data-delay="0.7">The server reports a window of 98304 tokens. The agent reads that number at startup rather than assuming one, so the budget is the real window.</p>
+    <p class="lede" data-anim="fade" data-step="1">One engagement reached 76014 tokens. That is past 0.75 of the budget, which is where compaction starts working whether or not anything has overflowed yet.</p>
   </div>
-  <p class="annot" data-anim="fade" data-delay="1.1">The agent's own budget said the request fit. The server disagreed.</p>
-  <span class="folio" data-deco>cism / 02</span>
-  <aside class="notes"><p>This is the whole tension in one number. Privacy forces a small model. A small model has a small window. Click once for the overflow line, then say that everything after this slide exists to manage that window.</p></aside>
+  <p class="annot" data-anim="fade" data-delay="1.1">Headroom is not the answer. A three hour engagement will spend whatever window it is given.</p>
+  <span class="folio" data-deco>cism / 01</span>
+  <aside class="notes"><p>Say the number out loud: 76014 of 98304 in one run. We did not pick a small window to make the problem look real. We picked the largest that fits the card and it still filled. Click once for the threshold line.</p></aside>
 </section>
 
 <!-- 03 -->
-<section class="slide s-mot" id="motivation" data-layout="compare-toggle" data-claims="C61 C57 C58 C59 C60">
-  <div class="topline"></div>
-  <p class="kicker" data-anim="fade" style="position:absolute;left:96px;top:78px;margin:0">Motivation</p>
-  <h2 data-anim="lines">A hosted endpoint is unavailable under a contract that forbids egress.</h2>
-  <div data-tabs>
-    <div class="tabs" data-anim="fade" data-delay="0.6">
-      <button data-tab="privacy">Data boundary</button>
-      <button data-tab="evidence">Evidence</button>
-    </div>
-    <div data-pane="privacy">
-      <table>
-        <tr><th>Property</th><th>Advisory assistant</th><th>Shell driving agent</th><th class="us">CISM</th></tr>
-        <tr><td>Runs without sending engagement data off the machine</td><td class="n">no</td><td class="n">no</td><td class="y">yes</td></tr>
-        <tr><td>Acts autonomously across multiple steps</td><td class="n">no</td><td class="y">yes</td><td class="y">yes</td></tr>
-        <tr><td>Scope enforced before the process is created</td><td class="n">n/a</td><td class="n">no</td><td class="y">yes</td></tr>
-      </table>
-    </div>
-    <div data-pane="evidence" hidden>
-      <table>
-        <tr><th>Property</th><th>Advisory assistant</th><th>Shell driving agent</th><th class="us">CISM</th></tr>
-        <tr><td>Findings carry the tool output that justifies them</td><td class="n">no</td><td class="n">no</td><td class="y">yes</td></tr>
-        <tr><td>A disproved precondition invalidates its dependents</td><td class="n">no</td><td class="n">no</td><td class="y">yes</td></tr>
-        <tr><td>Run is recordable, replayable and diffable</td><td class="n">no</td><td class="n">partly</td><td class="y">yes</td></tr>
-      </table>
-    </div>
+<section class="slide s-mot2" id="motivation" data-layout="margin-rail" data-claims="C3 M1 M2 M4 M10 M11">
+  <p class="kicker">Motivation</p>
+  <h2 data-anim="lines">Why a small model on a 6 GB laptop.</h2>
+  <p class="lede" data-anim="fade" data-delay="0.8">Three constraints pick the design. None of them is a preference.</p>
+  <div class="hw" data-anim="stagger" data-delay="1.2">
+    <div>RTX 3050<span>6 GB laptop GPU</span></div>
+    <div>24 GB<span>system RAM</span></div>
+    <div>90<span>calls per model</span></div>
   </div>
-  <p class="note" data-anim="fade" data-delay="1.0">A system that cannot run without a hosted endpoint is unavailable for engagements whose contracts forbid data egress, however well it performs elsewhere.</p>
-  <span class="folio" data-deco>cism / 03</span>
-  <aside class="notes"><p>Click the second tab to move from the privacy argument to the evidence argument. The comparison is structural, not a benchmark against published numbers, because the surveyed systems target different environments.</p></aside>
+  <ol data-anim="stagger" data-delay="0.5">
+    <li>
+      <b data-deco>Constraint 01</b>
+      <span class="h">The engagement data cannot leave the building.</span>
+      <span class="d">A hosted model strong enough for this work needs target names, banners, credentials and raw tool output sent to a third party. The contract usually forbids exactly that, so the model has to run on the operator's own machine.</span>
+    </li>
+    <li>
+      <b data-deco>Constraint 02</b>
+      <span class="h">The machine is a laptop, not a cluster.</span>
+      <span class="d">The driver has to fit a 6 GB consumer GPU alongside Windows. Nothing much above 9B runs at a usable speed there. The model will be weak at exactly the judgement this task needs.</span>
+    </li>
+    <li class="turn">
+      <b data-deco>The turn</b>
+      <span class="h">The obvious fix is the wrong one.</span>
+      <span class="d">A security tuned model looks like the answer. We tested that directly: every community cybersecurity fine-tune except one full merge got worse at calling tools than the model it was built from. Domain knowledge belongs in the agent's tools, not in the weights.</span>
+    </li>
+  </ol>
+  <span class="folio" data-deco>cism / 02</span>
+  <aside class="notes"><p>Walk the three in order. The first two are givens. The third is the one the panel has not heard: we tested the obvious move and it lost. That failure is what justifies spending the project on the architecture around the model instead of on picking a cleverer model.</p></aside>
 </section>
 
 <!-- 04 -->
@@ -535,7 +601,7 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--accent); }
   <span class="num" data-deco>01</span>
   <h2 data-anim="chars">Architecture</h2>
   <p data-anim="lines" data-delay="0.6">The model supplies direction. Memory, grounding, phase discipline and pre execution policy come from the system around it.</p>
-  <span class="folio" data-deco>cism / 04</span>
+  <span class="folio" data-deco>cism / 03</span>
   <aside class="notes"><p>Section break. Say the thesis in one line before the loop slide.</p></aside>
 </section>
 
@@ -576,7 +642,7 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--accent); }
     <div data-detail="memory" hidden><h3>memory_update</h3><p>This step's findings, failures, narration and phase changes upsert into the tiered memory store.</p></div>
     <div data-detail="respond" hidden><h3>respond</h3><p>The output guardrail runs on the final text, then the run ends.</p></div>
   </div>
-  <span class="folio" data-deco>cism / 05</span>
+  <span class="folio" data-deco>cism / 04</span>
   <aside class="notes"><p>The hero slide. Click think first and say that compaction lives inside it. Then follow the packets around the loop: act, extract, route, remember, back to think. The branch to respond fires when the model proposes no tool calls.</p></aside>
 </section>
 
@@ -619,7 +685,7 @@ def _compact_history(messages, system_prompt, context_window):
       <p>Each tier runs only when the one before it still did not fit. Full history stays in state. This only shapes what is sent to the model.</p>
     </div>
   </div>
-  <span class="folio" data-deco>cism / 06</span>
+  <span class="folio" data-deco>cism / 05</span>
   <aside class="notes"><p>This is the answer to where compaction triggers. Click three times. Verbatim code from nodes.py. The important line is the last one: nothing is deleted from state, only from the prompt.</p></aside>
 </section>
 
@@ -654,7 +720,7 @@ def _compact_history(messages, system_prompt, context_window):
     <span><i class="k4"></i>dropped</span>
   </div>
   <p class="foot" data-anim="fade" data-delay="1.8">A tier engages when the one before it could not fit the budget, or when usage is already past 0.75 of it.</p>
-  <span class="folio" data-deco>cism / 07</span>
+  <span class="folio" data-deco>cism / 06</span>
   <aside class="notes"><p>Watch the bars collapse. The first tier shrinks tool output, the second stubs it, and only then are whole turns dropped. The hydra story on the right is why the cut snaps back to whitespace.</p></aside>
 </section>
 
@@ -693,7 +759,7 @@ def _compact_history(messages, system_prompt, context_window):
     <div data-detail="p6" hidden><h3>reporting</h3><p>Reporting is terminal. Its only legal next phase is itself.</p></div>
   </div>
   <p class="foot" data-anim="fade" data-delay="1.2">The audit found the router advancing one phase per successful tool call, reaching reporting in about 5 calls. The table is what made that visible.</p>
-  <span class="folio" data-deco>cism / 08</span>
+  <span class="folio" data-deco>cism / 07</span>
   <aside class="notes"><p>Phase lock narrows the tool surface as the engagement progresses. Click vuln-disc to show where sqlmap becomes legal. The dashed arcs are the realistic pivots back, so this is not a strict pipeline.</p></aside>
 </section>
 
@@ -709,7 +775,7 @@ def _compact_history(messages, system_prompt, context_window):
     <li><b data-deco>05</b><span class="name">OutputRedactionStage</span><span class="d">Redacts credentials and secrets from the final answer the operator sees and exports.</span></li>
   </ol>
   <p class="fail" data-anim="fade" data-delay="1.4">The catalog fails closed. A tool that writes, executes or destroys is registered but unreachable in every phase until someone adds an explicit phases key.</p>
-  <span class="folio" data-deco>cism / 09</span>
+  <span class="folio" data-deco>cism / 08</span>
   <aside class="notes"><p>This is the ethics and safety answer. The chain runs before any process exists. Say plainly that these are heuristic safety nets rather than formal guarantees. The fail closed catalog default is the part we are most confident in.</p></aside>
 </section>
 
@@ -743,7 +809,7 @@ def _compact_history(messages, system_prompt, context_window):
       <div>512<span>processes</span></div>
     </div>
   </div>
-  <span class="folio" data-deco>cism / 10</span>
+  <span class="folio" data-deco>cism / 09</span>
   <aside class="notes"><p>Defence in depth. The guardrails decide whether a call happens. This seam decides what a call can touch once it does. The key arrives as a read only mounted file, never as an environment variable.</p></aside>
 </section>
 
@@ -752,12 +818,12 @@ def _compact_history(messages, system_prompt, context_window):
   <span class="num" data-deco>02</span>
   <h2 data-anim="chars">Memory</h2>
   <p data-anim="lines" data-delay="0.6">A claim the model cannot ground against real tool text is demoted instead of reported.</p>
-  <span class="folio" data-deco>cism / 11</span>
+  <span class="folio" data-deco>cism / 10</span>
   <aside class="notes"><p>Section break into the contribution. This sentence is the design rule the next two slides implement.</p></aside>
 </section>
 
 <!-- 12 -->
-<section class="slide s-dia s-depg" id="depg" data-layout="diagram-rail" data-claims="C33 C34 C35 C36 C37 C45" data-transition="iris">
+<section class="slide s-dia s-depg" id="depg" data-layout="diagram-rail" data-claims="C33 C34 C35 C45 G1 G2 G4 G5 E1 X1" data-transition="iris">
   <p class="kicker">Dependency and error propagation graph</p>
   <h2 data-anim="lines">Every finding carries the output that proves it.</h2>
   <svg viewBox="0 0 1240 620" data-anim="draw">
@@ -767,30 +833,39 @@ def _compact_history(messages, system_prompt, context_window):
     <path class="edge" data-flow data-edge="dirs admin"/>
     <path class="edge dead" data-edge="ssh creds"/>
     <g class="node hot" data-node="host" data-links="http ssh" transform="translate(0 240)">
-      <rect width="260" height="130"/><text x="22" y="54">open-port</text><text class="sub" x="22" y="92">10.0.0.5</text></g>
+      <rect width="260" height="130"/><text x="22" y="50">open-port</text><text class="sub" x="22" y="86">10.0.0.5</text><text class="r" x="22" y="116">r=1.00</text></g>
     <g class="node" data-node="http" data-links="host dirs" transform="translate(360 60)">
-      <rect width="280" height="130"/><text x="22" y="54">http-service</text><text class="sub" x="22" y="92">apache</text></g>
+      <rect width="280" height="130"/><text x="22" y="50">http-service</text><text class="sub" x="22" y="86">apache</text><text class="r" x="22" y="116">r=1.00</text></g>
     <g class="node" data-node="ssh" data-links="host creds" transform="translate(360 420)">
-      <rect width="280" height="130"/><text x="22" y="54">ssh-service</text><text class="sub" x="22" y="92">openssh</text></g>
+      <rect width="280" height="130"/><text x="22" y="50">ssh-service</text><text class="sub" x="22" y="86">openssh</text><text class="r" x="22" y="116">r=0.80</text></g>
     <g class="node" data-node="dirs" data-links="http admin" transform="translate(740 60)">
-      <rect width="280" height="130"/><text x="22" y="54">exposed-dir</text><text class="sub" x="22" y="92">gobuster, 5 hits</text></g>
+      <rect width="280" height="130"/><text x="22" y="50">exposed-dir</text><text class="sub" x="22" y="86">gobuster, 5 hits</text><text class="r" x="22" y="116">r=0.85</text></g>
     <g class="node dead" data-node="creds" data-links="ssh" transform="translate(740 420)">
-      <rect width="280" height="130"/><text x="22" y="54">weak-creds</text><text class="sub" x="22" y="92">disproved, blocked</text></g>
+      <rect width="280" height="130"/><text x="22" y="50">weak-creds</text><text class="sub" x="22" y="86">disproved</text><text class="r" x="22" y="116">r=0.00</text></g>
     <g class="node" data-node="admin" data-links="dirs" transform="translate(1080 60)">
-      <rect width="160" height="130"/><text x="22" y="54">setup</text><text class="sub" x="22" y="92">script</text></g>
+      <rect width="160" height="130"/><text x="22" y="50">setup</text><text class="sub" x="22" y="86">script</text><text class="r" x="22" y="116">r=0.43</text></g>
+    <text class="w" x="266" y="196">w=1.0</text>
+    <text class="w" x="266" y="432">w=0.8</text>
+    <text class="w" x="656" y="112">w=1.0</text>
+    <text class="w" x="1028" y="112">w=0.5</text>
+    <text class="w" x="656" y="472" fill="#C77B7E">w=1.0</text>
     <text class="tier" x="740" y="40">T1 evidence, quoted from gobuster</text>
     <text class="ev" x="0" y="40" data-deco>illustrative graph shape</text>
   </svg>
   <div class="rail" data-anim="fade" data-delay="0.6">
-    <div data-detail="default"><h3>Click any node.</h3><p>The graph merges proposed nodes and edges, resolves each dirty node's state, then prunes fully dead regions.</p></div>
+    <div data-detail="default"><h3>Click any node.</h3><p>Each edge carries a weight, the propagation coefficient. Each node carries <code>r</code>, its reachability.</p><p>The graph merges proposed nodes, resolves each dirty node, then prunes fully dead regions.</p></div>
     <div data-detail="host" hidden><h3>Identity before merge</h3><p>Targets are normalized before they become part of a node's identity, so <code>10.0.0.5</code>, <code>ssh://10.0.0.5:22</code> and <code>10.0.0.5.</code> collapse onto one node family instead of fragmenting.</p></div>
-    <div data-detail="dirs" hidden><h3>Grounded evidence</h3><p>Each node carries the quoted tool output that justifies it. An extractor that cannot find its own quote in the tool text is clamped to the lowest tier.</p></div>
-    <div data-detail="creds" hidden><h3>Propagation</h3><p>A disproved precondition invalidates its dependents. The graded policy propagates a continuous score with a noisy OR over parents and is opt in.</p></div>
-    <div data-detail="admin" hidden><h3>Transfer and reach</h3><p>generality is the share of this run's targets that already produced this cause class. downstream is the descendant count.</p></div>
+    <div data-detail="dirs" hidden><h3>Where r comes from</h3><p>Evidence tier sets the starting score: T1 is 1.0, T2 is 0.8, T3 is 0.5. A tier the model chose rather than a parser is discounted by 0.85, which is why this node sits at 0.85 and not 1.00.</p></div>
+    <div data-detail="ssh" hidden><h3>Weights weaken, they do not kill</h3><p>This node reaches 0.80 because the edge from its parent carries a weight of 0.8. A weak precondition softens its children instead of either passing them through untouched or killing them.</p></div>
+    <div data-detail="creds" hidden><h3>Disproved is absolute</h3><p>Dead evidence sets the score to 0 regardless of parents. Anything downstream loses that term of the noisy OR entirely.</p></div>
+    <div data-detail="admin" hidden><h3>Below the line</h3><p>At 0.43 this node is neither resolved nor blocked. It is contested, and it stays in the operator's view as unproven rather than being reported as a finding.</p></div>
   </div>
-  <p class="foot" data-anim="fade" data-delay="1.4">A disproved precondition blocks what depended on it. Pruning then collapses the region that is fully dead, so a wrong early branch does not stay in the operator's view.</p>
-  <span class="folio" data-deco>cism / 12</span>
-  <aside class="notes"><p>The core contribution. Click weak-creds and show the dead edge: the propagation is the reason a wrong early branch does not poison the rest of the run. Click open-port to talk about normalization and deduplication.</p></aside>
+  <div class="eq" data-anim="fade" data-delay="1.3">
+    <code>r = s&#8320; &#183; (1 &#8722; &#8719;(1 &#8722; w&#183;r&#7525;))</code>
+    <span class="k"><b>&#8805; 0.6</b> resolved<br><b>&#8804; 0.15</b> blocked</span>
+  </div>
+  <span class="folio" data-deco>cism / 11</span>
+  <aside class="notes"><p>The core contribution. Click exposed-dir to explain the 0.85 discount, then ssh-service for the edge weight, then weak-creds for the dead term. The formula at the bottom is the noisy OR. A node needs any live precondition. A weak one only gets it part of the way there.</p></aside>
 </section>
 
 <!-- 13 -->
@@ -821,7 +896,7 @@ def _compact_history(messages, system_prompt, context_window):
     <p>Tier weight sets the starting height. The hit bonus is what lifts a row back up.</p>
   </div>
   <div class="eq" data-anim="fade" data-delay="1.5"><code>S = w_tier &#183; s&#8320; &#183; e^(&#8722;&#955;&#183;age) + &#946;&#183;hits</code></div>
-  <span class="folio" data-deco>cism / 13</span>
+  <span class="folio" data-deco>cism / 12</span>
   <aside class="notes"><p>The equation is live in the terminal memory view, with the current term values substituted per row. Point at the T1 curve and say that an exploited finding stays retrievable far longer than a routine banner.</p></aside>
 </section>
 
@@ -830,26 +905,85 @@ def _compact_history(messages, system_prompt, context_window):
   <span class="num" data-deco>03</span>
   <h2 data-anim="chars">Results</h2>
   <p data-anim="lines" data-delay="0.6">Measured against a containerized Damn Vulnerable Web Application on an isolated bridge network, with its database initialized.</p>
-  <span class="folio" data-deco>cism / 14</span>
+  <span class="folio" data-deco>cism / 13</span>
   <aside class="notes"><p>Section break. Name the target before any number appears.</p></aside>
 </section>
 
 <!-- 15 -->
-<section class="slide s-setup" id="setup" data-layout="mosaic" data-claims="C73 C74 C75 C31">
+<section class="slide s-setup" id="setup" data-layout="mosaic" data-claims="C73 C74 D1 M15 C31">
   <p class="kicker">Experimental setup</p>
-  <h2 data-anim="lines">Real target, real tools, real local inference.</h2>
+  <h2 data-anim="lines">Real targets, real tools, real local inference.</h2>
   <div class="grid" data-anim="stagger" data-delay="0.6">
-    <div class="tile big"><h3>Target</h3><p>A containerized Damn Vulnerable Web Application on an isolated bridge network, database initialized, security level left at the image default. Scope is the target address alone.</p></div>
-    <div class="tile"><h3>Inference</h3><p>A local llama.cpp server hosting a quantized small model, reached over its OpenAI compatible endpoint.</p></div>
+    <div class="tile big"><h3>Targets</h3><p>Damn Vulnerable Web Application on an isolated bridge network, at 172.28.0.2 and 172.28.0.3, database initialized. Scope is those addresses alone.</p></div>
+    <div class="tile"><h3>Driver</h3><p>gemma-4-E4B-it-Q4_K_M served by llama-server at 98304 context, fully offloaded to the GPU.</p></div>
     <div class="tile"><h3>Agent</h3><p>Inside the hardened container. All capabilities dropped except the one bubblewrap requires.</p></div>
     <div class="tile"><h3>Instructions</h3><p>Three scripted submits covering reconnaissance, enumeration and injection testing.</p></div>
-    <div class="tile"><h3>Repetitions</h3><span class="v">x2</span><p>Each configuration run twice.</p></div>
+    <div class="tile"><h3>Ceilings</h3><span class="v">2 GB</span><p>memory and swap, 2 processors, 512 processes.</p></div>
   </div>
-  <span class="folio" data-deco>cism / 15</span>
-  <aside class="notes"><p>Nothing here is a replay or a stub. The same hardened container that ships is the one that ran. The panel should hear that scope was the single target address.</p></aside>
+  <span class="folio" data-deco>cism / 14</span>
+  <aside class="notes"><p>Nothing here is a replay or a stub. The same hardened container that ships is the one that ran, against two live targets, with scope limited to those addresses.</p></aside>
 </section>
 
 <!-- 16 -->
+<!-- model shootout -->
+<section class="slide s-shoot" id="shootout" data-layout="chart-margin" data-claims="M2 M3 M4 M5 M6 M7 M8 M9 M10 M11">
+  <p class="kicker">Model selection</p>
+  <h2 data-anim="lines">Every security fine-tune we tested got worse at calling tools.</h2>
+  <div class="chart">
+    <div class="row win"><span class="lab">gemma-4-E4B-it Q4_K_M</span><div class="track"><div class="fill" style="--v:1" data-anim="grow" data-axis="x" data-tip="90 of 90"></div></div><span class="val">100%</span></div>
+    <div class="row"><span class="lab">Ornith-1.5-9B</span><div class="track"><div class="fill" style="--v:0.944" data-anim="grow" data-axis="x" data-tip="85 of 90"></div></div><span class="val">94.4%</span></div>
+    <div class="row"><span class="lab">NVIDIA-Orchestrator-Cyber-8B</span><div class="track"><div class="fill" style="--v:0.911" data-anim="grow" data-axis="x" data-tip="82 of 90"></div></div><span class="val">91.1%</span></div>
+    <div class="row"><span class="lab">LFM2.5-8B-A1B</span><div class="track"><div class="fill" style="--v:0.900" data-anim="grow" data-axis="x" data-tip="81 of 90"></div></div><span class="val">90.0%</span></div>
+    <div class="row bad"><span class="lab">Cyber-Ornith-9B</span><div class="track"><div class="fill" style="--v:0.69" data-anim="grow" data-axis="x" data-tip="about 69 percent"></div></div><span class="val">69%</span></div>
+    <div class="row bad"><span class="lab">Qwen3-4B-Cyber-Heretic</span><div class="track"><div class="fill" style="--v:0.278" data-anim="grow" data-axis="x" data-tip="25 of 90"></div></div><span class="val">27.8%</span></div>
+    <div class="row bad"><span class="lab">Llama-3.1-CyberAlpha8B</span><div class="track"><div class="fill" style="--v:0.267" data-anim="grow" data-axis="x" data-tip="24 of 90"></div></div><span class="val">26.7%</span></div>
+  </div>
+  <div class="margin">
+    <h3>The red rows are the security models.</h3>
+    <p>Cyber-Ornith is Ornith with security tuning on top. It lost 25 points to the model it was built from.</p>
+    <p>These fine-tunes train on security question and answer text, not on function calling, so the skill erodes.</p>
+    <p>Domain knowledge belongs in the agent's tools, not in the weights. That finding is what the rest of this project is built on.</p>
+  </div>
+  <p class="foot">18 case types, 5 repeats, 90 calls per model at temperature 0.2. Correct tool, correct argument types, and correctly declining when no tool applies.</p>
+  <span class="folio" data-deco>cism / 15</span>
+  <aside class="notes"><p>This is the slide that justifies the whole architecture. The intuitive move is to reach for a cybersecurity model. We tested seven of them. One survived, and it still lost to a general 4B model. Point at Cyber-Ornith and say it is the same base, 25 points worse.</p></aside>
+</section>
+
+<!-- context window vs vram -->
+<section class="slide s-vram" id="vram" data-layout="chart-rail" data-claims="M12 M13 M14 M16 M1">
+  <p class="kicker">Context budget</p>
+  <h2 data-anim="lines">96k fits in 6 GB because of Flash Attention.</h2>
+  <svg viewBox="0 0 1120 480">
+    <g class="axis" data-deco>
+      <line x1="60" y1="420" x2="1100" y2="420"/>
+      <line x1="60" y1="20" x2="60" y2="420"/>
+      <text x="60" y="456">16k</text><text x="300" y="456">33k</text><text x="560" y="456">66k</text>
+      <text x="800" y="456">98k</text><text x="1040" y="456">131k</text>
+      <text x="0" y="300">4 GB</text><text x="0" y="150">5 GB</text>
+      <text x="0" y="66">6 GB</text>
+    </g>
+    <line class="ceil" x1="60" y1="60" x2="1100" y2="60"/>
+    <text class="ceil-lab" x="100" y="46">6 GB card</text>
+    <path class="curve" data-anim="draw" d="M60 330 L 300 294 L 560 213 L 800 130 L 920 88 L 1040 46"/>
+    <g data-anim="pop" data-delay="1.2">
+      <circle class="pt" cx="60" cy="330" r="8"/>
+      <circle class="pt" cx="300" cy="294" r="8"/>
+      <circle class="pt" cx="560" cy="213" r="8"/>
+      <circle class="pt" cx="800" cy="130" r="11"/>
+      <circle class="pt rej" cx="1040" cy="46" r="9"/>
+    </g>
+    <text class="plab" x="770" y="106" fill="#7CFF6B">5.23 GB chosen</text>
+    <text class="plab" x="1040" y="26" text-anchor="end" fill="#E5484D">5.79 GB rejected</text>
+  </svg>
+  <div class="margin" data-anim="fade" data-delay="0.9">
+    <p>Full GPU offload, four bit weights and a fused attention kernel are what hold this curve down.</p>
+    <p>98304 tokens costs 5.23 GB and leaves about 900 MB of headroom.</p>
+    <p>131072 was measured and rejected. It leaves roughly 350 MB, which is not enough to survive anything else touching the card.</p>
+  </div>
+  <span class="folio" data-deco>cism / 16</span>
+  <aside class="notes"><p>This is a measured curve, not a spec sheet. The red point is the one worth mentioning: we could run 128k and chose not to, because the headroom disappears. The window on slide 2 is this decision.</p></aside>
+</section>
+
 <section class="slide s-find" id="findings" data-layout="giant-number" data-claims="C44 C45 C46 C47 C48" data-transition="wipe">
   <div class="giant" data-anim="mask" data-from="left">
     <span class="z">0</span><span class="arrow" data-deco>&#8594;</span><span class="e" data-anim="count"><span data-count="8">8</span></span>
@@ -865,7 +999,7 @@ def _compact_history(messages, system_prompt, context_window):
     </table>
   </div>
   <p class="why" data-anim="fade" data-delay="1.6">All three defects were invisible to a test suite written against clean sample output. All three were visible at once against real output from a real target.</p>
-  <span class="folio" data-deco>cism / 16</span>
+  <span class="folio" data-deco>cism / 17</span>
   <aside class="notes"><p>The headline result, and be precise about what it is. The tools executed correctly in both runs and the target never changed. What changed is that eight genuine observations stopped being discarded. The methodological point at the bottom is the one worth defending in the viva.</p></aside>
 </section>
 
@@ -883,7 +1017,7 @@ def _compact_history(messages, system_prompt, context_window):
     <p>The shipped strategy measures 1.4 microseconds at 4000 tokens and 1.1 at 8000. The naive strategy climbs from 58 to 99 over the same range, which is quadratic in entry length.</p>
   </div>
   <p class="axis" data-anim="fade" data-delay="1.3">per token cost / lower is better / bench/stream_bench.py</p>
-  <span class="folio" data-deco>cism / 17</span>
+  <span class="folio" data-deco>cism / 18</span>
   <aside class="notes"><p>A design decision we measured instead of asserting. The append only log widget was rejected because it cannot edit its own last line, which also made the expandable tool output impossible.</p></aside>
 </section>
 
@@ -908,48 +1042,48 @@ def _compact_history(messages, system_prompt, context_window):
     </div>
     <div class="tile"><span class="big">10</span><p>snapshot tests pinning the terminal appearance</p></div>
   </div>
-  <span class="folio" data-deco>cism / 18</span>
+  <span class="folio" data-deco>cism / 19</span>
   <aside class="notes"><p>Two runs against an unchanged codebase produced identical finding counts. First finding times landed within a tenth of a second of each other. That precision is what makes the ablation comparisons meaningful.</p></aside>
 </section>
 
 <!-- 19 -->
-<section class="slide s-fail" id="failures" data-layout="index" data-claims="C62 C63 C64 C65 C66">
+<section class="slide s-fail" id="failures" data-layout="index" data-claims="F1 F2 F3 F4 F5 D2">
   <p class="kicker">Observed failure modes</p>
-  <h2 data-anim="lines">Three failures we are reporting, not hiding.</h2>
+  <h2 data-anim="lines">The model lies about its own evidence.</h2>
   <ol data-anim="stagger" data-delay="0.6">
     <li data-hover>
-      <span class="name"><b data-deco>Failure 01</b>A tool offering turn answered with a question</span>
-      <span class="d">The model asks for the target address when that address already sits in the instruction and the system prompt. A bounded retry was implemented and then reverted, because a discarded attempt's tokens leaked into the operator's transcript.
-        <span class="kx-on-hover">Six tests caught the regression. The fix belongs in the streaming path.</span></span>
+      <span class="name"><b data-deco>Failure 01</b>It reported a success that the response body flatly contradicts</span>
+      <span class="d">The injection never reached the SQL parser. The body came back byte for byte as the normal result: <code>First name: admin</code>. The narration said the attack was successful and confirmed the database version, then planned the next step on that premise.
+        <span class="kx-on-hover">A checkable claim, false against text its own call already had in front of it.</span></span>
     </li>
     <li data-hover>
-      <span class="name"><b data-deco>Failure 02</b>A placeholder passed as a real argument</span>
-      <span class="d">The model invoked the port scanner with the literal placeholder token as the target, producing a real call that failed at name resolution.
-        <span class="kx-on-hover">Remedy: an argument validation stage that rejects placeholder shaped arguments before execution.</span></span>
+      <span class="name"><b data-deco>Failure 02</b>It forgot a correction it had just been given</span>
+      <span class="d">The same encoding mistake came back across four separate turns. The correct form sat in its own immediately preceding successful call.
+        <span class="kx-on-hover">Not a knowledge gap. The right answer was already in the context window.</span></span>
     </li>
     <li data-hover>
-      <span class="name"><b data-deco>Failure 03</b>Silent unavailability under a stalled phase</span>
-      <span class="d">When an early call produces no finding, the phase never advances past reconnaissance, so a later request for an injection tool cannot be satisfied. The operator received no signal.
-        <span class="kx-on-hover">The most operationally significant of the three. Remedy: a visible signal, not a silent substitution.</span></span>
+      <span class="name"><b data-deco>Failure 03</b>Corrected once, it over-generalized</span>
+      <span class="d">Told to use a literal separator instead of encoding it, it stopped escaping anything at all, and curl rejected the URL outright.
+        <span class="kx-on-hover">A narrow correction became a broad rule. The guardrail caught the result, not the reasoning.</span></span>
     </li>
   </ol>
-  <p class="foot" data-anim="fade" data-delay="1.5">Offline validation against clean sample output is insufficient for this class of system.</p>
-  <span class="folio" data-deco>cism / 19</span>
-  <aside class="notes"><p>Hover each row for the remedy. The remaining failures belong to the model's tool calling discipline, not to the architecture. Each one has a bounded fix inside an existing seam.</p></aside>
+  <p class="foot" data-anim="fade" data-delay="1.5">Neither model found or exploited an actual SQL injection in its observed window. We are reporting that, because it is the result.</p>
+  <span class="folio" data-deco>cism / 20</span>
+  <aside class="notes"><p>Hover each row. Do not soften these. Say it plainly. The model asserts things its own evidence disproves. That is why a finding here is quoted tool output, never model prose. The architecture exists because the model cannot be trusted to narrate.</p></aside>
 </section>
 
 <!-- 20 -->
-<section class="slide s-lim" id="limits" data-layout="broadsheet" data-claims="C67 C68 C69 C70 C71 C72">
+<section class="slide s-lim" id="limits" data-layout="broadsheet" data-claims="D1 D2 C68 L1 C69 C70 C71 C72">
   <p class="kicker">Limits and next phase</p>
   <h2 data-anim="lines">Every limit names the seam it extends into.</h2>
   <div class="cols">
     <div class="col">
       <h3>What the work does not claim</h3>
       <ul data-anim="stagger" data-delay="0.6">
-        <li>Evaluation used a single target application and a single model family.</li>
+        <li>Evaluation covered two targets on one application. It does not generalize to other applications.</li>
+        <li>No confirmed SQL injection exploit landed in either model's observed window.</li>
         <li>Checkpointed state does not survive a process restart.</li>
-        <li>The dangerous argument stage is a denylist, so an unanticipated argument form is permitted by default.</li>
-        <li>The sandbox shares the host network, so scope is enforced on argv text and not at the operating system boundary.</li>
+        <li>The sandbox shares the host network, so scope is enforced on argument text and not at the operating system boundary.</li>
       </ul>
     </div>
     <div class="col">
@@ -962,31 +1096,12 @@ def _compact_history(messages, system_prompt, context_window):
       </ul>
     </div>
   </div>
-  <span class="folio" data-deco>cism / 20</span>
-  <aside class="notes"><p>Put each limit beside its fix. The panel should see a roadmap, not a list of holes. None of these needs a redesign.</p></aside>
+  <span class="folio" data-deco>cism / 21</span>
+  <aside class="notes"><p>Put each limit beside its fix. Say the second line without flinching. A panel that hears it from us trusts the rest of the numbers more.</p></aside>
 </section>
 
 <!-- 21 -->
-<section class="slide s-team" id="team" data-layout="index" data-claims="C76 C77 C78 C2 C2b C2c">
-  <p class="kicker">Individual contribution</p>
-  <h2 data-anim="lines">Three owners, three separable bodies of work.</h2>
-  <ol data-anim="stagger" data-delay="0.6">
-    <li>
-      <span class="who"><span class="nm">Madhan T B</span><span class="rn">23BCE1087</span></span>
-      <span class="what">Model inferencing and the context window. The think and act loop in LangGraph. The graph mathematics and its implementation: the reducer, the support policy, settle and prune. Phase locking. The model based extractor backends. Inference benchmarking.</span>
-    </li>
-    <li>
-      <span class="who"><span class="nm">Manikandan S</span><span class="rn">23BCE1476</span></span>
-      <span class="what">The terminal interface. Tool integration across nmap, hydra, gobuster, whatweb and wafw00f plus the offline stubs. The deterministic extractors. Sandboxing with bubblewrap. Guardrail implementation. Lab deployment, the test suite and continuous integration.</span>
-    </li>
-    <li>
-      <span class="who"><span class="nm">Sushindh A</span><span class="rn">23BCE1513</span></span>
-      <span class="what">Model testing for tool call and text fallback reliability across candidate models. Accuracy benchmarking. The ablation study with and without the graph, the phase lock and the guardrails. Prompt quality control. Guardrail red teaming. The literature survey.</span>
-    </li>
-  </ol>
-  <span class="folio" data-deco>cism / 21</span>
-  <aside class="notes"><p>Each person answers viva questions on their own rows. Keep this slide up during questions if the panel asks who did what.</p></aside>
-</section>
+
 
 <!-- 22 -->
 <section class="slide s-close" id="close" data-layout="statement" data-claims="C6 C44 C66 C41 C25 C84" data-transition="iris" data-fx="flowfield">
@@ -1007,45 +1122,51 @@ window.KX_ENTER = window.KX_ENTER || {};
 // Tier cascade: each lane is the same conversation, compacted one tier harder.
 window.KX_ENTER['tiers'] = (slide, level, gsap) => {
   const plan = [
-    { sys: 1, msgs: [150, 90, 300, 70, 260, 80, 190], cap: 760 },
-    { sys: 1, msgs: [150, 90, 120, 70, 110, 80, 190], cap: 760 },
-    { sys: 1, msgs: [150, 90, 40, 70, 40, 80, 190], cap: 760 }
+    { msgs: [150, 90, 300, 70, 260, 80, 190], cap: 760 },
+    { msgs: [150, 90, 120, 70, 110, 80, 190], cap: 760 },
+    { msgs: [150, 90, 40, 70, 40, 80, 190], cap: 760 }
   ];
   const lanes = [...slide.querySelectorAll('.track')];
+  const blocks = [];
   lanes.forEach((track, li) => {
     track.innerHTML = '';
+    track.style.position = 'relative';
     const p = plan[li];
     let used = 0;
     const sys = document.createElement('div');
-    sys.className = 'blk sys'; sys.style.width = '70px'; track.appendChild(sys); used += 75;
+    sys.className = 'blk sys'; sys.style.width = '70px';
+    track.appendChild(sys); blocks.push(sys); used += 75;
     p.msgs.forEach((w, i) => {
       const b = document.createElement('div');
-      const tool = i % 2 === 0;
-      b.className = 'blk' + (tool ? ' tool' : '');
+      b.className = 'blk' + (i % 2 === 0 ? ' tool' : '');
       b.style.width = w + 'px';
       if (used + w > p.cap) b.classList.add('gone');
       used += w + 5;
-      track.appendChild(b);
+      track.appendChild(b); blocks.push(b);
     });
     const cap = document.createElement('div');
     cap.className = 'cap'; cap.style.left = p.cap + 'px'; cap.style.right = 'auto';
-    track.style.position = 'relative';
     track.appendChild(cap);
   });
+  // The bars are now in their final, visible state. Everything below is decoration:
+  // if gsap is missing, killed mid-flight, or the slide is screenshotted, they still show.
   if (level === 0 || !gsap) return;
-  const tl = gsap.timeline();
+  const done = () => gsap.set(blocks, { clearProps: 'transform' });
+  const tl = gsap.timeline({ onComplete: done, onInterrupt: done });
   lanes.forEach((track, li) => {
-    tl.from([...track.children], {
-      scaleX: 0, transformOrigin: 'left center',
-      duration: level >= 3 ? 0.5 : 0.3,
-      stagger: level >= 3 ? 0.045 : 0.02,
-      ease: 'power3.out'
-    }, 0.25 + li * (level >= 3 ? 0.55 : 0.3));
+    const kids = [...track.children].filter(el => el.classList.contains('blk'));
+    tl.fromTo(kids,
+      { scaleX: 0 },
+      { scaleX: 1, transformOrigin: 'left center',
+        duration: level >= 3 ? 0.5 : 0.3,
+        stagger: level >= 3 ? 0.045 : 0.02,
+        ease: 'power3.out' },
+      0.25 + li * (level >= 3 ? 0.55 : 0.3));
   });
   return tl;
 };
 </script>
-<script type="application/json" id="kx-sources">{"sources": {"S1": {"ref": "../../README.md", "kind": "doc"}, "S2": {"ref": "report-extract.txt", "kind": "doc"}, "S3": {"ref": "../../cism/agent/nodes.py", "kind": "code"}, "S4": {"ref": "../../AUDIT.md", "kind": "doc"}, "S5": {"ref": "../../cism/agent/state.py", "kind": "code"}, "S6": {"ref": "../../cism/tui/events.py", "kind": "code"}, "S7": {"ref": "../../cism/agent/tools/catalog.yaml", "kind": "code"}, "S8": {"ref": "source-notes.md", "kind": "user"}, "U": {"ref": "user, chat 2026-10-20", "kind": "user"}, "S9": {"ref": "../../run_agent.py", "kind": "code"}}, "claims": {"C1": {"text": "Project title: Memory optimization for small-language-model-driven security agents", "source": "S2", "locator": "cover page"}, "C2": {"text": "Madhan T B 23BCE1087, Manikandan S 23BCE1476, Sushindh A 23BCE1513", "source": "S2", "locator": "cover page"}, "C2b": {"text": "Manikandan S 23BCE1476 and Sushindh A 23BCE1513", "source": "S2", "locator": "cover page"}, "C2c": {"text": "Sushindh A 23BCE1513", "source": "S2", "locator": "cover page"}, "C3": {"text": "Hosted models strong enough for the job need target names, banners, credentials and raw tool output sent to a third party", "source": "S2", "locator": "Abstract"}, "C4": {"text": "What stays human is the judgement that sequences the tools", "source": "S2", "locator": "Abstract"}, "C5": {"text": "A real request overflowed a 16384 token context window by about 1300 tokens", "source": "S3", "locator": "nodes.py:52"}, "C6": {"text": "The model can supply direction only when memory, grounding, phase discipline and pre-execution policy come from the system around it", "source": "S2", "locator": "Section 6.1"}, "C7": {"text": "The agent is a LangGraph state machine with six nodes: think, act, extract, route, remember and respond", "source": "S2", "locator": "Abstract"}, "C8": {"text": "AgentEvent is the union alias over 15 event types", "source": "S1", "locator": "README, The events"}, "C9": {"text": "State persists across submit() calls within one process via a MemorySaver checkpointer", "source": "S1", "locator": "README, The agent core"}, "C10": {"text": "Six PTES phases: recon, enumeration, vulnerability discovery, exploitation, post exploitation, reporting", "source": "S5", "locator": "state.py:26"}, "C11": {"text": "Recon may only move to recon or enumeration", "source": "S5", "locator": "state.py:43"}, "C12": {"text": "Reporting is terminal", "source": "S5", "locator": "state.py:56"}, "C13": {"text": "transition() is the single choke point every phase change goes through", "source": "S1", "locator": "README, Phase"}, "C14": {"text": "The agent caps AI turns at 2 per user turn", "source": "S3", "locator": "nodes.py:59"}, "C15": {"text": "The token estimate uses 3 characters per token", "source": "S3", "locator": "nodes.py:62"}, "C16": {"text": "512 tokens are reserved for the response", "source": "S3", "locator": "nodes.py:63"}, "C17": {"text": "The default context window is 32768 tokens", "source": "S3", "locator": "nodes.py:64"}, "C18": {"text": "Tier 1 shrinks old tool output to a 350 character head and a 100 character tail", "source": "S3", "locator": "nodes.py:104"}, "C19": {"text": "Flat per message overhead is 4 tokens", "source": "S3", "locator": "nodes.py:69"}, "C20": {"text": "Three tiers, cheapest sufficient wins, each engaging once the one before it could not fit the budget or left usage above the proactive threshold", "source": "S3", "locator": "nodes.py:196 _compact_history"}, "C21": {"text": "A plain character cut landed inside the word valid in a hydra run and inverted a negative result", "source": "S3", "locator": "nodes.py:113"}, "C22": {"text": "Full history stays in state; compaction only shapes what is sent to the model", "source": "S3", "locator": "nodes.py:198"}, "C23": {"text": "One real token counter call catches an overshoot before the prompt is sent", "source": "S3", "locator": "nodes.py:252"}, "C24": {"text": "DEPG and memory context is rebuilt fresh from state every think() call, not from the compacted history", "source": "S3", "locator": "nodes.py, _compact_history docstring"}, "C25": {"text": "9 real tools execute only through one sandboxed, argv only seam behind a hard allowlist", "source": "S2", "locator": "Abstract"}, "C26": {"text": "The eight declared tools are nikto, whatweb, dnsenum, nmap, curl, sqlmap, gobuster and wafw00f", "source": "S1", "locator": "README, Tool catalog"}, "C27": {"text": "A destructive tool is registered but unreachable in every phase until an explicit phases key is added", "source": "S7", "locator": "catalog.yaml:9"}, "C28": {"text": "A guardrail chain blocks out of scope targets, dangerous arguments and phase illegal tools before any process is spawned", "source": "S2", "locator": "Abstract"}, "C29": {"text": "Every real tool runs with argv only execution, a per call scratch directory and a timeout that kills the whole process tree", "source": "S1", "locator": "README, Tools"}, "C30": {"text": "hydra's wordlist arguments only ever select one of two fixed, named wordlists, never an arbitrary path", "source": "S1", "locator": "README, Tool catalog"}, "C31": {"text": "Container ceilings: 2 GB memory, 2 GB swap, 2 processors, 512 processes", "source": "S2", "locator": "Table 5.1"}, "C32": {"text": "The inference key arrives as a read only mounted file and not an environment variable", "source": "S2", "locator": "Section 4.15"}, "C33": {"text": "A claim the model cannot ground against real tool text is demoted instead of reported", "source": "S2", "locator": "Abstract"}, "C34": {"text": "Graph merges nodes and edges, resolves each dirty node's state via reduce_state, and prunes fully dead regions", "source": "S1", "locator": "README, DEPG domain model"}, "C35": {"text": "normalize_target collapses 10.0.0.5, ssh://10.0.0.5:22 and 10.0.0.5. onto one node family", "source": "S1", "locator": "README, DEPG domain model"}, "C36": {"text": "generality is the share of this run's targets that already produced this cause class, and downstream is the descendant count", "source": "S1", "locator": "README, DEPG domain model"}, "C37": {"text": "Graded propagation uses a noisy OR over parents and is opt in", "source": "S4", "locator": "AUDIT.md A3"}, "C38": {"text": "The memory salience score is S = w_tier times s0 times e to the minus lambda age, plus beta times hits", "source": "S6", "locator": "events.py:174"}, "C39": {"text": "Each MemoryItem carries a tier T1, T2 or T3, the phase it was seen in, a snippet and a salience score", "source": "S1", "locator": "README, Memory"}, "C40": {"text": "A recurring narration or tool failure collapses onto one row and increments hits", "source": "S1", "locator": "README, Memory"}, "C41": {"text": "786 automated tests cover the implementation", "source": "S2", "locator": "Section 6.1"}, "C42": {"text": "The suite contains 786 tests across 53 modules", "source": "S2", "locator": "Section 5.3"}, "C43": {"text": "10 terminal snapshot tests pin the rendered appearance", "source": "S2", "locator": "Section 5.3"}, "C44": {"text": "Correcting three extractor defects took one engagement from 0 to 8 evidence backed findings", "source": "S2", "locator": "Section 5.5"}, "C45": {"text": "gobuster went from 0 to 5 findings because progress indicator escape sequences defeated the pattern", "source": "S2", "locator": "Table 5.3"}, "C46": {"text": "whatweb went from 0 to 2 findings because no extractor existed", "source": "S2", "locator": "Table 5.3"}, "C47": {"text": "wafw00f went from 0 to 1 finding because it defaulted to a secure scheme against a plaintext only target", "source": "S2", "locator": "Table 5.3"}, "C48": {"text": "All three defects were invisible to a test suite written against clean sample output and visible at once against real output", "source": "S2", "locator": "Section 5.5"}, "C49": {"text": "Buffered static costs 8.9 ms to append, 1.1 microseconds per token and 0.8 ms to render", "source": "S2", "locator": "Table 5.2"}, "C50": {"text": "Log widget rewrite costs 364.2 ms to append and 45.5 microseconds per token", "source": "S2", "locator": "Table 5.2"}, "C51": {"text": "Naive static costs 793.3 ms to append and 99.2 microseconds per token", "source": "S2", "locator": "Table 5.2"}, "C52": {"text": "The benchmark streams 8000 tokens into one wrapping paragraph in a terminal 100 columns by 30 rows", "source": "S2", "locator": "Section 5.4"}, "C53": {"text": "The shipped strategy measures 1.4 microseconds at 4000 tokens and 1.1 microseconds at 8000, while the naive strategy climbs from 58 to 99 microseconds", "source": "S2", "locator": "Section 5.4"}, "C54": {"text": "Two headless runs produced 1 finding each, with first finding times of 2.9 s and 3.0 s", "source": "S2", "locator": "Table 5.4"}, "C55": {"text": "Identical finding counts and first finding times within a tenth of a second put the measurement inside the range needed to detect a change of consequence", "source": "S2", "locator": "Section 5.6"}, "C56": {"text": "The audit scope was the full cism package of about 6500 lines of code", "source": "S4", "locator": "AUDIT.md header"}, "C57": {"text": "Only CISM runs without sending engagement data off the machine", "source": "S2", "locator": "Table 5.5"}, "C58": {"text": "Only CISM carries the tool output that justifies each finding", "source": "S2", "locator": "Table 5.5"}, "C59": {"text": "Only CISM invalidates dependents when a precondition is disproved", "source": "S2", "locator": "Table 5.5"}, "C60": {"text": "Only CISM enforces scope before the process is created", "source": "S2", "locator": "Table 5.5"}, "C61": {"text": "A system that cannot run without a hosted endpoint is unavailable for engagements whose contracts forbid data egress", "source": "S2", "locator": "Section 5.7"}, "C62": {"text": "The model intermittently answers a tool offering turn by asking for information it already has", "source": "S2", "locator": "Section 5.8.1"}, "C63": {"text": "A bounded retry was implemented and then reverted because a discarded attempt's text leaked into narration; six tests caught it", "source": "S2", "locator": "Section 5.8.1"}, "C64": {"text": "The model invoked the port scanner with the literal placeholder token as the target argument", "source": "S2", "locator": "Section 5.8.2"}, "C65": {"text": "When an early tool call produces no finding the phase never advances past reconnaissance and the operator gets no signal", "source": "S2", "locator": "Section 5.8.3"}, "C66": {"text": "Offline validation against clean sample output is insufficient for this class of system", "source": "S2", "locator": "Section 5.9"}, "C67": {"text": "Evaluation used a single target application and a single model family", "source": "S2", "locator": "Section 5.10"}, "C68": {"text": "Checkpointed state does not survive a process restart", "source": "S2", "locator": "Section 5.10"}, "C69": {"text": "Future work: make a discarded model attempt invisible to the event stream", "source": "S2", "locator": "Section 6.2"}, "C70": {"text": "Future work: add an argument validation guardrail stage that rejects placeholder shaped arguments", "source": "S2", "locator": "Section 6.2"}, "C71": {"text": "Future work: implement network egress control for the sandbox", "source": "S2", "locator": "Section 6.2"}, "C72": {"text": "Future work: replace the dangerous argument denylist with an allowlist grammar per tool", "source": "S2", "locator": "Section 6.2"}, "C73": {"text": "The target is a containerized Damn Vulnerable Web Application on an isolated bridge network with scope limited to the target address alone", "source": "S2", "locator": "Section 5.2"}, "C74": {"text": "Three scripted instructions drive each engagement and each configuration is run twice", "source": "S2", "locator": "Section 5.2"}, "C75": {"text": "Inference comes from a local llama.cpp server hosting a quantized small model over its OpenAI compatible endpoint", "source": "S2", "locator": "Section 5.2"}, "C76": {"text": "Manikandan owns the TUI, tool integration, deterministic extractors, sandboxing, guardrails, deployment, tests and CI", "source": "S8", "locator": "line 2"}, "C77": {"text": "Madhan owns SLM inferencing, the think act loop, DEPG maths, phase locking, LLM extractor backends and inference benchmarking", "source": "S8", "locator": "line 5"}, "C78": {"text": "Sushindh owns model testing, accuracy benchmarking, the ablation study, prompt QC, guardrail red teaming and the literature survey", "source": "S8", "locator": "line 8"}, "C79": {"text": "The TUI is a pure consumer: nothing under cism/tui calls into LangGraph, llama.cpp or the scorer", "source": "S1", "locator": "README, The event contract"}, "C80": {"text": "SessionState never carries a key; it carries the name of the environment variable and whether it is set", "source": "S1", "locator": "README, The events"}, "C81": {"text": "A false positive costs one retype, a false negative leaks a key into a deliverable", "source": "S1", "locator": "README, Keys"}, "C82": {"text": "Phase progression advanced one phase per any successful tool call, reaching reporting in about 5 calls", "source": "S4", "locator": "AUDIT.md B1"}, "C83": {"text": "Compaction engages proactively once usage passes 0.75 of the budget", "source": "S3", "locator": "nodes.py:274"}, "C84": {"text": "build_toolkit assembles 10 real tools: the 8 declared in catalog.yaml plus hydra and netcat", "source": "S9", "locator": "run_agent.py:193"}}}</script>
+<script type="application/json" id="kx-sources">{"sources": {"S1": {"ref": "../../README.md", "kind": "doc"}, "S2": {"ref": "report-extract.txt", "kind": "doc"}, "S3": {"ref": "../../cism/agent/nodes.py", "kind": "code"}, "S4": {"ref": "../../AUDIT.md", "kind": "doc"}, "S5": {"ref": "../../cism/agent/state.py", "kind": "code"}, "S6": {"ref": "../../cism/tui/events.py", "kind": "code"}, "S7": {"ref": "../../cism/agent/tools/catalog.yaml", "kind": "code"}, "S8": {"ref": "source-notes.md", "kind": "user"}, "U": {"ref": "user, chat 2026-10-20", "kind": "user"}, "S9": {"ref": "../../run_agent.py", "kind": "code"}, "S10": {"ref": "model-shootout.md", "kind": "user"}, "S11": {"ref": "../../demo-recording/gemma-dvwa-run.jsonl", "kind": "data"}, "S12": {"ref": "../../cism/depg/reducer.py", "kind": "code"}, "S13": {"ref": "../../cism/depg/edge.py", "kind": "code"}, "S14": {"ref": "../../docs/slm-comparison-ornith-vs-cybersec-orchestrator.md", "kind": "doc"}, "S15": {"ref": "../../BACKLOG.md", "kind": "doc"}, "S16": {"ref": "../../cism/agent/tools/sandbox.py", "kind": "code"}}, "claims": {"C1": {"text": "Project title: Memory optimization for small-language-model-driven security agents", "source": "S2", "locator": "cover page"}, "C2": {"text": "Madhan T B 23BCE1087, Manikandan S 23BCE1476, Sushindh A 23BCE1513", "source": "S2", "locator": "cover page"}, "C2b": {"text": "Manikandan S 23BCE1476 and Sushindh A 23BCE1513", "source": "S2", "locator": "cover page"}, "C2c": {"text": "Sushindh A 23BCE1513", "source": "S2", "locator": "cover page"}, "C3": {"text": "Hosted models strong enough for the job need target names, banners, credentials and raw tool output sent to a third party", "source": "S2", "locator": "Abstract"}, "C4": {"text": "What stays human is the judgement that sequences the tools", "source": "S2", "locator": "Abstract"}, "C5": {"text": "A real request overflowed a 16384 token context window by about 1300 tokens", "source": "S3", "locator": "nodes.py:52"}, "C6": {"text": "The model can supply direction only when memory, grounding, phase discipline and pre-execution policy come from the system around it", "source": "S2", "locator": "Section 6.1"}, "C7": {"text": "The agent is a LangGraph state machine with six nodes: think, act, extract, route, remember and respond", "source": "S2", "locator": "Abstract"}, "C8": {"text": "AgentEvent is the union alias over 15 event types", "source": "S1", "locator": "README, The events"}, "C9": {"text": "State persists across submit() calls within one process via a MemorySaver checkpointer", "source": "S1", "locator": "README, The agent core"}, "C10": {"text": "Six PTES phases: recon, enumeration, vulnerability discovery, exploitation, post exploitation, reporting", "source": "S5", "locator": "state.py:26"}, "C11": {"text": "Recon may only move to recon or enumeration", "source": "S5", "locator": "state.py:43"}, "C12": {"text": "Reporting is terminal", "source": "S5", "locator": "state.py:56"}, "C13": {"text": "transition() is the single choke point every phase change goes through", "source": "S1", "locator": "README, Phase"}, "C14": {"text": "The agent caps AI turns at 2 per user turn", "source": "S3", "locator": "nodes.py:59"}, "C15": {"text": "The token estimate uses 3 characters per token", "source": "S3", "locator": "nodes.py:62"}, "C16": {"text": "512 tokens are reserved for the response", "source": "S3", "locator": "nodes.py:63"}, "C17": {"text": "The default context window is 32768 tokens", "source": "S3", "locator": "nodes.py:64"}, "C18": {"text": "Tier 1 shrinks old tool output to a 350 character head and a 100 character tail", "source": "S3", "locator": "nodes.py:104"}, "C19": {"text": "Flat per message overhead is 4 tokens", "source": "S3", "locator": "nodes.py:69"}, "C20": {"text": "Three tiers, cheapest sufficient wins, each engaging once the one before it could not fit the budget or left usage above the proactive threshold", "source": "S3", "locator": "nodes.py:196 _compact_history"}, "C21": {"text": "A plain character cut landed inside the word valid in a hydra run and inverted a negative result", "source": "S3", "locator": "nodes.py:113"}, "C22": {"text": "Full history stays in state; compaction only shapes what is sent to the model", "source": "S3", "locator": "nodes.py:198"}, "C23": {"text": "One real token counter call catches an overshoot before the prompt is sent", "source": "S3", "locator": "nodes.py:252"}, "C24": {"text": "DEPG and memory context is rebuilt fresh from state every think() call, not from the compacted history", "source": "S3", "locator": "nodes.py, _compact_history docstring"}, "C25": {"text": "9 real tools execute only through one sandboxed, argv only seam behind a hard allowlist", "source": "S2", "locator": "Abstract"}, "C26": {"text": "The eight declared tools are nikto, whatweb, dnsenum, nmap, curl, sqlmap, gobuster and wafw00f", "source": "S1", "locator": "README, Tool catalog"}, "C27": {"text": "A destructive tool is registered but unreachable in every phase until an explicit phases key is added", "source": "S7", "locator": "catalog.yaml:9"}, "C28": {"text": "A guardrail chain blocks out of scope targets, dangerous arguments and phase illegal tools before any process is spawned", "source": "S2", "locator": "Abstract"}, "C29": {"text": "Every real tool runs with argv only execution, a per call scratch directory and a timeout that kills the whole process tree", "source": "S1", "locator": "README, Tools"}, "C30": {"text": "hydra's wordlist arguments only ever select one of two fixed, named wordlists, never an arbitrary path", "source": "S1", "locator": "README, Tool catalog"}, "C31": {"text": "Container ceilings: 2 GB memory, 2 GB swap, 2 processors, 512 processes", "source": "S2", "locator": "Table 5.1"}, "C32": {"text": "The inference key arrives as a read only mounted file and not an environment variable", "source": "S2", "locator": "Section 4.15"}, "C33": {"text": "A claim the model cannot ground against real tool text is demoted instead of reported", "source": "S2", "locator": "Abstract"}, "C34": {"text": "Graph merges nodes and edges, resolves each dirty node's state via reduce_state, and prunes fully dead regions", "source": "S1", "locator": "README, DEPG domain model"}, "C35": {"text": "normalize_target collapses 10.0.0.5, ssh://10.0.0.5:22 and 10.0.0.5. onto one node family", "source": "S1", "locator": "README, DEPG domain model"}, "C36": {"text": "generality is the share of this run's targets that already produced this cause class, and downstream is the descendant count", "source": "S1", "locator": "README, DEPG domain model"}, "C37": {"text": "Graded propagation uses a noisy OR over parents and is opt in", "source": "S4", "locator": "AUDIT.md A3"}, "C38": {"text": "The memory salience score is S = w_tier times s0 times e to the minus lambda age, plus beta times hits", "source": "S6", "locator": "events.py:174"}, "C39": {"text": "Each MemoryItem carries a tier T1, T2 or T3, the phase it was seen in, a snippet and a salience score", "source": "S1", "locator": "README, Memory"}, "C40": {"text": "A recurring narration or tool failure collapses onto one row and increments hits", "source": "S1", "locator": "README, Memory"}, "C41": {"text": "786 automated tests cover the implementation", "source": "S2", "locator": "Section 6.1"}, "C42": {"text": "The suite contains 786 tests across 53 modules", "source": "S2", "locator": "Section 5.3"}, "C43": {"text": "10 terminal snapshot tests pin the rendered appearance", "source": "S2", "locator": "Section 5.3"}, "C44": {"text": "Correcting three extractor defects took one engagement from 0 to 8 evidence backed findings", "source": "S2", "locator": "Section 5.5"}, "C45": {"text": "gobuster went from 0 to 5 findings because progress indicator escape sequences defeated the pattern", "source": "S2", "locator": "Table 5.3"}, "C46": {"text": "whatweb went from 0 to 2 findings because no extractor existed", "source": "S2", "locator": "Table 5.3"}, "C47": {"text": "wafw00f went from 0 to 1 finding because it defaulted to a secure scheme against a plaintext only target", "source": "S2", "locator": "Table 5.3"}, "C48": {"text": "All three defects were invisible to a test suite written against clean sample output and visible at once against real output", "source": "S2", "locator": "Section 5.5"}, "C49": {"text": "Buffered static costs 8.9 ms to append, 1.1 microseconds per token and 0.8 ms to render", "source": "S2", "locator": "Table 5.2"}, "C50": {"text": "Log widget rewrite costs 364.2 ms to append and 45.5 microseconds per token", "source": "S2", "locator": "Table 5.2"}, "C51": {"text": "Naive static costs 793.3 ms to append and 99.2 microseconds per token", "source": "S2", "locator": "Table 5.2"}, "C52": {"text": "The benchmark streams 8000 tokens into one wrapping paragraph in a terminal 100 columns by 30 rows", "source": "S2", "locator": "Section 5.4"}, "C53": {"text": "The shipped strategy measures 1.4 microseconds at 4000 tokens and 1.1 microseconds at 8000, while the naive strategy climbs from 58 to 99 microseconds", "source": "S2", "locator": "Section 5.4"}, "C54": {"text": "Two headless runs produced 1 finding each, with first finding times of 2.9 s and 3.0 s", "source": "S2", "locator": "Table 5.4"}, "C55": {"text": "Identical finding counts and first finding times within a tenth of a second put the measurement inside the range needed to detect a change of consequence", "source": "S2", "locator": "Section 5.6"}, "C56": {"text": "The audit scope was the full cism package of about 6500 lines of code", "source": "S4", "locator": "AUDIT.md header"}, "C57": {"text": "Only CISM runs without sending engagement data off the machine", "source": "S2", "locator": "Table 5.5"}, "C58": {"text": "Only CISM carries the tool output that justifies each finding", "source": "S2", "locator": "Table 5.5"}, "C59": {"text": "Only CISM invalidates dependents when a precondition is disproved", "source": "S2", "locator": "Table 5.5"}, "C60": {"text": "Only CISM enforces scope before the process is created", "source": "S2", "locator": "Table 5.5"}, "C61": {"text": "A system that cannot run without a hosted endpoint is unavailable for engagements whose contracts forbid data egress", "source": "S2", "locator": "Section 5.7"}, "C62": {"text": "The model intermittently answers a tool offering turn by asking for information it already has", "source": "S2", "locator": "Section 5.8.1"}, "C63": {"text": "A bounded retry was implemented and then reverted because a discarded attempt's text leaked into narration; six tests caught it", "source": "S2", "locator": "Section 5.8.1"}, "C64": {"text": "The model invoked the port scanner with the literal placeholder token as the target argument", "source": "S2", "locator": "Section 5.8.2"}, "C65": {"text": "When an early tool call produces no finding the phase never advances past reconnaissance and the operator gets no signal", "source": "S2", "locator": "Section 5.8.3"}, "C66": {"text": "Offline validation against clean sample output is insufficient for this class of system", "source": "S2", "locator": "Section 5.9"}, "C68": {"text": "Checkpointed state does not survive a process restart", "source": "S2", "locator": "Section 5.10"}, "C69": {"text": "Future work: make a discarded model attempt invisible to the event stream", "source": "S2", "locator": "Section 6.2"}, "C70": {"text": "Future work: add an argument validation guardrail stage that rejects placeholder shaped arguments", "source": "S2", "locator": "Section 6.2"}, "C71": {"text": "Future work: implement network egress control for the sandbox", "source": "S2", "locator": "Section 6.2"}, "C72": {"text": "Future work: replace the dangerous argument denylist with an allowlist grammar per tool", "source": "S2", "locator": "Section 6.2"}, "C73": {"text": "The target is a containerized Damn Vulnerable Web Application on an isolated bridge network with scope limited to the target address alone", "source": "S2", "locator": "Section 5.2"}, "C74": {"text": "Three scripted instructions drive each engagement and each configuration is run twice", "source": "S2", "locator": "Section 5.2"}, "C75": {"text": "Inference comes from a local llama.cpp server hosting a quantized small model over its OpenAI compatible endpoint", "source": "S2", "locator": "Section 5.2"}, "C79": {"text": "The TUI is a pure consumer: nothing under cism/tui calls into LangGraph, llama.cpp or the scorer", "source": "S1", "locator": "README, The event contract"}, "C80": {"text": "SessionState never carries a key; it carries the name of the environment variable and whether it is set", "source": "S1", "locator": "README, The events"}, "C81": {"text": "A false positive costs one retype, a false negative leaks a key into a deliverable", "source": "S1", "locator": "README, Keys"}, "C82": {"text": "Phase progression advanced one phase per any successful tool call, reaching reporting in about 5 calls", "source": "S4", "locator": "AUDIT.md B1"}, "C83": {"text": "Compaction engages proactively once usage passes 0.75 of the budget", "source": "S3", "locator": "nodes.py:274"}, "C84": {"text": "build_toolkit assembles 10 real tools: the 8 declared in catalog.yaml plus hydra and netcat", "source": "S9", "locator": "run_agent.py:193"}, "M1": {"text": "The driver runs on an RTX 3050 6 GB laptop GPU with 24 GB of system RAM", "source": "S10", "locator": "Hardware constraints"}, "M2": {"text": "The tool-calling stress test is 18 case types times 5 repeats, 90 calls per model at temperature 0.2", "source": "S10", "locator": "Evaluation method"}, "M3": {"text": "gemma-4-E4B-it Q4_K_M scored 90/90, 100 percent, at 39.7 tokens per second", "source": "S10", "locator": "Round 3"}, "M4": {"text": "Ornith-1.5-9B scored 85/90, 94.4 percent, at 33 tokens per second", "source": "S10", "locator": "Round 1"}, "M5": {"text": "LFM2.5-8B-A1B scored 81/90, 90.0 percent, at 79 tokens per second", "source": "S10", "locator": "Round 1"}, "M6": {"text": "NVIDIA-Orchestrator-Cybersecurity-8B scored 82/90, 91.1 percent, the only cyber fine-tune that held up", "source": "S10", "locator": "Round 2"}, "M7": {"text": "Cyber-Ornith-1.5-9B-OBLITERATED scored 62-63/90, about 69 percent, a regression from plain Ornith at 94 percent", "source": "S10", "locator": "Round 2"}, "M8": {"text": "Qwen3-4B-Cybersecurity-Heretic scored 25/90, 27.8 percent", "source": "S10", "locator": "Round 2"}, "M9": {"text": "Llama-3.1-CyberAlpha8B scored 24/90, 26.7 percent", "source": "S10", "locator": "Round 2"}, "M10": {"text": "Every community cybersecurity fine-tune tested except the one full merge degraded tool calling relative to its base model", "source": "S10", "locator": "Round 2"}, "M11": {"text": "Cybersecurity domain knowledge is better supplied through the agent's own tools than through a specialized model's weights", "source": "S10", "locator": "Round 2"}, "M12": {"text": "VRAM scales from 3.90 GB at 16384 tokens to 5.23 GB at 98304 and 5.79 GB at 131072", "source": "S10", "locator": "Context size tuning"}, "M13": {"text": "96k context was chosen, leaving about 900 MB of headroom on the 6 GB card", "source": "S10", "locator": "Context size tuning"}, "M14": {"text": "Flash Attention is what made the 96k context window fit in 6 GB", "source": "S10", "locator": "Inference optimizations"}, "M15": {"text": "The shipped driver is gemma-4-E4B-it-Q4_K_M served by llama-server at 98304 context", "source": "S10", "locator": "Final decision"}, "M16": {"text": "128k context was rejected because it left only about 350 MB of headroom", "source": "S10", "locator": "Context size tuning"}, "R1": {"text": "The server reported a context window of 98304 tokens", "source": "S11", "locator": "gemma DVWA run"}, "R2": {"text": "A single engagement reached 76014 tokens of context used", "source": "S11", "locator": "gemma DVWA run"}, "D1": {"text": "The engagement ran against two targets, 172.28.0.2 and 172.28.0.3", "source": "S14", "locator": "header"}, "D2": {"text": "Neither model found or exploited an actual SQL injection in its observed window", "source": "S14", "locator": "Headline result"}, "G1": {"text": "Tier weights are T1 at 1.0, T2 at 0.8 and T3 at 0.5", "source": "S12", "locator": "reducer.py:42"}, "G2": {"text": "A tier chosen by model judgment is discounted by 0.85", "source": "S12", "locator": "reducer.py:47"}, "G3": {"text": "A node with no evidence starts at a prior of 0.3", "source": "S12", "locator": "reducer.py:44"}, "G4": {"text": "A score at or above 0.6 resolves, at or below 0.15 blocks", "source": "S12", "locator": "reducer.py:48"}, "G5": {"text": "Reachability is a noisy OR over weighted parents", "source": "S12", "locator": "reducer.py, GradedSupport"}, "G6": {"text": "settle() converges when the score moves less than 1e-3", "source": "S12", "locator": "reducer.py:51"}, "E1": {"text": "An edge carries a weight that is the propagation coefficient, defaulting to 1.0", "source": "S13", "locator": "edge.py"}, "F1": {"text": "The model narrated a UNION attack as successful when the body was the unmodified id=1 result", "source": "S15", "locator": "BACKLOG 28"}, "F2": {"text": "The claim confirmed the database version was flatly false against evidence its own call already had", "source": "S15", "locator": "BACKLOG 28"}, "F3": {"text": "The model repeated the same %26 encoding mistake across four separate turns", "source": "S15", "locator": "BACKLOG 29"}, "F4": {"text": "It reintroduced the mistake despite the correct encoding being visible in its own preceding successful call", "source": "S15", "locator": "BACKLOG 29"}, "F5": {"text": "Corrected once, it over-generalized and unescaped everything, which curl rejected outright", "source": "S15", "locator": "BACKLOG 29"}, "L1": {"text": "The sandbox shares the host network", "source": "S16", "locator": "sandbox.py:425"}, "X1": {"text": "Worked example on the illustrative graph: reachability of 1.00, 0.85, 0.80, 0.43 and 0.00 from edge weights of 1.0, 0.8 and 0.5", "source": "S12", "locator": "G5 applied to the illustrative graph, with G1 tier weights and the G2 discount"}}}</script>
 <script>/*!
  * GSAP 3.13.0
  * https://gsap.com
@@ -1176,6 +1297,23 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
   // Each preset returns a tween/timeline that animates FROM a hidden state TO the element's natural state,
   // so completing it (progress(1)) always leaves the authored layout untouched.
   const P = {
+    // Author-designed move: data-move='{"y":140,"rotate":-6,"split":"words","stagger":0.04,"ease":"back.out(1.6)","dur":1.1}'.
+    // Distances are authored for Insane and scaled down per level, so one design serves every level.
+    move(el, L) {
+      let o = {};
+      try { o = JSON.parse(el.dataset.move || '{}'); } catch { console.error('[stagecraft] bad data-move JSON', el); }
+      if (L < 2) return P.fade(el, L);
+      const k = [0, 0, 0.5, 0.8, 1][L];
+      const { split: sp, stagger = 0.05, ease = 'expo.out', dur = 1, ...v } = o;
+      for (const q of ['x', 'y', 'xPercent', 'yPercent', 'rotate', 'rotateX', 'rotateY', 'skewX', 'skewY']) if (typeof v[q] === 'number') v[q] *= k;
+      for (const q of ['scale', 'scaleX', 'scaleY']) if (typeof v[q] === 'number') v[q] = 1 + (v[q] - 1) * k;
+      if (v.opacity === undefined) v.opacity = 0;
+      if (v.filter) v.clearProps = 'filter';
+      let t = el;
+      if (sp === 'children') t = kids(el);
+      else if (sp) { const r = split(el, sp === 'lines' ? 'lines' : 'lines,' + sp); t = r ? r[sp] : el; }
+      return G.from(t, { ...v, duration: dur, ease, stagger });
+    },
     fade(el, L) {
       const v = [null,
         { opacity: 0, duration: 0.5, ease: 'power2.out' },
@@ -1278,7 +1416,7 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
   };
 
   function animFor(el, L) {
-    const type = el.dataset.anim || 'fade';
+    const type = el.dataset.anim || (el.dataset.move ? 'move' : 'fade');
     if (type === 'none' || L < 1) return null;
     if (L < (+el.dataset.min || 0)) return null;
     const fn = P[type] || P.fade;
@@ -1293,7 +1431,7 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
   }
 
   function animated(s, filter) {
-    return [...s.querySelectorAll('[data-anim]')].filter(e => !e.closest('.notes') && filter(e));
+    return [...s.querySelectorAll('[data-anim],[data-move]')].filter(e => !e.closest('.notes,.kx-kept') && filter(e));
   }
   const stepOf = e => +(e.closest('[data-step]')?.dataset.step || 0);
 
@@ -1366,10 +1504,14 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
   }
 
   // ---------- transitions ----------
-  const AUTO4 = ['shutter', 'iris', 'wipe', 'zoom'];
+  // The deck chooses its cuts (slide data-transition, then body data-cut). The engine never rotates through a set,
+  // because a fixed rotation made every deck move the same way. Custom cuts (window.KX_CUT) run from level 2.
+  const BUILTIN_CUTS = ['fade', 'slide', 'wipe', 'iris', 'zoom', 'shutter'];
   function pickTransition(to, i, L) {
-    if (L >= 3) return to.dataset.transition || (L === 4 ? AUTO4[i % AUTO4.length] : 'wipe');
-    return L === 2 ? 'slide' : 'fade';
+    const t = to.dataset.transition || document.body.dataset.cut;
+    if (t && (window.KX_CUT || {})[t] && L >= 2) return t;
+    if (t && BUILTIN_CUTS.includes(t) && (L >= 3 || t === 'fade' || t === 'slide')) return t;
+    return L >= 2 ? 'slide' : 'fade';
   }
   const SLIDE_PROPS = 'opacity,transform,clipPath,filter,zIndex,visibility';
 
@@ -1382,10 +1524,13 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
       done(0); return;
     }
     from.classList.add('is-leaving');
-    const type = pickTransition(to, i, L);
+    // Shared elements: [data-keep="id"] on both slides travels from its old box to its new one (magic move).
+    const kept = [...to.querySelectorAll('[data-keep]')].map(b => [from.querySelector(`[data-keep="${CSS.escape(b.dataset.keep)}"]`), b]).filter(([a]) => a);
+    const type = kept.length && !to.dataset.transition ? 'fade' : pickTransition(to, i, L);
     const layers = to.querySelectorAll('[data-depth]');
     const tl = G.timeline({
       onComplete() {
+        kept.forEach(([a, b]) => { G.set(a, { clearProps: 'opacity' }); b.classList.remove('kx-kept'); });
         from.classList.remove('is-active', 'is-leaving');
         G.set([from, to], { clearProps: SLIDE_PROPS });
         if (layers.length) G.set(layers, { clearProps: 'transform' });
@@ -1394,7 +1539,19 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
     });
     G.set(to, { zIndex: 2 }); G.set(from, { zIndex: 1 });
     let overlap = 0.3;
-    switch (type) {
+    kept.forEach(([a, b]) => {
+      const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+      if (!rb.width || !rb.height) return;
+      b.classList.add('kx-kept');
+      G.set(a, { opacity: 0 });
+      tl.from(b, { x: (ra.left - rb.left) / scale, y: (ra.top - rb.top) / scale, scaleX: ra.width / rb.width, scaleY: ra.height / rb.height,
+        transformOrigin: '0 0', duration: [0, 0.5, 0.8, 1.0, 1.15][L], ease: 'expo.inOut', clearProps: 'transform' }, 0);
+    });
+    const custom = (window.KX_CUT || {})[type];
+    if (custom) {
+      try { const r = custom({ from, to, dir, level: L, gsap: G, tl }); overlap = typeof r === 'number' ? r : 0.4; }
+      catch (e) { console.error('[stagecraft] KX_CUT failed: ' + type, e); tl.fromTo(to, { opacity: 0 }, { opacity: 1, duration: 0.45 }); }
+    } else switch (type) {
       case 'fade':
         tl.fromTo(to, { opacity: 0 }, { opacity: 1, duration: 0.45, ease: 'power2.out' }).to(from, { opacity: 0, duration: 0.45 }, 0);
         overlap = 0.15; break;
@@ -1879,7 +2036,7 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
     const OPEN = /statement|poster|quote|giant|cover|section/;
     if (!OPEN.test(s.dataset.layout || '') && !s.hasAttribute('data-open')) {
       let bottom = 0;
-      for (const el of s.querySelectorAll('h1,h2,h3,p,li,svg,img,video,canvas:not(.kx-fx),table,pre,figure,[data-node],[data-anim]')) {
+      for (const el of s.querySelectorAll('h1,h2,h3,p,li,svg,img,video,canvas:not(.kx-fx),table,pre,figure,[data-node],[data-anim],[data-move]')) {
         if (el.closest('.notes,[data-deco],.kx-fx,[hidden]')) continue;
         const r = el.getBoundingClientRect(); if (!r.height) continue;
         bottom = Math.max(bottom, (r.bottom - sr.top) / scale);

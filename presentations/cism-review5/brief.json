@@ -58,6 +58,41 @@
       "id": "S9",
       "ref": "../../run_agent.py",
       "kind": "code"
+    },
+    {
+      "id": "S10",
+      "ref": "model-shootout.md",
+      "kind": "user"
+    },
+    {
+      "id": "S11",
+      "ref": "../../demo-recording/gemma-dvwa-run.jsonl",
+      "kind": "data"
+    },
+    {
+      "id": "S12",
+      "ref": "../../cism/depg/reducer.py",
+      "kind": "code"
+    },
+    {
+      "id": "S13",
+      "ref": "../../cism/depg/edge.py",
+      "kind": "code"
+    },
+    {
+      "id": "S14",
+      "ref": "../../docs/slm-comparison-ornith-vs-cybersec-orchestrator.md",
+      "kind": "doc"
+    },
+    {
+      "id": "S15",
+      "ref": "../../BACKLOG.md",
+      "kind": "doc"
+    },
+    {
+      "id": "S16",
+      "ref": "../../cism/agent/tools/sandbox.py",
+      "kind": "code"
     }
   ],
   "claims": [
@@ -538,13 +573,6 @@
       "quote": "The most practical conclusion is that offline validation against clean sample output is insufficient for this class of system."
     },
     {
-      "id": "C67",
-      "text": "Evaluation used a single target application and a single model family",
-      "source": "S2",
-      "locator": "Section 5.10",
-      "quote": "Evaluation used a single target application and a single model family, so the results should not be generalized to other targets or models without repetition."
-    },
-    {
       "id": "C68",
       "text": "Checkpointed state does not survive a process restart",
       "source": "S2",
@@ -601,27 +629,6 @@
       "quote": "Inference comes from a local llama.cpp server hosting a quantized small model, reached over its OpenAI-compatible endpoint."
     },
     {
-      "id": "C76",
-      "text": "Manikandan owns the TUI, tool integration, deterministic extractors, sandboxing, guardrails, deployment, tests and CI",
-      "source": "S8",
-      "locator": "line 2",
-      "quote": "Manikandan: TUI, tool integration (nmap, hydra, gobuster, whatweb and wafw00f plus the offline dummy tools), deterministic extractors, sandboxing (Bubblewrap), guardrails implementation,"
-    },
-    {
-      "id": "C77",
-      "text": "Madhan owns SLM inferencing, the think act loop, DEPG maths, phase locking, LLM extractor backends and inference benchmarking",
-      "source": "S8",
-      "locator": "line 5",
-      "quote": "Madhane: SLM inferencing (llama.cpp or an OpenAI-compatible server, quantisation, context window), think-act loop (LangGraph), DEPG maths and implementation (reducer, SupportPolicy, settle()/prune()),"
-    },
-    {
-      "id": "C78",
-      "text": "Sushindh owns model testing, accuracy benchmarking, the ablation study, prompt QC, guardrail red teaming and the literature survey",
-      "source": "S8",
-      "locator": "line 8",
-      "quote": "Sushindh: model testing (tool-call and text-fallback reliability across SLMs), accuracy benchmarking (recall and precision on Juice Shop),"
-    },
-    {
       "id": "C79",
       "text": "The TUI is a pure consumer: nothing under cism/tui calls into LangGraph, llama.cpp or the scorer",
       "source": "S1",
@@ -662,6 +669,244 @@
       "source": "S9",
       "locator": "run_agent.py:193",
       "quote": "build_toolkit(CATALOG, [hydra, nc], EXTRACTORS)"
+    },
+    {
+      "id": "M1",
+      "text": "The driver runs on an RTX 3050 6 GB laptop GPU with 24 GB of system RAM",
+      "source": "S10",
+      "locator": "Hardware constraints",
+      "quote": "GPU: NVIDIA RTX 3050 6 GB Laptop (6144 MiB VRAM total, ~5.1 GB free after Windows overhead)"
+    },
+    {
+      "id": "M2",
+      "text": "The tool-calling stress test is 18 case types times 5 repeats, 90 calls per model at temperature 0.2",
+      "source": "S10",
+      "locator": "Evaluation method",
+      "quote": "Final stress test: 18 case types × 5 repeats = 90 calls per model, temperature 0.2."
+    },
+    {
+      "id": "M3",
+      "text": "gemma-4-E4B-it Q4_K_M scored 90/90, 100 percent, at 39.7 tokens per second",
+      "source": "S10",
+      "locator": "Round 3",
+      "quote": "gemma-4-E4B-it Q4_K_M (4.62 GiB)\t3.90 GB @16k\t90/90 (100%)\t39.7 t/s"
+    },
+    {
+      "id": "M4",
+      "text": "Ornith-1.5-9B scored 85/90, 94.4 percent, at 33 tokens per second",
+      "source": "S10",
+      "locator": "Round 1",
+      "quote": "Ornith-1.5-9B (dense, Qwen3.5 hybrid)\tDense\t85/90 (94.4%)\t33 t/s"
+    },
+    {
+      "id": "M5",
+      "text": "LFM2.5-8B-A1B scored 81/90, 90.0 percent, at 79 tokens per second",
+      "source": "S10",
+      "locator": "Round 1",
+      "quote": "LFM2.5-8B-A1B\tHybrid MoE, reasoning\t81/90 (90.0%)\t79 t/s"
+    },
+    {
+      "id": "M6",
+      "text": "NVIDIA-Orchestrator-Cybersecurity-8B scored 82/90, 91.1 percent, the only cyber fine-tune that held up",
+      "source": "S10",
+      "locator": "Round 2",
+      "quote": "NVIDIA-Orchestrator-Cybersecurity-8B\tQwen3 8B (full merge, not LoRA)\t82/90 (91.1%)"
+    },
+    {
+      "id": "M7",
+      "text": "Cyber-Ornith-1.5-9B-OBLITERATED scored 62-63/90, about 69 percent, a regression from plain Ornith at 94 percent",
+      "source": "S10",
+      "locator": "Round 2",
+      "quote": "Cyber-Ornith-1.5-9B-OBLITERATED\tOrnith-1.5-9B\t62-63/90 (~69%)\tRegressed vs. plain Ornith (94%)"
+    },
+    {
+      "id": "M8",
+      "text": "Qwen3-4B-Cybersecurity-Heretic scored 25/90, 27.8 percent",
+      "source": "S10",
+      "locator": "Round 2",
+      "quote": "Qwen3-4B-Cybersecurity-Heretic\tQwen3-4B (older gen)\t25/90 (27.8%)"
+    },
+    {
+      "id": "M9",
+      "text": "Llama-3.1-CyberAlpha8B scored 24/90, 26.7 percent",
+      "source": "S10",
+      "locator": "Round 2",
+      "quote": "Llama-3.1-CyberAlpha8B\tLlama-3.1-8B-Instruct\t24/90 (26.7%)"
+    },
+    {
+      "id": "M10",
+      "text": "Every community cybersecurity fine-tune tested except the one full merge degraded tool calling relative to its base model",
+      "source": "S10",
+      "locator": "Round 2",
+      "quote": "every community cybersecurity fine-tune tested except the one full-merge model degraded tool-calling ability relative to its base model"
+    },
+    {
+      "id": "M11",
+      "text": "Cybersecurity domain knowledge is better supplied through the agent's own tools than through a specialized model's weights",
+      "source": "S10",
+      "locator": "Round 2",
+      "quote": "cybersecurity domain knowledge is better supplied via CISM's own tools/retrieval than via a specialized model's weights"
+    },
+    {
+      "id": "M12",
+      "text": "VRAM scales from 3.90 GB at 16384 tokens to 5.23 GB at 98304 and 5.79 GB at 131072",
+      "source": "S10",
+      "locator": "Context size tuning",
+      "quote": "16,384\t3.90 GB\n32,768\t4.14 GB\n65,536\t4.68 GB\n98,304 (96k — chosen)\t5.23 GB\n114,688\t5.51 GB\n131,072 (128k)\t5.79 GB"
+    },
+    {
+      "id": "M13",
+      "text": "96k context was chosen, leaving about 900 MB of headroom on the 6 GB card",
+      "source": "S10",
+      "locator": "Context size tuning",
+      "quote": "Settled on 96k context, leaving ~900 MB headroom on the 6 GB card."
+    },
+    {
+      "id": "M14",
+      "text": "Flash Attention is what made the 96k context window fit in 6 GB",
+      "source": "S10",
+      "locator": "Inference optimizations",
+      "quote": "this is what made the 96k context window fit in 6 GB"
+    },
+    {
+      "id": "M15",
+      "text": "The shipped driver is gemma-4-E4B-it-Q4_K_M served by llama-server at 98304 context",
+      "source": "S10",
+      "locator": "Final decision",
+      "quote": "served via llama-server --jinja -ngl 99 -fa on -c 98304 --temp 0.2 on port 8189"
+    },
+    {
+      "id": "M16",
+      "text": "128k context was rejected because it left only about 350 MB of headroom",
+      "source": "S10",
+      "locator": "Context size tuning",
+      "quote": "131,072 (128k)\t5.79 GB (rejected — only ~350 MB headroom, too risky)"
+    },
+    {
+      "id": "R1",
+      "text": "The server reported a context window of 98304 tokens",
+      "source": "S11",
+      "locator": "gemma DVWA run",
+      "quote": "\"ctx_max\": 98304"
+    },
+    {
+      "id": "R2",
+      "text": "A single engagement reached 76014 tokens of context used",
+      "source": "S11",
+      "locator": "gemma DVWA run",
+      "quote": "\"ctx_used\": 76014"
+    },
+    {
+      "id": "D1",
+      "text": "The engagement ran against two targets, 172.28.0.2 and 172.28.0.3",
+      "source": "S14",
+      "locator": "header",
+      "quote": "same scoped target (DVWA at 172.28.0.2/172.28.0.3, login.php)"
+    },
+    {
+      "id": "D2",
+      "text": "Neither model found or exploited an actual SQL injection in its observed window",
+      "source": "S14",
+      "locator": "Headline result",
+      "quote": "**Neither model found or exploited an actual SQL injection in DVWA's\nlogin.php in its observed window.**"
+    },
+    {
+      "id": "G1",
+      "text": "Tier weights are T1 at 1.0, T2 at 0.8 and T3 at 0.5",
+      "source": "S12",
+      "locator": "reducer.py:42",
+      "quote": "_TIER_WEIGHT: dict[str, float] = {\"T1\": 1.0, \"T2\": 0.8, \"T3\": 0.5}"
+    },
+    {
+      "id": "G2",
+      "text": "A tier chosen by model judgment is discounted by 0.85",
+      "source": "S12",
+      "locator": "reducer.py:47",
+      "quote": "_LLM_DISCOUNT = 0.85"
+    },
+    {
+      "id": "G3",
+      "text": "A node with no evidence starts at a prior of 0.3",
+      "source": "S12",
+      "locator": "reducer.py:44",
+      "quote": "_UNTESTED_PRIOR = 0.3"
+    },
+    {
+      "id": "G4",
+      "text": "A score at or above 0.6 resolves, at or below 0.15 blocks",
+      "source": "S12",
+      "locator": "reducer.py:48",
+      "quote": "_RESOLVED_THRESHOLD = 0.6\n_BLOCKED_THRESHOLD = 0.15"
+    },
+    {
+      "id": "G5",
+      "text": "Reachability is a noisy OR over weighted parents",
+      "source": "S12",
+      "locator": "reducer.py, GradedSupport",
+      "quote": "r(node) = s0(node) * (1 - prod_over_parents(1 - weight * r(parent)))"
+    },
+    {
+      "id": "G6",
+      "text": "settle() converges when the score moves less than 1e-3",
+      "source": "S12",
+      "locator": "reducer.py:51",
+      "quote": "CONVERGENCE_EPSILON = 1e-3"
+    },
+    {
+      "id": "E1",
+      "text": "An edge carries a weight that is the propagation coefficient, defaulting to 1.0",
+      "source": "S13",
+      "locator": "edge.py",
+      "quote": "A directed propagation edge. ``weight`` is the propagation coefficient."
+    },
+    {
+      "id": "F1",
+      "text": "The model narrated a UNION attack as successful when the body was the unmodified id=1 result",
+      "source": "S15",
+      "locator": "BACKLOG 28",
+      "quote": "The actual response body was\nbyte-for-byte the normal, unmodified `id=1` result: `First name: admin\n<br />Surname: admin`"
+    },
+    {
+      "id": "F2",
+      "text": "The claim confirmed the database version was flatly false against evidence its own call already had",
+      "source": "S15",
+      "locator": "BACKLOG 28",
+      "quote": "a specific, checkable claim (\"confirmed the\ndatabase version\") that is flatly false against evidence the model's\nown call already had in front of it"
+    },
+    {
+      "id": "F3",
+      "text": "The model repeated the same %26 encoding mistake across four separate turns",
+      "source": "S15",
+      "locator": "BACKLOG 29",
+      "quote": "the model repeatedly made the *same*\nspecific mistake across four separate turns"
+    },
+    {
+      "id": "F4",
+      "text": "It reintroduced the mistake despite the correct encoding being visible in its own preceding successful call",
+      "source": "S15",
+      "locator": "BACKLOG 29",
+      "quote": "reintroduced the identical `%26` mistake from scratch, despite the\ncorrect encoding being visible in its own immediately preceding,\nsuccessful tool call"
+    },
+    {
+      "id": "F5",
+      "text": "Corrected once, it over-generalized and unescaped everything, which curl rejected outright",
+      "source": "S15",
+      "locator": "BACKLOG 29",
+      "quote": "over-generalizing the correction into unescaping everything, which curl's own URL parser\nthen rejected outright (`curl: (3) URL rejected`)"
+    },
+    {
+      "id": "L1",
+      "text": "The sandbox shares the host network",
+      "source": "S16",
+      "locator": "sandbox.py:425",
+      "quote": "\"--unshare-all\", \"--unshare-user\", \"--share-net\","
+    },
+    {
+      "id": "X1",
+      "text": "Worked example on the illustrative graph: reachability of 1.00, 0.85, 0.80, 0.43 and 0.00 from edge weights of 1.0, 0.8 and 0.5",
+      "source": "S12",
+      "locator": "G5 applied to the illustrative graph, with G1 tier weights and the G2 discount",
+      "quote": "r(node) = s0(node) * (1 - prod_over_parents(1 - weight * r(parent)))"
     }
   ],
   "slides": [
@@ -970,5 +1215,8 @@
       "visual": "accent ground statement with the three results",
       "notes": "Close on the thesis."
     }
-  ]
+  ],
+  "motion": {
+    "concept": "Cinematic by default. The agent loop, the phase machine and the DEPG draw themselves and carry packets along their edges, so structure arrives as movement rather than as a static picture. The compaction cascade is a bespoke hook: three lanes of the same conversation collapsing one tier harder, which is the only way to show that compaction is a choice between tiers and not a single cut. Bars grow, the headline numbers count, and canvas fields run on the three section openers and the close only. Everything else is quiet, so the diagrams and the two numbers that matter get the attention."
+  }
 }
