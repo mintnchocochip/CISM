@@ -211,14 +211,15 @@ body .kx-ui .kx-hud:hover { opacity: 1; transform: none; }
 .s-tier .lane .lab { display: flex; justify-content: space-between; font-family: var(--font-mono);
   font-size: 19px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
 .s-tier .lane .lab b { color: var(--fg); font-weight: 500; }
-.s-tier .track { display: flex; gap: 5px; height: 112px; align-items: stretch; }
-.s-tier .blk { background: var(--dim-2); border: 1px solid var(--rule); flex: 0 0 auto; transition: all 0.5s ease; }
+.s-tier .track { display: flex; gap: 5px; height: 112px; align-items: stretch; width: 1080px; position: relative; justify-content: flex-end; }
+/* tier tints only set --blk, so .gone can always win the background outright */
+.s-tier .blk { background: var(--blk, var(--dim-2)); border: 1px solid var(--rule); flex: 0 0 auto; }
 .s-tier .blk.sys { background: #10200D; border-color: var(--accent); }
-.s-tier .blk.tool { background: #2C2A27; }
-.s-tier .lane.t1 .blk.tool { background: #242220; }
-.s-tier .lane.t2 .blk.tool { background: #1A1917; }
+.s-tier .blk.tool { --blk: #2C2A27; }
+.s-tier .lane.t1 .blk.tool { --blk: #242220; }
+.s-tier .lane.t2 .blk.tool { --blk: #1A1917; }
 .s-tier .blk.gone { background: repeating-linear-gradient(135deg, #141312 0 6px, #0E0D0C 6px 12px); border-color: #201F1D; }
-.s-tier .cap { position: absolute; right: 0; top: -2px; bottom: -2px; width: 3px; background: var(--dead); }
+.s-tier .cap { position: absolute; left: 320px; top: -10px; bottom: -10px; width: 3px; background: var(--dead); }
 .s-tier .side { position: absolute; right: var(--m); top: 300px; width: 560px; border-top: 2px solid var(--dead); padding-top: 26px; }
 .s-tier .side h3 { font-size: 32px; margin-bottom: 18px; color: var(--dead); }
 .s-tier .side p { font-size: 24px; line-height: 1.5; color: #BDB9B3; }
@@ -619,12 +620,11 @@ def _compact_history(messages, system_prompt, context_window):
     <p style="margin-top:22px">Losing a partial word at either edge costs nothing. Keeping half of one can flip what a finding means.</p>
   </div>
   <div class="legend" data-anim="fade" data-delay="1.9">
-    <span><i class="k1"></i>system prompt</span>
     <span><i class="k2"></i>model turn</span>
     <span><i class="k3"></i>tool output</span>
     <span><i class="k4"></i>dropped</span>
   </div>
-  <p class="foot" data-anim="fade" data-delay="1.8">A tier engages when the one before it could not fit the budget, or when usage is already past 0.75 of it.</p>
+  <p class="foot" data-anim="fade" data-delay="1.8">The system prompt is subtracted from the budget before any of this. A tier engages when the one before it could not fit, or when usage is already past 0.75.</p>
   <span class="folio" data-deco>cism / 06</span>
   <aside class="notes"><p>Watch the bars collapse. The first tier shrinks tool output, the second stubs it, and only then are whole turns dropped. The hydra story on the right is why the cut snaps back to whitespace.</p></aside>
 </section>
@@ -1026,35 +1026,41 @@ window.KX_ENTER = window.KX_ENTER || {};
 
 // Tier cascade: each lane is the same conversation, compacted one tier harder.
 window.KX_ENTER['tiers'] = (slide, level, gsap) => {
+  // Mirrors _compact_history/_fit: walk the history from the NEWEST message
+  // backwards, keep what fits, drop the oldest. So the lane runs oldest on the
+  // left to newest on the right, right-aligned against the budget edge, and
+  // whatever spills past that edge on the LEFT is what gets dropped.
+  // The system prompt is not drawn: it is subtracted from the budget before
+  // any of this, it is never part of the history being compacted.
+  const CAP = 760;
   const plan = [
-    { msgs: [150, 90, 300, 70, 260, 80, 190], cap: 760 },
-    { msgs: [150, 90, 120, 70, 110, 80, 190], cap: 760 },
-    { msgs: [150, 90, 40, 70, 40, 80, 190], cap: 760 }
+    [130, 80, 240, 60, 210, 70, 150],
+    [120, 90, 160, 70, 150, 80, 130],
+    [40, 80, 40, 60, 40, 70, 40, 80, 40]
   ];
   const lanes = [...slide.querySelectorAll('.track')];
   const blocks = [];
   lanes.forEach((track, li) => {
     track.innerHTML = '';
-    track.style.position = 'relative';
-    const p = plan[li];
+    const msgs = plan[li];
     let used = 0;
-    const sys = document.createElement('div');
-    sys.className = 'blk sys'; sys.style.width = '70px';
-    track.appendChild(sys); blocks.push(sys); used += 75;
-    p.msgs.forEach((w, i) => {
+    const drop = new Set();
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const cost = used ? msgs[i] + 5 : msgs[i];
+      if (used && used + cost > CAP) drop.add(i); else used += cost;
+    }
+    msgs.forEach((w, i) => {
       const b = document.createElement('div');
-      b.className = 'blk' + (i % 2 === 0 ? ' tool' : '');
+      b.className = 'blk' + (i % 2 === 0 ? ' tool' : '') + (drop.has(i) ? ' gone' : '');
       b.style.width = w + 'px';
-      if (used + w > p.cap) b.classList.add('gone');
-      used += w + 5;
       track.appendChild(b); blocks.push(b);
     });
     const cap = document.createElement('div');
-    cap.className = 'cap'; cap.style.left = p.cap + 'px'; cap.style.right = 'auto';
+    cap.className = 'cap';
     track.appendChild(cap);
   });
-  // The bars are now in their final, visible state. Everything below is decoration:
-  // if gsap is missing, killed mid-flight, or the slide is screenshotted, they still show.
+  // Bars are in their final, visible state here. Everything below is decoration:
+  // no gsap, a killed tween or a screenshot all still show the finished lanes.
   if (level === 0 || !gsap) return;
   const done = () => gsap.set(blocks, { clearProps: 'transform' });
   const tl = gsap.timeline({ onComplete: done, onInterrupt: done });
@@ -1062,9 +1068,9 @@ window.KX_ENTER['tiers'] = (slide, level, gsap) => {
     const kids = [...track.children].filter(el => el.classList.contains('blk'));
     tl.fromTo(kids,
       { scaleX: 0 },
-      { scaleX: 1, transformOrigin: 'left center',
+      { scaleX: 1, transformOrigin: 'right center',
         duration: level >= 3 ? 0.5 : 0.3,
-        stagger: level >= 3 ? 0.045 : 0.02,
+        stagger: { each: level >= 3 ? 0.045 : 0.02, from: 'end' },
         ease: 'power3.out' },
       0.25 + li * (level >= 3 ? 0.55 : 0.3));
   });
