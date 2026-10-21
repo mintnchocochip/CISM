@@ -591,6 +591,9 @@ async def test_report_writes_markdown_json_and_graph_files(export_app, tmp_path)
         await settle(pilot, 12)
         written = list(tmp_path.glob("*.md")) + list(tmp_path.glob("*.json")) + list(tmp_path.glob("*.dot"))
         assert len(written) == 3
+        # The Markdown is also carried into a print-ready HTML (and a PDF
+        # alongside it when a browser is present, which is best-effort).
+        assert len(list(tmp_path.glob("*.html"))) == 1
         notes = [str(getattr(c, "text", "")) for c in app.transcript.children]
         assert any("report written" in n for n in notes)
 
