@@ -1,12 +1,14 @@
 # CISM — Cyber Investigation State Memory
 
-An SLM-driven VAPT agent. This repository holds its terminal UI, which is the
-only surface: there is no web dashboard.
+**An autonomous VAPT agent driven by a 4-billion-parameter model running on a
+6 GB laptop GPU.** No cloud inference, no API bill, no web dashboard — a
+LangGraph agent, a sandboxed tool catalog, a dependency/error-propagation
+graph, and a terminal.
 
-The TUI reads as a single scrolling conversation — one transcript, one fixed
-composer, one status line. The terminal is the frame. Two CISM-specific views,
-the dependency/error propagation graph and the memory table, are modal
-overlays rather than persistent panes.
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+![Tests: 936](https://img.shields.io/badge/tests-936-brightgreen)
+![Inference: llama.cpp](https://img.shields.io/badge/inference-llama.cpp-orange)
 
 ```
 > scan 10.0.0.5 and tell me what is exposed
@@ -26,17 +28,46 @@ a full TCP sweep and version detection before committing to any hypothesis.
 ╭──────────────────────────────────────────────────────────────────────────────────╮
 │ >                                                                                │
 ╰──────────────────────────────────────────────────────────────────────────────────╯
-  qwen2.5-7b-instruct · phase: exploitation · ctx 12.4k/32k (38%) · 47 tok/s ·
+  gemma-4-e4b-it · phase: exploitation · ctx 12.4k/96k (13%) · 40 tok/s ·
   linux·apache·php · depg 11 nodes · mem T1:4 T2:4 T3:2 · ⏵⏵ auto
 ```
 
 (The status line is one line in the terminal; it is wrapped here to fit the
-page. It elides rather than wrapping — see below.)
+page. It elides rather than wrapping — see "The status line" below.)
 
-## Quick start
+## ⚠️ Authorized use only
 
-The whole UI is demoable with no lab, no model weights, and no network — it
-replays a recorded event log.
+CISM drives real offensive tooling — nmap, sqlmap, hydra, gobuster, nikto, nc
+— against whatever you point it at. **Run it only against systems you own or
+have written permission to test.** Unauthorized scanning and exploitation is
+a crime in most jurisdictions.
+
+Every live run is gated by an explicit `--scope` allowlist and a
+`ScopeGuardStage` that blocks any call falling outside it, but those are
+safety nets against the model wandering, not a substitute for authorization.
+The scope you declare is the scope you are accountable for.
+
+## What it actually is
+
+Three ideas, in one terminal:
+
+- **A real agent loop, not a prompt chain.** A LangGraph graph —
+  `think → act → depg_update → phase_router → memory_update` — with a PTES
+  phase state machine that makes a realistic pivot legal and an arbitrary
+  jump illegal.
+- **A dependency/error-propagation graph (DEPG).** Every tool result becomes
+  nodes and edges, each node's state derived from its evidence *and* its
+  parent's support, so a dead branch collapses the subtree that depended on
+  it instead of leaving the agent chasing a finding that was invalidated
+  three steps ago.
+- **Tiered memory with real salience.** Findings are retained at T1/T2/T3
+  with a decaying salience score, and the context the model sees is compacted
+  under pressure — shrink, then stub, then drop — rather than truncated.
+
+The model is small on purpose. The whole point is that the structure around
+the model does the work a bigger model would otherwise have to do.
+
+## Quick start — the demo (no lab, no weights, no network)
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
@@ -50,14 +81,145 @@ python demo_replay.py
 python demo_replay.py --speed 3 --loop
 ```
 
-`--speed 0` removes every pause, `--wait` holds playback until you send the
-first turn, and `--log` points at a different JSONL log.
+It replays a recorded event log through the real TUI. `--speed 0` removes
+every pause, `--wait` holds playback until you send the first turn, and
+`--log` points at a different JSONL log.
 
-### Running the real agent instead of a replay
+## Hosting the model with llama.cpp
 
-`cism/agent/` is a LangGraph-backed core satisfying the same `Agent` seam
-`FakeAgent` does — see "The agent core" below for what it is and, more
-importantly, what it still is not. It needs the `agent` extra:
+CISM talks to any OpenAI-compatible server, but the setup it was built and
+measured against is **llama.cpp's `llama-server` serving
+`gemma-4-E4B-it` at Q4_K_M** — not Ollama. The instructions below are that
+setup, end to end.
+
+Why Gemma 4 E4B: it was the only model of the fourteen benchmarked that
+scored **90/90 on a tool-calling stress test** (18 case types × 5 repeats,
+temperature 0.2) *and* had the smallest VRAM footprint, which is what left
+room to push the context window to 96k on a 6 GB card. Every
+cybersecurity-specialized fine-tune tested *regressed* on tool calling versus
+its own base model. The full shootout, including the models that lost and
+why, is in
+[presentations/cism-review5/model-shootout.md](presentations/cism-review5/model-shootout.md).
+
+### 1. Build or install llama.cpp
+
+A CUDA-enabled build matters — CPU-only inference is roughly an order of
+magnitude slower and the whole design assumes full GPU offload.
+
+Prebuilt binaries (easiest): grab a CUDA release from
+[llama.cpp releases](https://github.com/ggml-org/llama.cpp/releases) and put
+`llama-server` on your `PATH`.
+
+From source:
+
+```bash
+git clone https://github.com/ggml-org/llama.cpp && cd llama.cpp
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release -j
+```
+
+`build/bin/llama-server` is the binary CISM talks to. On macOS swap
+`-DGGML_CUDA=ON` for `-DGGML_METAL=ON`.
+
+### 2. Get the weights
+
+Q4_K_M is the quantization that was measured; it is ~4.6 GiB on disk and
+~3.9 GB of VRAM at 16k context.
+
+```bash
+huggingface-cli download mradermacher/gemma-4-E4B-it-GGUF \
+    gemma-4-E4B-it.Q4_K_M.gguf --local-dir ~/models
+```
+
+Or let llama.cpp fetch and cache it itself, which is the one-liner version of
+the whole section:
+
+```bash
+llama-server -hf mradermacher/gemma-4-E4B-it-GGUF:Q4_K_M \
+    --alias gemma-4-e4b-it --port 8189 --jinja -ngl 99 -fa on -c 98304 --temp 0.2
+```
+
+### 3. Serve it
+
+```bash
+./scripts/serve_gemma.sh
+```
+
+```powershell
+.\scripts\serve_gemma.ps1
+```
+
+Both wrap one command:
+
+```bash
+llama-server --model ~/models/gemma-4-E4B-it-Q4_K_M.gguf \
+    --alias gemma-4-e4b-it \
+    --host 0.0.0.0 --port 8189 \
+    --jinja -ngl 99 -fa on \
+    -c 98304 --temp 0.2
+```
+
+What each flag is doing, and why:
+
+| Flag | Why |
+|---|---|
+| `--jinja` | Applies the model's **own** chat template. Without it tool calls come back in the wrong format and the agent silently stops calling tools. This is the flag people miss. |
+| `-ngl 99` | Every layer on the GPU. Partial offload splits the model across the PCIe bus and costs more than the VRAM it saves. |
+| `-fa on` | Flash attention. Shrinks the KV cache enough that 96k context fits in 6 GB — without it you are capped around 32k on the same card. |
+| `-c 98304` | 96k context. See the VRAM table below for why not 128k. |
+| `--temp 0.2` | Tool-call arguments are structured output; sampling noise shows up as malformed JSON. |
+| `--alias` | The name the server reports, and therefore what you pass to `--model` on the CISM side. |
+| `--host 0.0.0.0` | Only needed so WSL2 or a Docker container can reach a server on the Windows/Linux host. On an untrusted network, use `127.0.0.1`. |
+
+VRAM at full offload, `gemma-4-E4B-it-Q4_K_M` on a 6 GB RTX 3050:
+
+| Context | VRAM |
+|---|---|
+| 16,384 | 3.90 GB |
+| 32,768 | 4.14 GB |
+| 65,536 | 4.68 GB |
+| **98,304 (96k)** | **5.23 GB** ← chosen, ~900 MB headroom |
+| 131,072 (128k) | 5.79 GB — rejected, ~350 MB headroom is too tight |
+
+Measured throughput at that configuration: **~40 tok/s** generation.
+
+Check it is up and reporting the alias you expect:
+
+```bash
+curl -s http://127.0.0.1:8189/v1/models | python -m json.tool
+```
+
+### 4. Point CISM at it
+
+```bash
+export CISM_API_KEY=local
+python run_agent.py --base-url http://127.0.0.1:8189/v1 --model gemma-4-e4b-it
+```
+
+`--key-env-var` names the environment variable holding the API key (default
+`CISM_API_KEY`). `llama-server` does not check the value, but *some*
+non-empty value has to be there. The key never enters the TUI — see "Keys are
+never typed into the composer" below.
+
+Two CISM-side flags exist specifically for llama.cpp:
+
+- `--backend llamacpp` (on `scripts/benchmark.py`) uses `llama-server`'s raw
+  `/completion` endpoint with a **constrained JSON schema** for structured
+  extraction, instead of the generic OpenAI function-calling path. Use it
+  when DEPG extraction quality matters more than portability.
+- Context discovery reads the server's own reported context length rather
+  than guessing, so the status-line gauge matches what the server will
+  actually accept.
+
+Anything else OpenAI-compatible still works — vLLM, LM Studio, real OpenAI,
+or Ollama's `/v1` endpoint — by pointing `--base-url` at it. They just are not
+the configuration any of the numbers in this README were measured on.
+
+## Running the real agent
+
+`cism/agent/` is a LangGraph-backed core satisfying the same `Agent` seam the
+replay's `FakeAgent` does — see "The agent core" below for what it is and,
+more importantly, what it still is not. It needs the `agent` extra:
 
 ```bash
 .venv/bin/pip install -e ".[dev,agent]"
@@ -73,33 +235,22 @@ behind it is a canned `DummyChatModel` and the two tools it can call are
 stubs (`dummy_nmap`/`dummy_msfconsole`) — but it is a real run through
 LangGraph's own graph loop, not a scripted log.
 
-Point it at a real OpenAI-compatible server (llama.cpp, vLLM, LM Studio, real
-OpenAI, or Ollama's `/v1` endpoint) with `--base-url`/`--model`:
-
-```bash
-python run_agent.py --base-url http://localhost:11434/v1 --model qwen2.5:3b
-```
-
-Pass `--live-tools --scope <cidr|domain,...>` to run the real tool catalog
-(nmap/curl/nikto/whatweb/dnsenum/hydra) instead of the dummy stubs, sandboxed
-via `bwrap` (bubblewrap) and gated by a real `ScopeGuardStage`/
-`DangerousFlagGuardStage` action chain — see "Tool catalog" below for what's
-in it and what installing it requires:
+Add `--live-tools --scope <cidr|domain,...>` to run the real tool catalog
+(nmap/curl/nikto/whatweb/dnsenum/hydra/sqlmap/gobuster/wafw00f/nc) instead of
+the dummy stubs, sandboxed via `bwrap` (bubblewrap) and gated by a real
+`ScopeGuardStage`/`DangerousFlagGuardStage` action chain — see "Tool catalog"
+below for what's in it and what installing it requires:
 
 ```bash
 python run_agent.py --live-tools --scope 10.0.0.0/24,example.internal \
-    --base-url http://localhost:11434/v1 --model qwen2.5:3b
+    --base-url http://127.0.0.1:8189/v1 --model gemma-4-e4b-it
 ```
 
-`--key-env-var` names the environment variable holding the API key (default
-`CISM_API_KEY`) for a server that needs one.
-
-### Live lab: stand up a real target and run a real engagement
+## Live lab: stand up a real target and run a real engagement
 
 This spins up an actual vulnerable web app in Docker and points CISM's real
-tool catalog at it — nothing here is a replay or a stub. Needs Docker and an
-OpenAI-compatible inference server already running somewhere reachable
-(llama.cpp's `llama-server`, vLLM, LM Studio, Ollama's `/v1`, or real OpenAI).
+tool catalog at it — nothing here is a replay or a stub. Needs Docker and the
+inference server from the section above already running.
 
 **1. The lab network and target:**
 
@@ -120,31 +271,22 @@ Then open `http://<that IP>/setup.php` once from a browser on the same
 network (or `docker exec -it dvwa bash` and curl it) and click "Create /
 Reset Database" — DVWA has no DB until that's done once.
 
-**2. Point CISM at your inference server.** Set `--base-url` to wherever it
-actually listens (not necessarily `localhost`, if it's on another host/port —
-e.g. a Windows-hosted `llama-server` reachable from WSL2 at its LAN IP) and
-`--model` to the model name it reports. `--key-env-var` just needs *a*
-non-empty env var — most local servers never check the value.
-
-**Your shell needs to actually reach `cism-lab`'s containers before step 3
-or 4 below will see real results** — found the hard way: a custom Docker
-bridge network's containers are often *not* reachable from the Docker host's
-own shell at all (confirmed on this Docker Desktop/WSL2 setup — direct
-`curl`/`ping` from the host to a `cism-lab` IP both got nothing, while the
-exact same request from a throwaway container actually attached to
-`cism-lab` worked immediately). If `run_agent.py`/`scripts/benchmark.py` run
-straight from your shell and every tool call comes back empty or
-"filtered" against a target you know is up, this is almost certainly why —
-check with one throwaway container first:
+**2. Make sure your shell can actually reach `cism-lab`.** Found the hard
+way: a custom Docker bridge network's containers are often *not* reachable
+from the Docker host's own shell at all (confirmed on Docker Desktop/WSL2 —
+direct `curl`/`ping` from the host to a `cism-lab` IP both got nothing, while
+the exact same request from a throwaway container attached to `cism-lab`
+worked immediately). If every tool call comes back empty or "filtered"
+against a target you know is up, this is almost certainly why:
 
 ```bash
 docker run --rm --network cism-lab curlimages/curl -s -o /dev/null \
     -w 'HTTP %{http_code}\n' http://<dvwa-ip>/
 ```
 
-If that returns a real status code but your shell's own `curl`/`ping` to
-the same IP times out, run CISM itself from inside a container on
-`cism-lab` too — option 4 below does exactly that.
+If that returns a real status code but your shell's own `curl` to the same IP
+times out, run CISM itself from inside a container on `cism-lab` too —
+option 4 below does exactly that.
 
 **3. Run it, with the real tool catalog, against the real target:**
 
@@ -152,8 +294,12 @@ the same IP times out, run CISM itself from inside a container on
 export CISM_API_KEY=local
 python run_agent.py --live-tools --target <dvwa-ip> \
     --scope <dvwa-ip>/32 \
-    --base-url http://<your-server>:<port>/v1 --model <model-name>
+    --base-url http://<your-llama-server>:8189/v1 --model gemma-4-e4b-it
 ```
+
+Set `--base-url` to wherever `llama-server` actually listens — not
+necessarily `localhost`, if it is on another host (e.g. a Windows-hosted
+`llama-server` reachable from WSL2 at its LAN IP).
 
 This opens the normal TUI — `ctrl+d` for the DEPG, `ctrl+m` for memory,
 `/report` at the end writes both a Markdown and JSON report plus an SVG graph
@@ -166,15 +312,11 @@ time-to-first-finding, per-phase timing) use the benchmark harness instead:
 ```bash
 python scripts/benchmark.py \
     --target <dvwa-ip> --scope <dvwa-ip>/32 \
-    --base-url http://<your-server>:<port>/v1 --model <model-name> \
+    --base-url http://<your-llama-server>:8189/v1 --model gemma-4-e4b-it \
+    --backend llamacpp \
     --turn "recon the target with nmap, then enumerate the web service" \
     --out bench_result.json
 ```
-
-Add `--backend llamacpp` if your server is a real `llama-server` (raw
-`/completion` + constrained JSON schema for structured extraction, instead
-of the generic OpenAI function-calling path) — see "Swappable inference
-backend" below for when that flag actually matters.
 
 **4. Run it fully containerized instead of from your host**, with the same
 hardened sandbox the agent uses in production (non-root, capability-dropped,
@@ -195,7 +337,7 @@ docker run --rm -it \
   --network cism-lab \
   -v /tmp/cism_api_key:/run/secrets/cism_api_key:ro \
   cism-runner --live-tools --target <dvwa-ip> --scope <dvwa-ip>/32 \
-  --base-url http://<your-server>:<port>/v1 --model <model-name> \
+  --base-url http://<your-llama-server>:8189/v1 --model gemma-4-e4b-it \
   --key-file /run/secrets/cism_api_key
 ```
 
@@ -203,6 +345,39 @@ If your inference server runs on the Docker host itself (not inside
 `cism-lab`), the container also needs a route to it — see docker/README.md's
 D4 note on why `--add-host=host.docker.internal:host-gateway` is unreliable
 on Docker Desktop/WSL2 and what the workaround is.
+
+## Documentation
+
+| | |
+|---|---|
+| [docs/AUDIT.md](docs/AUDIT.md) | Full engineering/reliability/security audit of the codebase, every finding cited to `file:line` |
+| [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) | Review of the hardening pass, with repros |
+| [docs/BACKLOG.md](docs/BACKLOG.md) | Running log of real engagement failures and what each one taught |
+| [docs/next-phase-roadmap.md](docs/next-phase-roadmap.md) | What isn't built yet, with the seam each extends into |
+| [presentations/cism-review5/model-shootout.md](presentations/cism-review5/model-shootout.md) | The fourteen-model local LLM shootout behind the Gemma 4 E4B pick |
+| [docker/README.md](docker/README.md) | Container hardening, flag by flag |
+| [cism/pdf/](cism/pdf/) | `mdpdf` — the Rust Markdown→PDF renderer and watcher used for these docs |
+
+### mdpdf — docs to PDF, automatically
+
+Every `.md` in this repo can render itself. `cism/pdf/` is a small Rust
+binary: it parses Markdown with `pulldown-cmark` and lays it out with
+`printpdf` using only the base-14 PDF fonts, so there are no font files to
+install.
+
+```bash
+cd cism/pdf && cargo build --release
+```
+
+```bash
+./target/release/mdpdf ../../README.md        # one file -> README.pdf
+./target/release/mdpdf --watch ../..          # every new or changed .md, as it lands
+```
+
+The watcher skips `target/`, `.git/`, `.venv/`, `node_modules/`,
+`graphify-out/` and `__pycache__/`, debounces editor save storms, and leaves
+a PDF alone when it is already newer than its source. Leave it running in a
+spare terminal and new Markdown gets a PDF without being asked.
 
 ## Keys
 
@@ -231,6 +406,7 @@ on Docker Desktop/WSL2 and what the workaround is.
 | `/depg` `/mem` | the two modal views |
 | `/replay <run_id>` | counterfactual replay from the output cache |
 | `/ablate <part>` | disable a component for the next run |
+| `/report` | write a findings report (Markdown + JSON + SVG graph) from DEPG/memory state |
 | `/export` `/clear` `/help` | |
 
 `/depg`, `/mem`, `/models`, `/clear`, `/help`, and `/export` are answered by
@@ -605,10 +781,10 @@ survive. Fields with no value — tok/s before any tokens, target before it is
 declared — are omitted rather than shown empty.
 
 ```
-120 cols  qwen2.5-7b · phase: recon · ctx 12.4k/32k (38%) · 47 tok/s · linux·nginx · depg 47 nodes · mem T1:8 T2:31 T3:5 · ⏵⏵ auto
-100 cols  qwen2.5-7b · phase: recon · ctx 12.4k/32k (38%) · 47t/s · linux·nginx · depg 47 · mem 44 · ⏵⏵ auto
- 70 cols  qwen2.5-7b · recon · ctx 12.4k/32k · 47t/s · linux · mem 44 · ⏵⏵
- 44 cols  qwen2.5-7b · recon · ctx 12.4k/32k · ⏵⏵
+120 cols  gemma-4-e4b · phase: recon · ctx 12.4k/32k (38%) · 47 tok/s · linux·nginx · depg 47 nodes · mem T1:8 T2:31 T3:5 · ⏵⏵ auto
+100 cols  gemma-4-e4b · phase: recon · ctx 12.4k/32k (38%) · 47t/s · linux·nginx · depg 47 · mem 44 · ⏵⏵ auto
+ 70 cols  gemma-4-e4b · recon · ctx 12.4k/32k · 47t/s · linux · mem 44 · ⏵⏵
+ 44 cols  gemma-4-e4b · recon · ctx 12.4k/32k · ⏵⏵
 ```
 
 The elision logic is a pure function of segments and an available width, so
@@ -785,5 +961,8 @@ demo/recon_run.jsonl  the recorded run
 run_agent.py          the live entry point (LangGraphAgent; a real OpenAI-compatible
                          connector is opt-in via --base-url/--model or CISM_LLM_BASE_URL/
                          CISM_LLM_MODEL, dummy remains the fallback when unconfigured)
+cism/report/          /report — Markdown + JSON findings report plus an SVG graph diagram
+cism/pdf/             mdpdf — the Rust Markdown→PDF renderer and watcher
+scripts/serve_gemma.* llama-server launch for gemma-4-E4B-it — see "Hosting the model"
 bench/stream_bench.py the streaming benchmark
 ```

@@ -46,7 +46,7 @@ think -> act -> depg_update -> phase_router -> memory_update -> (think | respond
 | `demo_replay.py` | CLI entry point (replays a recorded log, no LLM/network) | |
 | `tests/` | Mirrors `cism/` ~1:1 (`test_<module>.py`); `test_snapshots.py` is Textual pixel-snapshot tests — **known flaky under repeated/parallel runs independent of code changes** (confirmed via `git stash` + repeat-run, not a regression signal) | |
 | `docs/superpowers/` | Per-feature plan/design docs from when each piece was built (dated, historical — not a live architecture doc) | |
-| `AUDIT.md` | Standing engineering-audit findings + status notes, prioritized P0/P1/P2 | |
+| `docs/AUDIT.md` | Standing engineering-audit findings + status notes, prioritized P0/P1/P2 | |
 
 ## Extensibility seams (where new code plugs in)
 

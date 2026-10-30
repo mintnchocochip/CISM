@@ -1,0 +1,15 @@
+[package]
+name = "mdpdf"
+version = "0.1.0"
+edition = "2021"
+description = "Markdown to PDF for CISM's docs — one-shot, or a watcher that renders every new .md"
+license = "GPL-3.0-or-later"
+
+[[bin]]
+name = "mdpdf"
+path = "src/main.rs"
+
+[dependencies]
+printpdf = "0.7"
+pulldown-cmark = { version = "0.12", default-features = false }
+notify = "6"
