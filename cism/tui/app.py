@@ -20,7 +20,14 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import TextArea
 
-from cism.report import PhaseTransition, RunMetrics, build_report, write_graph, write_report
+from cism.report import (
+    PhaseTransition,
+    RunMetrics,
+    build_report,
+    write_graph,
+    write_pdf,
+    write_report,
+)
 
 from .events import (
     Agent,
@@ -86,7 +93,7 @@ HELP_TEXT = """\
 /replay <run_id> counterfactual replay from the output cache
 /ablate <part>   disable a component for the next run
 /export          write the transcript to disk
-/report          write a findings report (Markdown + JSON) from the DEPG/memory state
+/report          write a findings report (Markdown + JSON + PDF) from the DEPG/memory state
 /clear           clear the transcript
 /help            this list
 
@@ -640,11 +647,18 @@ class CISMApp(App[None]):
         )
         md_path, json_path = write_report(report, out_dir)
         dot_path = write_graph(report, out_dir)
+        html_path = write_pdf(report, out_dir)
         svg_path = dot_path.with_suffix(".svg")
-        graph_note = f", {svg_path}" if svg_path.exists() else f", {dot_path} (install graphviz for .svg)"
+        pdf_path = html_path.with_suffix(".pdf")
+        graph_note = (
+            f", {svg_path}" if svg_path.exists() else f", {dot_path} (install graphviz for .svg)"
+        )
+        pdf_note = (
+            f", {pdf_path}" if pdf_path.exists() else f", {html_path} (install chromium for .pdf)"
+        )
         self.transcript.add_note(
             f"report written — {len(report.findings)} resolved finding(s) → "
-            f"{md_path}, {json_path}{graph_note}"
+            f"{md_path}, {json_path}{pdf_note}{graph_note}"
         )
 
     @staticmethod

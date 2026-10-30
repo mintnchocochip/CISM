@@ -3,7 +3,7 @@ report. §4.2 (BACKLOG.md)."""
 
 from __future__ import annotations
 
-from cism.report import PhaseTransition, RunMetrics, build_report, write_report
+from cism.report import PhaseTransition, RunMetrics, build_report, write_pdf, write_report
 from cism.tui.events import DEPGNode, Evidence, MemoryRow
 
 
@@ -84,3 +84,65 @@ def test_write_report_writes_both_files(tmp_path) -> None:
     assert md_path.exists() and json_path.exists()
     assert md_path.name == "run-1.md"
     assert json_path.name == "run-1.json"
+
+
+def test_markdown_to_html_renders_report_constructs() -> None:
+    from cism.report import markdown_to_html
+
+    md = (
+        "# Title\n\n"
+        "Some **bold** and `code` text.\n\n"
+        "## Section\n\n"
+        "- first\n- second\n\n"
+        "| a | b |\n| --- | --- |\n| 1 | 2 |\n"
+    )
+    out = markdown_to_html(md, title="t")
+
+    assert out.lstrip().startswith("<!doctype html>")
+    assert "<h1>Title</h1>" in out
+    assert "<strong>bold</strong>" in out
+    assert "<code>code</code>" in out
+    assert "<li>first</li>" in out
+    assert "<table>" in out and "<th>a</th>" in out and "<td>1</td>" in out
+
+
+def test_markdown_to_html_escapes_and_keeps_code_literal() -> None:
+    from cism.report import markdown_to_html
+
+    out = markdown_to_html("A `**not bold**` and <script> here.", title="t")
+
+    assert "<code>**not bold**</code>" in out  # inline code never re-marked
+    assert "&lt;script&gt;" in out  # raw HTML escaped
+
+
+def test_write_pdf_always_writes_html(tmp_path) -> None:
+    report = build_report(
+        run_id="run-1", target="x", nodes=(_node("resolved"),), edges=(), memory=()
+    )
+
+    html_path = write_pdf(report, tmp_path)
+
+    assert html_path.exists()
+    assert html_path.name == "run-1.html"
+    assert "<!doctype html>" in html_path.read_text(encoding="utf-8").lower()
+
+
+def test_markdown_to_html_terminates_on_stray_pipe_line() -> None:
+    # A `|` line with no separator row underneath is not a table; it must
+    # fall through to a paragraph and still advance (regression: this once
+    # spun the parser forever on ASCII-art report content).
+    from cism.report import markdown_to_html
+
+    out = markdown_to_html("| not a table |\nmore text\n", title="t")
+
+    assert "not a table" in out
+    assert "<table>" not in out
+
+
+def test_markdown_to_html_handles_fenced_code_block() -> None:
+    from cism.report import markdown_to_html
+
+    out = markdown_to_html("before\n\n```\n__H__ art & <tags>\n```\n\nafter", title="t")
+
+    assert "<pre><code>" in out
+    assert "__H__ art &amp; &lt;tags&gt;" in out
