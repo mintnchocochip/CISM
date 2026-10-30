@@ -302,9 +302,10 @@ necessarily `localhost`, if it is on another host (e.g. a Windows-hosted
 `llama-server` reachable from WSL2 at its LAN IP).
 
 This opens the normal TUI — `ctrl+d` for the DEPG, `ctrl+m` for memory,
-`/report` at the end writes both a Markdown and JSON report plus an SVG graph
-diagram (needs system `graphviz`'s `dot`; degrades gracefully to DOT-only
-without it) to the export directory.
+`/report` at the end writes a Markdown, JSON and PDF report plus an SVG graph
+diagram to the export directory. Both extras degrade gracefully: the SVG needs
+system `graphviz`'s `dot` and falls back to DOT-only, and the PDF needs a
+headless Chrome/Chromium and falls back to the HTML it would have printed.
 
 For a headless run (no TUI, just a JSON summary — findings count,
 time-to-first-finding, per-phase timing) use the benchmark harness instead:
@@ -406,7 +407,7 @@ spare terminal and new Markdown gets a PDF without being asked.
 | `/depg` `/mem` | the two modal views |
 | `/replay <run_id>` | counterfactual replay from the output cache |
 | `/ablate <part>` | disable a component for the next run |
-| `/report` | write a findings report (Markdown + JSON + SVG graph) from DEPG/memory state |
+| `/report` | write a findings report (Markdown + JSON + PDF + SVG graph) from DEPG/memory state |
 | `/export` `/clear` `/help` | |
 
 `/depg`, `/mem`, `/models`, `/clear`, `/help`, and `/export` are answered by
@@ -961,7 +962,7 @@ demo/recon_run.jsonl  the recorded run
 run_agent.py          the live entry point (LangGraphAgent; a real OpenAI-compatible
                          connector is opt-in via --base-url/--model or CISM_LLM_BASE_URL/
                          CISM_LLM_MODEL, dummy remains the fallback when unconfigured)
-cism/report/          /report — Markdown + JSON findings report plus an SVG graph diagram
+cism/report/          /report — Markdown + JSON + PDF findings report plus an SVG graph diagram
 cism/pdf/             mdpdf — the Rust Markdown→PDF renderer and watcher
 scripts/serve_gemma.* llama-server launch for gemma-4-E4B-it — see "Hosting the model"
 bench/stream_bench.py the streaming benchmark
