@@ -92,7 +92,7 @@ measured against is **llama.cpp's `llama-server` serving
 `gemma-4-E4B-it` at Q4_K_M** — not Ollama. The instructions below are that
 setup, end to end.
 
-Why Gemma 4 E4B: it was the only model of the fourteen benchmarked that
+Why Gemma 4 E4B: it was the only model of the twelve benchmarked that
 scored **90/90 on a tool-calling stress test** (18 case types × 5 repeats,
 temperature 0.2) *and* had the smallest VRAM footprint, which is what left
 room to push the context window to 96k on a 6 GB card. Every
@@ -355,7 +355,7 @@ on Docker Desktop/WSL2 and what the workaround is.
 | [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) | Review of the hardening pass, with repros |
 | [docs/BACKLOG.md](docs/BACKLOG.md) | Running log of real engagement failures and what each one taught |
 | [docs/next-phase-roadmap.md](docs/next-phase-roadmap.md) | What isn't built yet, with the seam each extends into |
-| [presentations/cism-review5/model-shootout.md](presentations/cism-review5/model-shootout.md) | The fourteen-model local LLM shootout behind the Gemma 4 E4B pick |
+| [presentations/cism-review5/model-shootout.md](presentations/cism-review5/model-shootout.md) | The twelve-model local LLM shootout behind the Gemma 4 E4B pick |
 | [docker/README.md](docker/README.md) | Container hardening, flag by flag |
 | [cism/pdf/](cism/pdf/) | `mdpdf` — the Rust Markdown→PDF renderer and watcher used for these docs |
 
